@@ -1,0 +1,6 @@
+{
+  "images" : [
+    { "idiom" : "universal", "filename" : "toned-pouch.png" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

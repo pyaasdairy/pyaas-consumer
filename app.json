@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "PYAAS",
+    "slug": "pyaas-app",
+    "version": "1.1.0",
+    "scheme": "pyaas",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-pink.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#F36CB5"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "in.pyaasdairy.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "PYAAS uses your location to set your delivery address and show your rider on the way.",
+        "NSCameraUsageDescription": "PYAAS uses the camera to scan the QR on your milk pack and show you its farm and quality.",
+        "NSPhotoLibraryUsageDescription": "PYAAS uses your photos so you can set a profile picture."
+      }
+    },
+    "android": {
+      "package": "in.pyaasdairy.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#F36CB5",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PYAAS uses the camera to scan the QR on your milk pack and show you its farm and quality."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PYAAS uses your photos so you can set a profile picture."
+        }
+      ]
+    ]
+  }
+}

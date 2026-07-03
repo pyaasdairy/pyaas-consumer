@@ -1,0 +1,3 @@
+/* PYAAS — English (en) base localization. Strings resolve to their keys (the
+   English source text) by default; this file marks en.lproj as a real
+   localization and is the place to override any base copy. */

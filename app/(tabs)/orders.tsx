@@ -1,0 +1,114 @@
+import React, { useCallback, useState } from 'react';
+import { View, RefreshControl, ActivityIndicator } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-reanimated';
+import { colors, radius, spacing, shadow, rupee, tabular } from '../../lib/theme';
+import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../components/ui';
+import { listOrders, type Order } from '../../lib/api';
+import { STATUS_LABEL, statusColor } from '../../lib/orderStatus';
+import { isSupabaseConfigured } from '../../lib/supabase';
+
+function fmtDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return iso;
+  }
+}
+
+export default function Orders() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setError('Backend not set up. Add Supabase keys to .env.');
+      setLoading(false);
+      return;
+    }
+    try {
+      const data = await listOrders();
+      setOrders(data);
+      setError('');
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not load orders.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.milk }}>
+      <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+        <Serif style={{ fontSize: 30 }}>Your orders</Serif>
+      </View>
+
+      {loading ? (
+        <ActivityIndicator color={colors.roseDeep} style={{ marginTop: 40 }} />
+      ) : (
+        <Animated.FlatList
+          data={orders}
+          keyExtractor={(o) => o.id}
+          itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(200)}
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 112, gap: spacing.sm }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.roseDeep} />}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
+              <Ionicons name="receipt-outline" size={56} color={colors.inkMute} />
+              <Serif style={{ fontSize: 22 }}>No orders yet.</Serif>
+              <TextBody style={{ textAlign: 'center' }}>{error || 'Your delivered and active orders show up here.'}</TextBody>
+              <Button title="Order milk" onPress={() => router.replace('/(tabs)')} style={{ marginTop: 6, paddingHorizontal: 28 }} />
+            </View>
+          }
+          renderItem={({ item, index }) => {
+            const itemsText = (item.order_items ?? []).map((i) => `${i.qty}× ${i.name}`).join(', ');
+            const active = !['delivered', 'cancelled'].includes(item.status);
+            return (
+              <Animated.View entering={FadeInDown.duration(260).delay(index * 50)} exiting={FadeOutUp.duration(180)}>
+                <Tap
+                  haptic={false}
+                  onPress={() => router.push(`/order/${item.id}`)}
+                  style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 8, ...shadow.soft }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Pill
+                      label={STATUS_LABEL[item.status]}
+                      bg={active ? 'rgba(199,91,110,0.12)' : item.status === 'delivered' ? colors.sageSoft : colors.line}
+                      color={statusColor(item.status)}
+                    />
+                    <TextBody style={{ fontSize: 12, ...tabular }}>{fmtDate(item.placed_at)}</TextBody>
+                  </View>
+                  <TextMed numberOfLines={1} style={{ fontSize: 14.5 }}>
+                    {itemsText || 'Order'}
+                  </TextMed>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <TextSemi color={colors.roseDeep} style={tabular}>{rupee(item.total)}</TextSemi>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                      <TextMed color={colors.roseDeep} style={{ fontSize: 13 }}>
+                        {active ? 'Track' : 'View'}
+                      </TextMed>
+                      <Ionicons name="chevron-forward" size={15} color={colors.roseDeep} />
+                    </View>
+                  </View>
+                </Tap>
+              </Animated.View>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
+}

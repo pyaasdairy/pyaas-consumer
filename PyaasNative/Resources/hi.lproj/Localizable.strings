@@ -1,0 +1,116 @@
+/* PYAAS — Hindi (hi) localization. Keys are the English source strings; any
+   string not listed here falls back to the English base. */
+
+/* Tabs */
+"Home" = "होम";
+"Shop" = "शॉप";
+"Track" = "ट्रैक";
+"Account" = "खाता";
+
+/* Home */
+"Good morning" = "सुप्रभात";
+"Good afternoon" = "नमस्कार";
+"Good evening" = "शुभ संध्या";
+"Scan your pack" = "अपना पैक स्कैन करें";
+"Meet the farmers your milk came from." = "उन किसानों से मिलिए जिनका दूध आपके पास आया।";
+"Your milk this week" = "इस हफ़्ते का आपका दूध";
+"Traced, tested, and on its way" = "ट्रेस किया गया, जाँचा गया, और रास्ते में";
+"View passport" = "पासपोर्ट देखें";
+"Recent scans" = "हाल के स्कैन";
+"Traceable" = "ट्रेस करने योग्य";
+"Lab-tested" = "लैब-जाँचा";
+"Cold chain" = "कोल्ड चेन";
+
+/* Passport */
+"Your milk, traced to the farm." = "आपका दूध, खेत तक ट्रेस किया गया।";
+"Milked for you by" = "आपके लिए दूध निकाला";
+"VERIFIED" = "सत्यापित";
+"PREVIEW" = "झलक";
+"YOUR LATEST BATCH" = "आपका नवीनतम बैच";
+"What’s inside" = "अंदर क्या है";
+"The measured composition of this batch" = "इस बैच की मापी गई संरचना";
+"Fat" = "वसा";
+"SNF" = "एसएनएफ";
+"Freshness" = "ताज़गी";
+"Farm to bottle" = "खेत से बोतल तक";
+"Every step, time-stamped" = "हर कदम, समय-अंकित";
+"Collected at dawn" = "भोर में एकत्र";
+"Lab tested" = "लैब में जाँचा";
+"Passed every quality check" = "हर गुणवत्ता जाँच पास की";
+"Processed & packed" = "संसाधित और पैक";
+"Delivered to your door" = "आपके दरवाज़े पहुँचाया";
+"Proof, not promises" = "वादे नहीं, प्रमाण";
+"Independently checked, batch by batch" = "स्वतंत्र रूप से जाँचा गया, बैच दर बैच";
+"Batch QA" = "बैच गुणवत्ता जाँच";
+"Antibiotic-free" = "एंटीबायोटिक-मुक्त";
+"No adulteration" = "कोई मिलावट नहीं";
+"Meet the farms" = "खेतों से मिलिए";
+"The farm behind your milk" = "आपके दूध के पीछे का खेत";
+"Share this story" = "यह कहानी साझा करें";
+"A beautiful card for WhatsApp or Instagram." = "WhatsApp या Instagram के लिए एक सुंदर कार्ड।";
+"Traced from farm to bottle." = "खेत से बोतल तक ट्रेस किया गया।";
+"Passed" = "पास";
+"Flagged" = "चिह्नित";
+
+/* Scan */
+"Scan your PYAAS pack" = "अपना PYAAS पैक स्कैन करें";
+"Point at the QR code on the carton or bottle." = "कार्टन या बोतल पर QR कोड की ओर इंगित करें।";
+"Reading your pack…" = "आपका पैक पढ़ा जा रहा है…";
+"Scan again" = "फिर से स्कैन करें";
+"Camera access is off" = "कैमरा एक्सेस बंद है";
+"Open Settings" = "सेटिंग्स खोलें";
+
+/* Shop */
+"All" = "सभी";
+"Milk" = "दूध";
+"Ghee" = "घी";
+"Fresh from the farms, traced to your door." = "खेतों से ताज़ा, आपके दरवाज़े तक ट्रेस किया गया।";
+"Add" = "जोड़ें";
+"View cart" = "कार्ट देखें";
+"Cart" = "कार्ट";
+"Go to cart" = "कार्ट पर जाएँ";
+"Checkout" = "चेकआउट";
+"Item total" = "वस्तु कुल";
+"You save" = "आपकी बचत";
+"Delivery" = "डिलीवरी";
+"Free" = "मुफ़्त";
+"To pay" = "देय राशि";
+"Your cart is empty" = "आपका कार्ट खाली है";
+"Browse the shop" = "शॉप देखें";
+"Make it a subscription" = "इसे सब्सक्रिप्शन बनाएँ";
+
+/* Checkout */
+"Deliver to" = "यहाँ पहुँचाएँ";
+"Change" = "बदलें";
+"Delivery slot" = "डिलीवरी स्लॉट";
+"Payment" = "भुगतान";
+"Place order" = "ऑर्डर करें";
+"Order placed" = "ऑर्डर हो गया";
+"Done" = "हो गया";
+"We’ll start packing your milk fresh. You can watch it arrive live in Track." = "हम आपका दूध ताज़ा पैक करना शुरू करेंगे। आप इसे ट्रैक में लाइव आते देख सकते हैं।";
+
+/* Track */
+"On its way" = "रास्ते में";
+"Past orders" = "पिछले ऑर्डर";
+"No orders yet" = "अभी कोई ऑर्डर नहीं";
+"On the way" = "रास्ते में";
+"Delivered" = "पहुँचा दिया";
+
+/* Account */
+"Sign in to PYAAS" = "PYAAS में साइन इन करें";
+"Continue with phone" = "फ़ोन से जारी रखें";
+"Send code" = "कोड भेजें";
+"Verify & continue" = "सत्यापित करें और जारी रखें";
+"Sign out" = "साइन आउट";
+"Subscriptions" = "सब्सक्रिप्शन";
+"Saved addresses" = "सहेजे गए पते";
+"Wallet & payments" = "वॉलेट और भुगतान";
+"Your milk passports" = "आपके दूध पासपोर्ट";
+"Help & support" = "मदद और सहायता";
+"Legal & privacy" = "कानूनी और गोपनीयता";
+"COMING SOON" = "जल्द आ रहा है";
+
+/* Shared states */
+"Try again" = "फिर से कोशिश करें";
+"Something went sideways" = "कुछ गड़बड़ हो गई";
+"We couldn’t load this just now. Check your connection and try again." = "हम इसे अभी लोड नहीं कर सके। अपना कनेक्शन जाँचें और फिर कोशिश करें।";
