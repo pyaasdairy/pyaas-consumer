@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, Linking, TextInput } from 'react-native';
+import { View, ScrollView, Linking, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import Animated, {
   withSequence,
 } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts } from '../../lib/theme';
+import { SkeletonBlock } from '../../components/Skeleton';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Divider } from '../../components/ui';
 import { getOrder, cancelOrder, simulateRiderAssignment, simulateDelivered, reviewOrder, type Order } from '../../lib/api';
 import { STATUS_FLOW, STATUS_LABEL, STATUS_SUB, statusIndex } from '../../lib/orderStatus';
@@ -113,9 +114,18 @@ export default function OrderTracking() {
   }
 
   if (loading) {
+    // Tracking skeleton (not a blocking spinner) so the frame appears instantly
+    // and the live status/rider/timeline swap in without a layout jump.
     return (
-      <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.flameDeep} />
+      <View style={{ flex: 1, backgroundColor: colors.milk }}>
+        <View style={{ padding: spacing.lg, gap: spacing.md, paddingTop: insets.top + spacing.lg }}>
+          <SkeletonBlock style={{ height: 116, borderRadius: radius.xl }} />
+          <SkeletonBlock style={{ height: 60, borderRadius: radius.lg }} />
+          <SkeletonBlock style={{ height: 96, borderRadius: radius.lg }} />
+          {[0, 1, 2, 3].map((i) => (
+            <SkeletonBlock key={i} style={{ height: 34, borderRadius: radius.md, width: `${88 - i * 12}%` }} />
+          ))}
+        </View>
       </View>
     );
   }

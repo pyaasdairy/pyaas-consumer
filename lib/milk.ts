@@ -189,6 +189,23 @@ export const DEMO_BATCH_CODES: string[] = SEED_BATCHES.map((b) => b.batch_code);
  * the PARAG API. Returns null when the code can't be traced (caller shows a
  * not-found state rather than masquerading another batch).
  */
+// The backend leaves top-level fat_pct/snf_pct at 0 for per-samiti batch QRs —
+// the real values live in the tests array as FAT_PCT / SNF_PCT (e.g. "4.2%").
+// Backfill them so the passport's FAT/SNF stat cards match the test panel.
+function hydrateBatch(b: MilkBatch): MilkBatch {
+  const num = (name: string): number | null => {
+    const t = (b.tests ?? []).find((x) => x.name === name);
+    if (!t?.value) return null;
+    const n = parseFloat(String(t.value).replace(/[^\d.]/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    ...b,
+    fat_pct: b.fat_pct || num('FAT_PCT') || 0,
+    snf_pct: b.snf_pct || num('SNF_PCT') || 0,
+  };
+}
+
 export async function lookupBatch(code: string): Promise<MilkBatch | null> {
   const norm = normalizeBatchCode(code);
   if (!norm) return null;
@@ -198,7 +215,7 @@ export async function lookupBatch(code: string): Promise<MilkBatch | null> {
   if (isBackendConfigured()) {
     try {
       const b = await api.get<MilkBatch>(`/traceability/${encodeURIComponent(norm)}`);
-      if (b) return b;
+      if (b) return hydrateBatch(b);
     } catch {
       // fall through to the offline seed so a demo still resolves
     }

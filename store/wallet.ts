@@ -45,7 +45,10 @@ export const useWallet = create<WalletState>((set) => ({
         loading: false,
       });
     } catch {
-      set({ ...ZERO, loading: false });
+      // Transient failure (network blip / cold-start timeout): keep the
+      // last-known balances on screen instead of flashing ₹0. A real sign-out
+      // is the only thing that zeroes (handled above when uid is null).
+      set({ loading: false });
     }
   },
 }));
