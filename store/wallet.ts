@@ -1,38 +1,51 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import { getUserId } from '../lib/session';
+import { getBalances } from '../lib/walletApi';
 
 /**
- * PYAAS Wallet balance store. Reads public.wallets (created by
- * pyaas_v2_schema.sql). Fails soft to 0 if the table doesn't exist yet or the
- * user is signed out, so the UI never crashes during rollout.
+ * PARAG wallet balance store. Reads the DERIVED balances off the append-only
+ * ledger (lib/walletApi.getBalances). `balance` stays the settled available
+ * balance so every existing call site keeps working; cash / promo / pending /
+ * locked and the low-balance flag are exposed for the wallet dashboard. Fails
+ * soft to zeros when signed out or empty, so the UI never crashes.
+ * When parag-api is live getBalances() maps to GET /wallet/balances.
  */
 type WalletState = {
-  balance: number;
+  balance: number; // settled available (cash + promo)
+  cash: number;
+  promo: number;
+  pending: number;
+  locked: number;
+  lowBalance: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
 };
 
+const ZERO = { balance: 0, cash: 0, promo: 0, pending: 0, locked: 0, lowBalance: false };
+
 export const useWallet = create<WalletState>((set) => ({
-  balance: 0,
+  ...ZERO,
   loading: false,
   refresh: async () => {
     set({ loading: true });
     try {
-      const { data: userRes } = await supabase.auth.getUser();
-      const uid = userRes.user?.id;
+      const uid = await getUserId();
       if (!uid) {
-        set({ balance: 0, loading: false });
+        set({ ...ZERO, loading: false });
         return;
       }
-      const { data, error } = await supabase
-        .from('wallets')
-        .select('balance')
-        .eq('user_id', uid)
-        .maybeSingle();
-      // error (e.g. table not created yet) → keep 0, don't throw
-      set({ balance: error ? 0 : Number(data?.balance ?? 0), loading: false });
+      const b = await getBalances();
+      set({
+        balance: b.available,
+        cash: b.cash,
+        promo: b.promo,
+        pending: b.pending,
+        locked: b.locked,
+        lowBalance: b.lowBalance,
+        loading: false,
+      });
     } catch {
-      set({ balance: 0, loading: false });
+      set({ ...ZERO, loading: false });
     }
   },
 }));

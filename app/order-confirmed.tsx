@@ -8,7 +8,7 @@ import { haptics } from '../lib/haptics';
 import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withDelay, withSpring } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../components/ui';
-import { FloatingParticles, GlowPulse, useCountUp } from '../components/VipFx';
+import { FloatingParticles, GlowPulse, useCountUp } from '../components/Fx';
 import { getProduct } from '../constants/products';
 import { formatWeekday } from '../lib/dates';
 
@@ -29,8 +29,8 @@ function CheckHero() {
   const st = useAnimatedStyle(() => ({ transform: [{ scale: s.value }], opacity: s.value }));
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', width: 124, height: 124 }}>
-      <GlowPulse color="#F36CB5" radius={62} />
-      <Animated.View style={[{ width: 98, height: 98, borderRadius: 49, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.roseDeep, ...shadow.card }, st]}>
+      <GlowPulse color={colors.flameDeep} radius={62} />
+      <Animated.View style={[{ width: 98, height: 98, borderRadius: 49, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.flameDeep, ...shadow.card }, st]}>
         <Ionicons name="checkmark" size={56} color="#fff" />
       </Animated.View>
     </View>
@@ -40,12 +40,11 @@ function CheckHero() {
 export default function OrderConfirmed() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { id, qty, freq, start, total, saved, member } = useLocalSearchParams<{ id: string; qty: string; freq: string; start: string; total: string; saved: string; member: string }>();
+  const { id, qty, freq, start, total, saved } = useLocalSearchParams<{ id: string; qty: string; freq: string; start: string; total: string; saved: string }>();
   const product = getProduct(String(id));
   const q = Number(qty) || 1;
   const totalN = Number(total) || 0;
   const savedN = Number(saved) || 0;
-  const isMember = member === '1';
   const isOneTime = String(freq) === 'one_time';
   // Everything derives from the passed total + savings, so it always reconciles:
   // struck (pre-discount) = total + saved.
@@ -72,7 +71,7 @@ export default function OrderConfirmed() {
         <View style={{ alignItems: 'center', gap: 8, marginTop: 4 }}>
           <CheckHero />
           <Animated.View entering={FadeInDown.duration(420).delay(120)} style={{ alignItems: 'center', gap: 4 }}>
-            <Serif style={{ fontSize: 28 }} color={colors.roseDeep}>{isOneTime ? 'Order placed!' : 'Subscription set!'}</Serif>
+            <Serif style={{ fontSize: 28 }} color={colors.flameDeep}>{isOneTime ? 'Order placed!' : 'Subscription set!'}</Serif>
             {start ? <TextMed style={{ fontSize: 15 }} color={INK}>Deliver on {formatWeekday(String(start))}</TextMed> : null}
           </Animated.View>
         </View>
@@ -87,7 +86,7 @@ export default function OrderConfirmed() {
               <TextSemi style={{ fontSize: 15 }} color={INK}>
                 You saved <TextSemi style={{ fontFamily: fonts.serifBlack, fontSize: 16, ...tabular }} color={colors.goldDeep}>{rupee(savedCount)}</TextSemi> on this order
               </TextSemi>
-              <TextBody style={{ fontSize: 12.5 }}>{isMember ? 'as a PYAAS member' : 'with founding prices'}</TextBody>
+              <TextBody style={{ fontSize: 12.5 }}>with today’s offer</TextBody>
             </View>
           </Animated.View>
         ) : null}
@@ -102,7 +101,7 @@ export default function OrderConfirmed() {
               <View style={{ flex: 1 }}>
                 <TextSemi style={{ fontSize: 15.5 }}>{product.name}</TextSemi>
                 <TextBody style={{ fontSize: 12.5 }}>{product.variant} · x{q}</TextBody>
-                <Pill label={isOneTime ? 'One-time order' : `${FREQ_LABEL[String(freq)] ?? 'Daily'} subscription`} bg={colors.roseSoft} color={colors.roseDeep} style={{ marginTop: 4 }} />
+                <Pill label={isOneTime ? 'One-time order' : `${FREQ_LABEL[String(freq)] ?? 'Daily'} subscription`} bg={colors.flameSoft} color={colors.flameDeep} style={{ marginTop: 4 }} />
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 {savedN > 0 ? <TextBody style={{ fontSize: 12.5, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute}>{rupee(struckTotal)}</TextBody> : null}
@@ -116,24 +115,24 @@ export default function OrderConfirmed() {
         <Animated.View entering={FadeInDown.duration(420).delay(320)} style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.soft }}>
           <View style={{ padding: spacing.md, gap: 10 }}>
             <Row label="Items total (MRP)" value={rupee(struckTotal)} />
-            {savedN > 0 ? <Row label={isMember ? 'Member benefits' : 'Savings'} value={`- ${rupee(savedN)}`} valueColor={colors.sage} labelColor={colors.sage} /> : null}
+            {savedN > 0 ? <Row label="Savings" value={`- ${rupee(savedN)}`} valueColor={colors.blue} labelColor={colors.blue} /> : null}
             <View style={{ height: 1, backgroundColor: colors.line }} />
             <Row label="To pay" value={rupee(totalN)} bold />
           </View>
           <View style={{ backgroundColor: '#F3FBF6', paddingVertical: 10, paddingHorizontal: spacing.md }}>
-            <TextBody style={{ fontSize: 12, textAlign: 'center' }} color={colors.sage}>Amount is only charged after the milk is delivered.</TextBody>
+            <TextBody style={{ fontSize: 12, textAlign: 'center' }} color={colors.blue}>Amount is only charged after your order is delivered.</TextBody>
           </View>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.duration(420).delay(360)}>
-          <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.sage}>Pause, skip or remove anytime · you're always in control.</TextBody>
+          <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.blue}>Pause, skip or remove anytime · you're always in control.</TextBody>
         </Animated.View>
       </ScrollView>
 
       {/* CTAs */}
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, gap: 10, backgroundColor: 'rgba(255,255,255,0.92)', borderTopWidth: 1, borderTopColor: colors.line }}>
         <Tap onPress={() => { (router as any).dismissAll?.(); router.push('/subscriptions'); }}>
-          <View style={{ height: 54, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.roseDeep, ...shadow.card }}>
+          <View style={{ height: 54, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.flameDeep, ...shadow.card }}>
             <TextSemi color={colors.white} style={{ fontSize: 16 }}>View my subscriptions</TextSemi>
           </View>
         </Tap>

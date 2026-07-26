@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { View, ScrollView, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Field, Tap, BackButton } from '../components/ui';
-import { submitLead } from '../lib/leads';
+import { SUPPORT, callCare } from '../lib/support';
 
 const TYPES = [
   { key: 'missing', label: 'Missing delivery', icon: 'bag-remove-outline' },
@@ -14,11 +15,13 @@ const TYPES = [
   { key: 'other', label: 'Something else', icon: 'help-circle-outline' },
 ];
 
-const SUPPORT_EMAIL = 'mailto:hello@pyaasdairy.com?subject=PYAAS%20support';
-const SUPPORT_SITE = 'https://pyaasdairy.com';
+const SUPPORT_ADDRESS = 'hello@paragdairy.app';
+const SUPPORT_EMAIL = 'mailto:hello@paragdairy.app?subject=PYAAS%20support';
+const SUPPORT_SITE = 'https://www.paragdairy.com';
 
 export default function Support() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [kind, setKind] = useState('missing');
   const [detail, setDetail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -29,11 +32,12 @@ export default function Support() {
     if (!detail.trim()) { setErr('Please describe the issue.'); return; }
     setBusy(true); setErr('');
     try {
-      // Reuse partner_leads as a lightweight complaint sink (kind prefixed).
-      await submitLead({ kind: 'vendor', name: 'Support', phone: '-', message: `[complaint:${kind}] ${detail}`, details: { complaint: kind } });
+      // Placeholder: no support backend wired yet, so we acknowledge locally.
+      // When parag-api is live, POST this ticket (kind + detail) to a support
+      // endpoint instead.
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDone(true);
-    } catch (e: any) { setErr(e?.message ?? 'Could not submit. Please email hello@pyaasdairy.com instead.'); }
+    } catch (e: any) { setErr(e?.message ?? `Could not submit. Please email ${SUPPORT_ADDRESS} instead.`); }
     finally { setBusy(false); }
   }
 
@@ -45,23 +49,45 @@ export default function Support() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 120 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Tap onPress={() => Linking.openURL(SUPPORT_EMAIL)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.roseDeep, borderRadius: radius.lg, padding: spacing.md, ...shadow.soft }}>
+        <Tap onPress={callCare} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.flameDeep, borderRadius: radius.lg, padding: spacing.md, ...shadow.soft }}>
+          <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="call-outline" size={20} color={colors.white} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <TextSemi color={colors.white} style={{ fontSize: 15 }}>Call customer care</TextSemi>
+            <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12 }}>{SUPPORT.careNumber} · {SUPPORT.careNote}</TextBody>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.white} />
+        </Tap>
+
+        <Tap onPress={() => router.push('/support-chat')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.line, ...shadow.soft }}>
+          <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={colors.flameDeep} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <TextSemi style={{ fontSize: 15 }}>Chat with us</TextSemi>
+            <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>Quick help, then our team follows up</TextBody>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
+        </Tap>
+
+        <Tap onPress={() => Linking.openURL(SUPPORT_EMAIL)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.ink, borderRadius: radius.lg, padding: spacing.md, ...shadow.soft }}>
           <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="mail-outline" size={20} color={colors.white} />
           </View>
           <View style={{ flex: 1 }}>
             <TextSemi color={colors.white} style={{ fontSize: 15 }}>Email our team</TextSemi>
-            <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12 }}>hello@pyaasdairy.com</TextBody>
+            <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12 }}>{SUPPORT_ADDRESS}</TextBody>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.white} />
         </Tap>
 
         <Tap onPress={() => Linking.openURL(SUPPORT_SITE)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.line, ...shadow.soft }}>
           <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="globe-outline" size={20} color={colors.roseDeep} />
+            <Ionicons name="globe-outline" size={20} color={colors.flameDeep} />
           </View>
           <View style={{ flex: 1 }}>
-            <TextSemi style={{ fontSize: 15 }}>Visit pyaasdairy.com</TextSemi>
+            <TextSemi style={{ fontSize: 15 }}>Visit paragdairy.com</TextSemi>
             <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>Help centre and order tracking</TextBody>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
@@ -69,7 +95,7 @@ export default function Support() {
 
         {done ? (
           <View style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: 10 }}>
-            <Ionicons name="checkmark-circle" size={56} color={colors.sage} />
+            <Ionicons name="checkmark-circle" size={56} color={colors.blue} />
             <TextSemi style={{ fontSize: 16 }}>Complaint raised</TextSemi>
             <TextBody style={{ textAlign: 'center' }}>We’ll get back to you shortly.</TextBody>
           </View>
@@ -85,7 +111,7 @@ export default function Support() {
               ))}
             </View>
             <Field label="What happened?" value={detail} onChangeText={setDetail} placeholder="Describe the issue…" multiline style={{ minHeight: 90, textAlignVertical: 'top' }} />
-            {err ? <TextBody color={colors.roseDeep} style={{ fontSize: 13 }}>{err}</TextBody> : null}
+            {err ? <TextBody color={colors.flameDeep} style={{ fontSize: 13 }}>{err}</TextBody> : null}
             <Button title="Submit complaint" loading={busy} onPress={submit} />
           </>
         )}

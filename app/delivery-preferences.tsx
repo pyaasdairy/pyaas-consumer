@@ -38,7 +38,7 @@ export default function DeliveryPreferences() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={{ backgroundColor: colors.roseDeep, borderRadius: radius.lg, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 14, ...shadow.soft }}>
+        <View style={{ backgroundColor: colors.flameDeep, borderRadius: radius.lg, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 14, ...shadow.soft }}>
           <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="bicycle" size={24} color={colors.white} />
           </View>
@@ -53,7 +53,7 @@ export default function DeliveryPreferences() {
         <Field label="Notes for the captain" value={p.notes ?? ''} onChangeText={(v) => set('notes', v)} placeholder="e.g. Leave at gate, blue door" multiline style={{ minHeight: 70, textAlignVertical: 'top' }} />
 
         <TextBody style={{ fontSize: 11.5 }}>These preferences reach your delivery captain on every order.</TextBody>
-        {msg ? <TextBody color={msg.includes('saved') ? colors.sage : colors.roseDeep} style={{ fontSize: 13 }}>{msg}</TextBody> : null}
+        {msg ? <TextBody color={msg.includes('saved') ? colors.blue : colors.flameDeep} style={{ fontSize: 13 }}>{msg}</TextBody> : null}
         <Button title="Save preferences" loading={saving} onPress={save} />
       </ScrollView>
     </View>
@@ -65,7 +65,7 @@ function Row({ icon, label, value, onChange, last }: { icon: any; label: string;
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line }}>
       <Ionicons name={icon} size={19} color={colors.inkSoft} />
       <TextMed style={{ flex: 1, fontSize: 14.5 }}>{label}</TextMed>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.roseDeep, false: colors.line }} thumbColor={colors.white} />
+      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.flameDeep, false: colors.line }} thumbColor={colors.white} />
     </View>
   );
 }

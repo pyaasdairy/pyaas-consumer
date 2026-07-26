@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, ScrollView, Text } from 'react-native';
+import { View, ScrollView, Text, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,12 +9,15 @@ import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming, Eas
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Pill, Tap, Stepper, Divider } from '../../components/ui';
 import { Glass } from '../../components/Glass';
-import { ShineSweep, GlowPulse } from '../../components/VipFx';
+import { Stars } from '../../components/Stars';
+import { StackedProductImage } from '../../components/StackedProductImage';
+import { ShineSweep, GlowPulse } from '../../components/Fx';
 import { StartDatePicker } from '../../components/StartDatePicker';
-import { getProduct, discountPct } from '../../constants/products';
-import { vipPrice } from '../../lib/pricing';
-import { getVip, vipActive } from '../../lib/vip';
+import { getProduct, discountPct, complianceFor, getReviews } from '../../constants/products';
 import { createSubscription, type Frequency } from '../../lib/subscriptions';
+import { placeOrder, listAddresses } from '../../lib/api';
+import { captureRestockLead } from '../../lib/leads';
+import { isBackendConfigured } from '../../lib/apiClient';
 import { tomorrowISO, formatShort } from '../../lib/dates';
 import { useWallet } from '../../store/wallet';
 
@@ -27,11 +30,11 @@ const SUB_TYPES: { key: Frequency; label: string; sub: string }[] = [
   { key: 'one_time', label: 'One Time', sub: 'Just once' },
 ];
 
-// ── Top banner: "Order by midnight · Delivery by 7 AM" ────────────────────────
+// ── Top banner: "Order by 9 PM · Delivery by 7 AM" ────────────────────────────
 function DeliveryBanner({ topInset }: { topInset: number }) {
   return (
-    <View style={{ overflow: 'hidden', backgroundColor: colors.roseDeep, paddingTop: topInset + 7, paddingBottom: 9, paddingHorizontal: spacing.lg, alignItems: 'center' }}>
-      <TextSemi color={colors.white} style={{ fontSize: 12.5, letterSpacing: 0.5 }}>Order by midnight · Delivery by 7 AM</TextSemi>
+    <View style={{ overflow: 'hidden', backgroundColor: colors.flameDeep, paddingTop: topInset + 7, paddingBottom: 9, paddingHorizontal: spacing.lg, alignItems: 'center' }}>
+      <TextSemi color={colors.white} style={{ fontSize: 12.5, letterSpacing: 0.5 }}>Order by 9 PM · Delivery by 7 AM</TextSemi>
       <ShineSweep dur={3200} travel={520} bandWidth={90} delay={700} />
     </View>
   );
@@ -49,11 +52,11 @@ function SubTypeCard({ label, sub, active, onPress, index }: { label: string; su
   return (
     <Animated.View entering={FadeInDown.duration(360).delay(index * 70)} style={{ flex: 1 }}>
       <Tap onPress={onPress}>
-        <Animated.View style={[{ borderRadius: radius.lg, borderWidth: 1.5, borderColor: active ? colors.roseDeep : colors.line, backgroundColor: active ? '#FFF1F8' : colors.white, paddingVertical: 14, paddingHorizontal: 6, alignItems: 'center', gap: 6, ...shadow.soft }, cardStyle]}>
-          <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: active ? colors.roseDeep : colors.inkMute, alignItems: 'center', justifyContent: 'center' }}>
-            <Animated.View style={[{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.roseDeep }, dotStyle]} />
+        <Animated.View style={[{ borderRadius: radius.lg, borderWidth: 1.5, borderColor: active ? colors.flameDeep : colors.line, backgroundColor: active ? colors.flameSoft : colors.white, paddingVertical: 14, paddingHorizontal: 6, alignItems: 'center', gap: 6, ...shadow.soft }, cardStyle]}>
+          <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: active ? colors.flameDeep : colors.inkMute, alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.View style={[{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.flameDeep }, dotStyle]} />
           </View>
-          <TextSemi style={{ fontSize: 14 }} color={active ? colors.roseDeep : colors.ink}>{label}</TextSemi>
+          <TextSemi style={{ fontSize: 14 }} color={active ? colors.flameDeep : colors.ink}>{label}</TextSemi>
           <TextBody style={{ fontSize: 10.5, textAlign: 'center' }}>{sub}</TextBody>
         </Animated.View>
       </Tap>
@@ -77,13 +80,15 @@ export default function ProductDetail() {
   const [showCal, setShowCal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [isMember, setIsMember] = useState(false);
   const [shortfall, setShortfall] = useState(0);
+  const [notified, setNotified] = useState(false);
+  // Payment method: subscriptions (recurring) are WALLET-only; a one-time
+  // INSTANT delivery may also be Cash on Delivery. Optional company GSTIN
+  // (printed on the proforma bill).
+  const [payMethod, setPayMethod] = useState<'wallet' | 'cod'>('wallet');
+  const [gstin, setGstin] = useState('');
   const refreshWallet = useWallet((s) => s.refresh);
 
-  useEffect(() => {
-    getVip().then((m) => setIsMember(vipActive(m)));
-  }, []);
   // Changing qty/frequency changes the cost, so re-arm the wallet gate.
   useEffect(() => { setShortfall(0); setErr(''); }, [qty, freq]);
 
@@ -96,34 +101,109 @@ export default function ProductDetail() {
   }
 
   const pct = discountPct(product);
-  // Only members pay the member price; everyone else pays the normal price. We
-  // never show a struck "MRP" that doesn't exist (no-MRP pouches for non-members).
+  // On paragdairy.com MRP == offer price, so we never show a struck MRP that
+  // doesn't exist. unit is always the listed price.
   const hasMrp = !!product.mrp && product.mrp > product.price;
-  const unit = isMember ? vipPrice(product) : product.price;
-  const strike = isMember ? (product.mrp ?? product.price) : hasMrp ? (product.mrp as number) : 0;
+  const unit = product.price;
+  const strike = hasMrp ? (product.mrp as number) : 0;
   const savedPer = strike > unit ? strike - unit : 0;
   const total = unit * qty;
-  const headlineColor = isMember ? GOLD : colors.roseDeep;
+  const headlineColor = colors.flameDeep;
   const subscribable = product.subscribable;
+  const isInstant = freq === 'one_time'; // one-off delivery vs recurring subscription
+  // COD is only ever offered on an INSTANT one-off delivery; a subscription is
+  // always paid from the wallet. Keep the effective method consistent.
+  const effectiveMethod: 'wallet' | 'cod' = isInstant ? payMethod : 'wallet';
+  // GSTIN is optional; only attach it to the bill when it is a well-formed
+  // 15-char GSTIN (2-digit state + 10-char PAN + entity + Z + check). A partial
+  // or malformed entry is ignored rather than printed on the proforma.
+  const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/;
+  const gstinValid = GSTIN_RE.test(gstin);
+  const gstinError = gstin.length > 0 && !gstinValid;
+  const compliance = complianceFor(product);
+  const reviews = getReviews(product.id);
+
+  // Out-of-stock: capture a restock lead (member's name + phone straight to the
+  // backend, keyed to this SKU) and flip the CTA to a confirmation.
+  async function notifyMe() {
+    if (!product) return;
+    setBusy(true);
+    try {
+      // Only confirm if the lead was actually stored (backend, or the
+      // on-device fallback when the backend is unreachable).
+      const stored = await captureRestockLead(product);
+      if (stored) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        setErr('');
+        setNotified(true);
+      } else {
+        setErr("Couldn't save your request. Please try again.");
+      }
+    } finally { setBusy(false); }
+  }
 
   async function proceed() {
     if (!product) return;
+    // Not orderable while out of stock (the CTA is also swapped out below -
+    // this is the belt-and-braces guard).
+    if (product.outOfStock) { setErr('This product is currently out of stock.'); return; }
     setBusy(true); setErr('');
     try {
       // Deliveries are paid from the prepaid wallet, so the wallet must cover
       // this order before it can be placed.
       await refreshWallet();
       const bal = useWallet.getState().balance;
-      if (bal < total) {
+      // Local mode keeps the prepaid gate — but COD never touches the wallet, so
+      // it bypasses the affordability check. With a shared backend the wallet is
+      // debited ON DELIVERY, so no upfront funds are required to place the order.
+      if (effectiveMethod !== 'cod' && !isBackendConfigured() && bal < total) {
         setShortfall(total - bal);
         setErr(`Your wallet has ${rupee(bal)}. Add ${rupee(total - bal)} to place this order.`);
         return;
       }
+
+      // With a shared backend, place a REAL delivery order so it reaches the
+      // Saathi rider queue + Orders tab + live tracking. Order the operations so
+      // no write happens before we know we can complete: resolve the address
+      // first (bail cleanly if missing), place the order, and only then record
+      // the local subscription — so a bail-out or a failed order never leaves an
+      // orphan subscription behind, and a failure surfaces instead of showing a
+      // false "confirmed".
+      if (isBackendConfigured()) {
+        const addrs = await listAddresses();
+        const address = addrs.find((a) => a.is_default) ?? addrs[0];
+        if (!address) {
+          setErr('Add a delivery address to place your order.');
+          router.push('/address');
+          return;
+        }
+        let orderId: string;
+        try {
+          orderId = await placeOrder({
+            lines: [{ id: product.id, name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
+            address,
+            paymentMethod: effectiveMethod === 'cod' ? 'cod' : 'prepaid',
+            priority: 'normal',
+            orderType: isInstant ? 'instant' : 'subscription',
+            buyerGstin: gstinValid ? gstin : null,
+          });
+        } catch (e: any) {
+          setErr(e?.message ?? 'Could not place your order. Please try again.');
+          return;
+        }
+        // Order placed → record the subscription (non-fatal: the order stands
+        // even if this local write hiccups).
+        await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate }).catch(() => { /* order already placed */ });
+        router.replace(`/order/${orderId}`);
+        return;
+      }
+
+      // Local mode (no backend): the subscription is the record of intent.
       await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate });
       // The order-confirmed screen fires the strong confirmation haptic on mount.
       router.push({
         pathname: '/order-confirmed',
-        params: { id: product.id, qty: String(qty), freq, start: startDate, total: String(total), saved: String(savedPer * qty), member: isMember ? '1' : '0' },
+        params: { id: product.id, qty: String(qty), freq, start: startDate, total: String(total), saved: String(savedPer * qty) },
       });
     } catch (e: any) {
       setErr(e?.message ?? 'Could not set up your subscription. Please try again.');
@@ -144,26 +224,44 @@ export default function ProductDetail() {
               <Ionicons name="chevron-back" size={22} color={colors.ink} />
             </Tap>
           </View>
-          <Image source={product.image} style={{ width: '100%', height: 280 }} contentFit="contain" transition={250} />
+          {product.image ? (
+            product.packCount && product.packCount >= 2 ? (
+              <View style={{ width: '100%', height: 280 }}>
+                <StackedProductImage source={product.image} count={product.packCount} width="66%" height="80%" />
+              </View>
+            ) : (
+              <Image source={product.image} style={{ width: '100%', height: 280 }} contentFit="contain" transition={250} />
+            )
+          ) : (
+            <View style={{ width: '100%', height: 280, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl }}>
+              <Serif style={{ fontSize: 26, textAlign: 'center' }} color={colors.flameDeep}>{product.name}</Serif>
+            </View>
+          )}
         </View>
 
         {/* Body */}
         <View style={{ padding: spacing.lg, gap: 12 }}>
           <Animated.View entering={FadeInDown.duration(420)} style={{ gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Pill label={product.tag} bg={colors.sageSoft} color={colors.sage} />
-              {pct ? <Pill label={`${pct}% OFF`} bg="rgba(199,91,110,0.12)" color={colors.roseDeep} /> : null}
+              <Pill label={product.tag} bg={colors.blueSoft} color={colors.blue} />
+              {pct ? <Pill label={`${pct}% OFF`} bg="rgba(199,91,110,0.12)" color={colors.flameDeep} /> : null}
             </View>
 
             <Serif style={{ fontSize: 28, lineHeight: 32 }}>{product.name}</Serif>
             <TextMed color={colors.inkSoft} style={{ fontSize: 14.5 }}>{product.variant} · {product.unit}</TextMed>
 
+            {product.rating ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                <Stars rating={product.rating} count={product.ratingCount} size={14} />
+                {reviews.length ? <TextBody style={{ fontSize: 12.5 }} color={colors.blue}>· {reviews.length} review{reviews.length === 1 ? '' : 's'}</TextBody> : null}
+              </View>
+            ) : null}
+
             {/* Price (member price + crown shown only to members) */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 }}>
-              {isMember ? <CrownBadge /> : null}
               {strike > unit ? <TextBody style={{ fontSize: 16, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute}>{rupee(strike)}</TextBody> : null}
               <Serif style={{ fontFamily: fonts.serifBlack, fontSize: 30, letterSpacing: -0.5, ...tabular }} color={headlineColor}>{rupee(unit)}</Serif>
-              {savedPer > 0 ? <Pill label={`SAVE ${rupee(savedPer)}`} bg={isMember ? colors.goldSoft : 'rgba(199,91,110,0.12)'} color={headlineColor} /> : null}
+              {savedPer > 0 ? <Pill label={`SAVE ${rupee(savedPer)}`} bg={colors.flameSoft} color={headlineColor} /> : null}
             </View>
           </Animated.View>
 
@@ -175,37 +273,90 @@ export default function ProductDetail() {
 
           <Divider />
 
-          {/* Subscription type (milk) · or a one-time note (ghee) */}
+          {/* Milk = daily morning subscription. Everything else = one-time order. */}
           {subscribable ? (
             <Animated.View entering={FadeInDown.duration(420).delay(90)} style={{ gap: 10 }}>
-              <TextSemi style={{ fontSize: 16 }}>Select your subscription type</TextSemi>
+              <TextSemi style={{ fontSize: 16 }}>Set up your milk delivery</TextSemi>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {SUB_TYPES.map((t, i) => (
                   <SubTypeCard key={t.key} label={t.label} sub={t.sub} index={i} active={freq === t.key} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFreq(t.key); }} />
                 ))}
               </View>
-              <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.sage}>Pause or remove anytime!</TextBody>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.blueSoft, borderRadius: radius.md, padding: 12 }}>
+                <Ionicons name="sunny-outline" size={18} color={colors.blue} />
+                <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.ink}>Fresh milk at your door every morning by 7 AM. Pause, skip or cancel anytime.</TextMed>
+              </View>
             </Animated.View>
           ) : (
             <Animated.View entering={FadeInDown.duration(420).delay(90)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.goldSoft, borderRadius: radius.md, padding: 12 }}>
               <Ionicons name="cube-outline" size={18} color={GOLD} />
-              <TextMed style={{ flex: 1, fontSize: 13.5 }} color={colors.inkDeep}>One-time delivery · no subscription, just this order.</TextMed>
+              <TextMed style={{ flex: 1, fontSize: 13.5 }} color={colors.inkDeep}>We will get this delivered to your door soon after you order. A one-time order, no subscription.</TextMed>
             </Animated.View>
           )}
 
           {/* Start / delivery date */}
           <Animated.View entering={FadeInDown.duration(420).delay(120)} style={{ gap: 8 }}>
             <TextSemi style={{ fontSize: 16 }}>{subscribable ? 'Start date' : 'Delivery date'}</TextSemi>
-            <Tap haptic={false} onPress={() => setShowCal(true)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: colors.rose, borderRadius: radius.md, paddingHorizontal: 16, height: 56, backgroundColor: colors.white, ...shadow.soft }}>
+            <Tap haptic={false} onPress={() => setShowCal(true)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: colors.flame, borderRadius: radius.md, paddingHorizontal: 16, height: 56, backgroundColor: colors.white, ...shadow.soft }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="calendar-outline" size={20} color={colors.roseDeep} />
+                <Ionicons name="calendar-outline" size={20} color={colors.flameDeep} />
                 <TextSemi style={{ fontSize: 16 }}>{formatShort(startDate)}</TextSemi>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <TextMed color={colors.roseDeep} style={{ fontSize: 13 }}>Edit</TextMed>
-                <Ionicons name="pencil" size={14} color={colors.roseDeep} />
+                <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>Edit</TextMed>
+                <Ionicons name="pencil" size={14} color={colors.flameDeep} />
               </View>
             </Tap>
+          </Animated.View>
+
+          <Divider />
+
+          {/* Payment method — COD only on an instant one-off; subscriptions are wallet-only */}
+          <Animated.View entering={FadeInDown.duration(420).delay(135)} style={{ gap: 8 }}>
+            <TextSemi style={{ fontSize: 16 }}>Payment</TextSemi>
+            {isInstant ? (
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {([
+                  { key: 'wallet', label: 'PARAG Wallet', sub: 'Pay from balance' },
+                  { key: 'cod', label: 'Cash on delivery', sub: 'Pay the rider' },
+                ] as const).map((m) => {
+                  const active = payMethod === m.key;
+                  return (
+                    <Tap key={m.key} onPress={() => setPayMethod(m.key)} style={{ flex: 1 }}>
+                      <View style={{ borderRadius: radius.lg, borderWidth: 1.5, borderColor: active ? colors.flameDeep : colors.line, backgroundColor: active ? colors.flameSoft : colors.white, paddingVertical: 12, paddingHorizontal: 12, gap: 3 }}>
+                        <TextSemi style={{ fontSize: 14 }} color={active ? colors.flameDeep : colors.ink}>{m.label}</TextSemi>
+                        <TextBody style={{ fontSize: 11 }}>{m.sub}</TextBody>
+                      </View>
+                    </Tap>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.cream, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Ionicons name="wallet-outline" size={18} color={colors.flameDeep} />
+                <TextBody style={{ fontSize: 13, flex: 1 }}>
+                  Subscriptions are paid from your PARAG Wallet. Cash on delivery is available on instant one-time orders.
+                </TextBody>
+              </View>
+            )}
+          </Animated.View>
+
+          {/* Optional company GSTIN → printed on the proforma bill */}
+          <Animated.View entering={FadeInDown.duration(420).delay(145)} style={{ gap: 8 }}>
+            <TextSemi style={{ fontSize: 16 }}>Company GSTIN <TextBody style={{ fontSize: 13 }} color={colors.inkMute}>(optional)</TextBody></TextSemi>
+            <TextInput
+              value={gstin}
+              onChangeText={(v) => setGstin(v.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15))}
+              placeholder="15-digit GSTIN for a company bill"
+              placeholderTextColor={colors.inkMute}
+              autoCapitalize="characters"
+              style={{ borderWidth: 1.5, borderColor: gstinError ? '#C0344D' : colors.line, borderRadius: radius.md, paddingHorizontal: 14, height: 52, fontSize: 15, color: colors.ink, backgroundColor: colors.white, fontFamily: fonts.sansMed }}
+            />
+            {gstinError ? (
+              <TextBody style={{ fontSize: 12 }} color="#C0344D">
+                Enter the full 15-character GSTIN, or leave it blank.
+              </TextBody>
+            ) : null}
           </Animated.View>
 
           <Divider />
@@ -215,18 +366,76 @@ export default function ProductDetail() {
             <TextBody style={{ fontSize: 14.5, lineHeight: 22 }}>{product.description}</TextBody>
           </Animated.View>
 
+          {reviews.length ? (
+            <>
+              <Divider />
+              <Animated.View entering={FadeInDown.duration(420).delay(160)} style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <TextSemi style={{ fontSize: 16 }}>Ratings & reviews</TextSemi>
+                  {product.rating ? <Stars rating={product.rating} count={product.ratingCount} size={13} /> : null}
+                </View>
+                {reviews.map((r) => (
+                  <View key={r.id} style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 7 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+                          <TextSemi style={{ fontSize: 14 }} color={colors.flameDeep}>{r.author.charAt(0)}</TextSemi>
+                        </View>
+                        <View>
+                          <TextSemi style={{ fontSize: 13.5 }}>{r.author}</TextSemi>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                            <Stars rating={r.stars} size={10} showValue={false} />
+                            {r.verified ? <TextMed style={{ fontSize: 10.5 }} color={colors.blue}>Verified buyer</TextMed> : null}
+                          </View>
+                        </View>
+                      </View>
+                      <TextBody style={{ fontSize: 11 }} color={colors.inkMute}>{r.date}</TextBody>
+                    </View>
+                    <TextBody style={{ fontSize: 13.5, lineHeight: 20 }}>{r.text}</TextBody>
+                  </View>
+                ))}
+              </Animated.View>
+            </>
+          ) : null}
+
+          <Divider />
+
+          {/* Product information · FSSAI / Legal Metrology / GST (required on listings) */}
+          <Animated.View entering={FadeInDown.duration(420).delay(170)} style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TextSemi style={{ fontSize: 16 }}>Product information</TextSemi>
+              <VegMark veg={compliance.veg} />
+            </View>
+            <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 2 }}>
+              <InfoRow label="Net quantity" value={compliance.netQuantity} />
+              <InfoRow label="MRP (incl. of all taxes)" value={rupee(product.mrp ?? product.price)} />
+              <InfoRow label="Ingredients" value={compliance.ingredients} />
+              {compliance.nutrition ? <InfoRow label="Nutrition" value={compliance.nutrition} /> : null}
+              <InfoRow label="Allergens" value={compliance.allergens} />
+              <InfoRow label="Shelf life" value={compliance.shelfLife} />
+              <InfoRow label="Storage" value={compliance.storage} />
+              <InfoRow label="Country of origin" value={compliance.countryOfOrigin} />
+              <InfoRow label="HSN / GST" value={`${compliance.hsn} · ${compliance.gstRate}% GST`} />
+              <InfoRow label="Manufacturer" value={compliance.manufacturer} />
+              <InfoRow label="Mfg. address" value={compliance.manufacturerAddress} />
+              <InfoRow label="FSSAI licence" value={compliance.fssaiLicense} />
+              <InfoRow label="Customer care" value={`${compliance.customerCare} · ${compliance.customerCareEmail}`} last />
+            </View>
+            <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>Batch number, packing date and best-before are printed on each pack and shown on your invoice.</TextBody>
+          </Animated.View>
+
           <Divider />
 
           {/* Trust row */}
           <View style={{ flexDirection: 'row', gap: spacing.md }}>
             {[
-              { icon: 'leaf-outline', label: '100% traceable' },
+              { icon: 'leaf-outline', label: 'Quality checked' },
               { icon: 'snow-outline', label: 'Cold chain' },
               { icon: 'time-outline', label: 'Fresh by 7 AM' },
             ].map((t) => (
               <View key={t.label} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
                 <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name={t.icon as any} size={20} color={colors.roseDeep} />
+                  <Ionicons name={t.icon as any} size={20} color={colors.flameDeep} />
                 </View>
                 <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>{t.label}</TextBody>
               </View>
@@ -248,10 +457,21 @@ export default function ProductDetail() {
             <Serif style={{ fontFamily: fonts.serifBlack, fontSize: 24, letterSpacing: -0.5, ...tabular }} color={headlineColor}>{rupee(total)}</Serif>
             {strike * qty > total ? <TextBody style={{ fontSize: 13, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute}>{rupee(strike * qty)}</TextBody> : null}
           </View>
-          <TextBody style={{ fontSize: 11 }}>Charged after delivery</TextBody>
+          <TextBody style={{ fontSize: 11 }}>{product.outOfStock ? (notified ? "You're on the restock list" : 'Out of stock · we can notify you') : 'Charged after delivery'}</TextBody>
         </View>
         <View style={{ flex: 1 }}>
-          {shortfall > 0 ? (
+          {product.outOfStock ? (
+            notified ? (
+              <View style={{ borderRadius: radius.pill, backgroundColor: colors.wash, borderWidth: 1.5, borderColor: colors.line, height: 54, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.flameDeep} />
+                <TextSemi color={colors.inkMute} style={{ fontSize: 15, letterSpacing: 0.5 }}>WE'LL NOTIFY YOU</TextSemi>
+              </View>
+            ) : (
+              /* Restock demand capture: the member's data lands on the backend
+                 the moment they ask (same hook as hearting the card). */
+              <ProceedButton title="Notify me" loading={busy} onPress={notifyMe} />
+            )
+          ) : shortfall > 0 ? (
             <ProceedButton title="Add money to wallet" loading={false} onPress={() => router.push('/(tabs)/wallet')} />
           ) : (
             <ProceedButton title="Proceed" loading={busy} onPress={proceed} />
@@ -281,12 +501,32 @@ function CrownBadge() {
 }
 
 // Glowing, shining PROCEED button.
+// Green-dot veg mark (FSSAI). A green square with a filled dot; contained, no bleed.
+function VegMark({ veg }: { veg: boolean }) {
+  const c = veg ? '#2E7D32' : '#B71C1C';
+  return (
+    <View style={{ width: 16, height: 16, borderWidth: 1.5, borderColor: c, borderRadius: 3, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 7, height: 7, borderRadius: veg ? 4 : 0, backgroundColor: c }} />
+    </View>
+  );
+}
+
+// One label/value row in the product-information (compliance) card.
+function InfoRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', paddingVertical: 8, gap: 12, borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line, alignItems: 'flex-start' }}>
+      <TextBody style={{ width: 132, fontSize: 12.5 }} color={colors.inkMute}>{label}</TextBody>
+      <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.ink}>{value}</TextMed>
+    </View>
+  );
+}
+
 function ProceedButton({ title, loading, onPress }: { title: string; loading: boolean; onPress: () => void }) {
   return (
     <View>
-      <GlowPulse color="#F36CB5" radius={radius.pill} />
+      <GlowPulse color={colors.flameDeep} radius={radius.pill} />
       <Tap onPress={loading ? undefined : onPress}>
-        <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: colors.roseDeep, height: 54, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.card }}>
+        <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: colors.flameDeep, height: 54, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.card }}>
           <Text style={{ color: '#fff', fontSize: 16.5, fontFamily: fonts.sansBold, letterSpacing: 0.5 }}>{loading ? 'Setting up…' : title}</Text>
           {!loading ? <Ionicons name="arrow-forward" size={18} color="#fff" /> : null}
           <ShineSweep dur={2400} travel={300} bandWidth={64} angle="16deg" delay={400} />

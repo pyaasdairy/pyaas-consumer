@@ -51,7 +51,7 @@ export default function Transactions() {
                     <TextMed style={{ fontSize: 14 }} numberOfLines={1}>{t.description ?? t.category}</TextMed>
                     <TextBody style={{ fontSize: 11.5, ...tabular }}>{new Date(t.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</TextBody>
                   </View>
-                  <TextSemi color={t.direction === 'credit' ? colors.sage : colors.ink} style={{ fontSize: 15, ...tabular }}>
+                  <TextSemi color={t.direction === 'credit' ? colors.blue : colors.ink} style={{ fontSize: 15, ...tabular }}>
                     {t.direction === 'credit' ? '+' : '−'}{rupee(t.amount)}
                   </TextSemi>
                 </View>

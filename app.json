@@ -2,34 +2,44 @@
   "expo": {
     "name": "PYAAS",
     "slug": "pyaas-app",
-    "version": "1.1.0",
-    "scheme": "pyaas",
+    "version": "1.2.0",
+    "scheme": [
+      "pyaas",
+      "parag"
+    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-pink.png",
-      "resizeMode": "cover",
-      "backgroundColor": "#F36CB5"
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "in.pyaasdairy.app",
+      "bundleIdentifier": "in.paragdairy.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "PYAAS uses your location to set your delivery address and show your rider on the way.",
-        "NSCameraUsageDescription": "PYAAS uses the camera to scan the QR on your milk pack and show you its farm and quality.",
-        "NSPhotoLibraryUsageDescription": "PYAAS uses your photos so you can set a profile picture."
+        "NSLocationWhenInUseUsageDescription": "PARAG uses your location to set your delivery address and show your rider on the way.",
+        "NSPhotoLibraryUsageDescription": "PARAG uses your photos so you can set a profile picture.",
+        "NSCameraUsageDescription": "PARAG uses the camera to scan the QR on your pack and show you which dairy and quality tests it came from."
       }
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 1,
+      "versionCode": 12,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#F36CB5",
-        "foregroundImage": "./assets/android-icon-foreground.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,17 +50,24 @@
       "expo-secure-store",
       "expo-font",
       [
-        "expo-camera",
-        {
-          "cameraPermission": "PYAAS uses the camera to scan the QR on your milk pack and show you its farm and quality."
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "PYAAS uses your photos so you can set a profile picture."
         }
-      ]
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PYAAS uses the camera to scan the QR on your pack and show you which dairy and quality tests it came from."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "PYAAS uses your location to set your delivery address and show your rider on the way."
+        }
+      ],
+      "expo-sharing"
     ]
   }
 }

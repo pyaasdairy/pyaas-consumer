@@ -1,37 +1,39 @@
 /**
- * PYAAS brand theme. Mirrors the website's CSS design tokens so the app and the
- * web experience feel like one brand.
+ * PARAG brand theme. Palette is derived from the PARAG sunburst logo:
+ * flame orange-red (primary CTA), sun gold (secondary accent) and the
+ * ribbon blue (tertiary accent, also the "success" colour so the app stays
+ * tightly on the orange/gold/blue identity, no green). Type, spacing, radius
+ * and shadow scales are shared with the sibling PYAAS app so both apps feel
+ * equally premium. Solid constant colours only, no gradients anywhere.
  */
 export const colors = {
-  milk: '#FFFFFF',        // app background - pure white (Blinkit-style)
-  cream: '#FFF1F8',       // faint pink surface (section headers, soft chips)
-  wash: '#FBF0F6',        // faint pink fill for image tiles / steppers on white cards
-  // PYAAS pink (#F36CB5) and its tints
-  roseSoft: '#FBC9E6',
-  rose: '#F491CC',
-  roseDeep: '#F36CB5',
-  // deeper berry-pink - secondary accent (was green "sage"; repointed so the
-  // whole app drops green for the pink/white/gold identity)
-  sage: '#D63C95',
-  sageSoft: 'rgba(214,60,149,0.12)',
-  // premium GOLD - reserved for VIP / membership only
-  gold: '#C9A24B',
-  goldDeep: '#A87E2E',
-  goldSoft: '#F6ECD2',
-  ink: '#2E2329',
-  inkSoft: '#5E5057',
-  inkMute: '#9A8C92',
-  inkDeep: '#2A1018',
-  line: '#ECE2DC',
+  milk: '#FFFFFF',        // app background, pure white (Blinkit-style)
+  cream: '#FFF6EC',       // pale warm-cream surface (section headers, soft chips)
+  wash: '#FFF1E0',        // warm-cream fill for image tiles / steppers on white cards
+  // PARAG flame orange-red (#E8491D) and its tints
+  flameSoft: '#FBD9CC',
+  flame: '#F0855C',
+  flameDeep: '#E8491D',
+  // ribbon blue, tertiary accent (badges / links / secondary buttons)
+  blue: '#2E5AAC',
+  blueSoft: 'rgba(46,90,172,0.12)',
+  // sun gold, general accent for badges only (no membership tier in this app)
+  gold: '#FDB813',
+  goldDeep: '#B07E08',
+  goldSoft: '#FFF3D1',
+  ink: '#241A15',
+  inkSoft: '#5E5047',
+  inkMute: '#9A8D83',
+  inkDeep: '#241A15',
+  line: '#EDE4DA',
   white: '#FFFFFF',
   // semantic
-  success: '#D63C95',
-  danger: '#E04B6E',
-  overlay: 'rgba(42,16,24,0.45)',
+  success: '#2E5AAC',
+  danger: '#C62828',
+  overlay: 'rgba(36,26,21,0.45)',
   // premium token aliases (intent-named)
-  action: '#F36CB5',   // primary CTAs (== roseDeep)
+  action: '#E8491D',   // primary CTAs (== flameDeep)
   onAction: '#FFFFFF', // text/icons on a primary CTA
-  vip: '#C9A24B',      // gold, reserved for membership only
 };
 
 // Premium type identity, loaded at runtime in app/_layout.tsx (no native build):
@@ -73,11 +75,12 @@ export const spacing = {
 };
 
 // Three-step elevation. Each level sets BOTH the iOS shadow and Android
-// elevation (brand-ink tint) so cards never render flat on Android. `card`/`soft`
+// elevation (warm-ink tint) so cards never render flat on Android. `card`/`soft`
 // are kept as aliases so existing call sites (...shadow.card) keep working.
-const e1 = { shadowColor: '#7A4650', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 };
-const e2 = { shadowColor: '#7A4650', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 6 };
-const e3 = { shadowColor: '#7A4650', shadowOpacity: 0.14, shadowRadius: 24, shadowOffset: { width: 0, height: 16 }, elevation: 12 };
+// Shadows stay soft and tight so they never read as a halo outside the card.
+const e1 = { shadowColor: '#6B4B36', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 };
+const e2 = { shadowColor: '#6B4B36', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 6 };
+const e3 = { shadowColor: '#6B4B36', shadowOpacity: 0.14, shadowRadius: 24, shadowOffset: { width: 0, height: 16 }, elevation: 12 };
 export const shadow = { e1, e2, e3, card: e2, soft: e1 };
 
 // Modular type scale (1.2 ratio, line-heights snapped to a 4pt rhythm). Prices

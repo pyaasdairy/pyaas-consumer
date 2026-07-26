@@ -8,7 +8,6 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../../lib/theme
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../components/ui';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL, statusColor } from '../../lib/orderStatus';
-import { isSupabaseConfigured } from '../../lib/supabase';
 
 function fmtDate(iso: string) {
   try {
@@ -27,11 +26,6 @@ export default function Orders() {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setError('Backend not set up. Add Supabase keys to .env.');
-      setLoading(false);
-      return;
-    }
     try {
       const data = await listOrders();
       setOrders(data);
@@ -57,14 +51,14 @@ export default function Orders() {
       </View>
 
       {loading ? (
-        <ActivityIndicator color={colors.roseDeep} style={{ marginTop: 40 }} />
+        <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 40 }} />
       ) : (
         <Animated.FlatList
           data={orders}
           keyExtractor={(o) => o.id}
           itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(200)}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 112, gap: spacing.sm }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.roseDeep} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.flameDeep} />}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
               <Ionicons name="receipt-outline" size={56} color={colors.inkMute} />
@@ -86,7 +80,7 @@ export default function Orders() {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Pill
                       label={STATUS_LABEL[item.status]}
-                      bg={active ? 'rgba(199,91,110,0.12)' : item.status === 'delivered' ? colors.sageSoft : colors.line}
+                      bg={active ? 'rgba(199,91,110,0.12)' : item.status === 'delivered' ? colors.blueSoft : colors.line}
                       color={statusColor(item.status)}
                     />
                     <TextBody style={{ fontSize: 12, ...tabular }}>{fmtDate(item.placed_at)}</TextBody>
@@ -95,12 +89,12 @@ export default function Orders() {
                     {itemsText || 'Order'}
                   </TextMed>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <TextSemi color={colors.roseDeep} style={tabular}>{rupee(item.total)}</TextSemi>
+                    <TextSemi color={colors.flameDeep} style={tabular}>{rupee(item.total)}</TextSemi>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                      <TextMed color={colors.roseDeep} style={{ fontSize: 13 }}>
+                      <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>
                         {active ? 'Track' : 'View'}
                       </TextMed>
-                      <Ionicons name="chevron-forward" size={15} color={colors.roseDeep} />
+                      <Ionicons name="chevron-forward" size={15} color={colors.flameDeep} />
                     </View>
                   </View>
                 </Tap>

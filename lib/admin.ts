@@ -1,27 +1,36 @@
 /**
- * Admin gating for the consumer app. Certain emails / phone numbers unlock an
- * Admin console instead of the shopper experience. The allowlist comes from env
- * (EXPO_PUBLIC_ADMIN_EMAILS / EXPO_PUBLIC_ADMIN_PHONES, comma-separated) with a
- * sensible default for the PYAAS owner account.
+ * Admin gating for the PARAG consumer app. A tiny demo allowlist unlocks a
+ * minimal Admin entry for the cooperative's owner / ops accounts. The full
+ * operations surface (member district unions, batches, quality results, orders)
+ * lives in the PARAG web admin console; this app only exposes an honest link
+ * plus a couple of read-only diagnostics.
+ *
+ * Local-first: the allowlist ships in the bundle so gating works fully offline.
+ * When parag-api is live, swap isAdminUser for a role claim read from the
+ * profile (e.g. GET /users/me -> role === 'admin') behind this same signature.
  */
-const DEFAULT_ADMIN_EMAILS = ['hello@pyaasdairy.com', 'admin@pyaasdairy.test'];
-const DEFAULT_ADMIN_PHONES = ['+911000000001'];
 
-function list(envVal: string | undefined, fallback: string[]): string[] {
-  const fromEnv = (envVal ?? '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  return fromEnv.length ? fromEnv : fallback.map((s) => s.toLowerCase());
-}
+/**
+ * Demo admin allowlist. Emails are matched case-insensitively; phones are
+ * matched by their last 10 digits so a leading +91 or spacing never blocks a
+ * match. Keep this list short and honest (owner + ops only).
+ */
+export const ADMIN_ALLOWLIST = {
+  emails: ['hello@paragdairy.app', 'admin@paragdairy.app'],
+  phones: ['9000000001'],
+} as const;
 
+const norm = (s?: string | null): string => (s ?? '').trim().toLowerCase();
+const last10 = (s?: string | null): string => (s ?? '').replace(/\D/g, '').slice(-10);
+
+/** True when the given profile email or phone is on the demo admin allowlist. */
 export function isAdminUser(email?: string | null, phone?: string | null): boolean {
-  const emails = list(process.env.EXPO_PUBLIC_ADMIN_EMAILS, DEFAULT_ADMIN_EMAILS);
-  const phones = list(process.env.EXPO_PUBLIC_ADMIN_PHONES, DEFAULT_ADMIN_PHONES);
-  const e = (email ?? '').trim().toLowerCase();
-  const p = (phone ?? '').trim();
-  return (!!e && emails.includes(e)) || (!!p && phones.includes(p.toLowerCase()));
+  const e = norm(email);
+  const p = last10(phone);
+  const emailMatch = !!e && ADMIN_ALLOWLIST.emails.some((a) => norm(a) === e);
+  const phoneMatch = p.length === 10 && ADMIN_ALLOWLIST.phones.some((a) => last10(a) === p);
+  return emailMatch || phoneMatch;
 }
 
-/** The hosted web admin console. */
-export const ADMIN_WEB_URL = process.env.EXPO_PUBLIC_ADMIN_URL || 'https://pyaasdairy.com/admin';
+/** The hosted PARAG web admin console (placeholder until the real URL is live). */
+export const ADMIN_WEB_URL = 'https://www.paragdairy.com/admin';

@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { View, Modal, TextInput } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { supabase } from '../lib/supabase';
 import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
-import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
+import { Serif, TextBody, TextSemi, Tap } from './ui';
+import { setReferredBy, REFERRAL_REWARD } from '../lib/referrals';
 
-/** "Have a Referral Code?" bottom sheet, shown once after first login. */
+/** "Have a referral code?" bottom sheet, shown once after first login. Records
+ *  the friend's code locally; the reward is credited on the referrer's side. */
 export function ReferralModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState('');
@@ -15,20 +15,17 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
 
   async function apply() {
     if (!code.trim()) return;
-    setBusy(true); setMsg('');
+    setBusy(true);
+    setMsg('');
     try {
-      const { data: userRes } = await supabase.auth.getUser();
-      const uid = userRes.user?.id;
-      if (uid) {
-        // Record the referrer's code (full ₹100 credit is granted at signup via
-        // metadata; this stores it for users who add it afterwards).
-        await supabase.from('profiles').update({ referred_by: code.trim().toUpperCase() }).eq('id', uid);
-      }
+      await setReferredBy(code);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
     } catch {
       setMsg('Could not apply that code.');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -37,10 +34,19 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
         <Animated.View entering={SlideInDown.duration(300)} style={{ backgroundColor: colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md, ...shadow.card }}>
           <View style={{ alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line }} />
           <Serif style={{ fontSize: 22, textAlign: 'center' }}>Have a referral code?</Serif>
-          <TextBody style={{ fontSize: 13.5, textAlign: 'center' }}>Add a friend’s code - they earn ₹100 in their PYAAS Wallet.</TextBody>
+          <TextBody style={{ fontSize: 13.5, textAlign: 'center' }}>
+            Add a friend's code and they earn {rupeeShort(REFERRAL_REWARD)} in their PARAG Wallet.
+          </TextBody>
 
           <View style={{ borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 14, height: 52, justifyContent: 'center' }}>
-            <TextInput value={code} onChangeText={setCode} autoCapitalize="characters" placeholder="Enter referral code" placeholderTextColor={colors.inkMute} style={{ fontFamily: fonts.sansMed, fontWeight: '500', fontSize: 16, color: colors.ink, letterSpacing: 1 }} />
+            <TextInput
+              value={code}
+              onChangeText={setCode}
+              autoCapitalize="characters"
+              placeholder="Enter referral code"
+              placeholderTextColor={colors.inkMute}
+              style={{ fontFamily: fonts.sansMed, fontWeight: '500', fontSize: 16, color: colors.ink, letterSpacing: 1 }}
+            />
           </View>
           {msg ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{msg}</TextBody> : null}
 
@@ -49,13 +55,17 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
               <TextSemi color={colors.inkSoft} style={{ fontSize: 15 }}>Skip</TextSemi>
             </Tap>
             <Tap onPress={apply} style={{ flex: 1 }}>
-              <LinearGradient colors={[colors.roseDeep, colors.rose]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', opacity: code.trim() && !busy ? 1 : 0.6 }}>
+              <View style={{ height: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.flameDeep, opacity: code.trim() && !busy ? 1 : 0.6 }}>
                 <TextSemi color={colors.white} style={{ fontSize: 15 }}>Apply</TextSemi>
-              </LinearGradient>
+              </View>
             </Tap>
           </View>
         </Animated.View>
       </Animated.View>
     </Modal>
   );
+}
+
+function rupeeShort(n: number): string {
+  return '₹' + Math.round(n).toLocaleString('en-IN');
 }

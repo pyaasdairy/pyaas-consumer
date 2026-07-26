@@ -8,5 +8,5 @@ import { colors } from '../lib/theme';
  * (signed in, no name yet), or the email sign-in screen (signed out).
  */
 export default function Index() {
-  return <View style={{ flex: 1, backgroundColor: colors.roseDeep }} />;
+  return <View style={{ flex: 1, backgroundColor: colors.flameDeep }} />;
 }

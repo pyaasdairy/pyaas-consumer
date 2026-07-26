@@ -61,9 +61,9 @@ export default function Vacations() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.sageSoft, borderRadius: radius.md, padding: 12 }}>
-          <Ionicons name="airplane" size={18} color={colors.sage} />
-          <TextBody style={{ flex: 1, fontSize: 12.5 }} color={colors.sage}>Travelling? Pause deliveries so milk isn’t left at your door while you’re away.</TextBody>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.blueSoft, borderRadius: radius.md, padding: 12 }}>
+          <Ionicons name="airplane" size={18} color={colors.blue} />
+          <TextBody style={{ flex: 1, fontSize: 12.5 }} color={colors.blue}>Travelling? Pause deliveries so milk isn’t left at your door while you’re away.</TextBody>
         </View>
 
         <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: 12, ...shadow.soft }}>
@@ -81,13 +81,13 @@ export default function Vacations() {
 
         <TextSemi style={{ fontSize: 16 }}>Scheduled pauses</TextSemi>
         {loading ? (
-          <ActivityIndicator color={colors.roseDeep} />
+          <ActivityIndicator color={colors.flameDeep} />
         ) : vacs.length === 0 ? (
           <TextBody style={{ fontSize: 13 }}>No vacations scheduled.</TextBody>
         ) : (
           vacs.map((v) => (
             <View key={v.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, ...shadow.soft }}>
-              <Ionicons name="calendar-outline" size={20} color={colors.roseDeep} />
+              <Ionicons name="calendar-outline" size={20} color={colors.flameDeep} />
               <View style={{ flex: 1 }}>
                 <TextMed style={{ fontSize: 14 }}>{fmt(v.start_date)} → {fmt(v.end_date)}</TextMed>
                 {v.reason ? <TextBody style={{ fontSize: 12 }}>{v.reason}</TextBody> : null}

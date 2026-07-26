@@ -1,8 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabase';
-import { parseISO } from './dates';
+import { parseISO, addDaysISO } from './dates';
+import { requireUserId } from './session';
+import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 
-const LOWBAL_KEY = 'pyaas_lowbal_paused_subs';
+// Per-user so one account's auto-paused set never leaks into another account on
+// the same device (and it is removed by deleteMyAccount, which prunes parag:*:<uid>).
+function lowbalKey(uid: string): string {
+  return `parag:lowbal:${uid}`;
+}
 
 export type Frequency = 'daily' | 'alternate' | 'weekly' | 'custom' | 'one_time';
 
@@ -18,6 +23,7 @@ export type Subscription = {
   status: 'active' | 'paused' | 'cancelled';
   start_date: string;
   next_delivery_date: string | null;
+  created_at?: string;
 };
 
 export type Vacation = {
@@ -56,14 +62,46 @@ export function deliveriesForDay(subs: Subscription[], iso: string): { count: nu
   return { count: items.reduce((n, s) => n + s.qty, 0), items };
 }
 
+/**
+ * due(sub, date) per the Saathi delivery note (Appendix B): the cadence matches
+ * AND the date is within [start, end] AND is not inside any pause range AND is
+ * not skipped. Pauses and skips both come from the vacations list (a skip is a
+ * one-day vacation, start == end). Dates are YYYY-MM-DD so string compare works.
+ */
+export function subscriptionDueOn(sub: Subscription, iso: string, vacations: Vacation[] = []): boolean {
+  if (!subscriptionDeliversOn(sub, iso)) return false;
+  return !vacations.some(
+    (v) => (v.subscription_id === null || v.subscription_id === sub.id) && iso >= v.start_date && iso <= v.end_date,
+  );
+}
+
+/**
+ * Rolling delivery preview: the consumer-facing view of the demand model. The
+ * next `days` days of scheduled deliveries, evaluated ON THE FLY from cadence +
+ * pauses/skips (never a materialised list of future orders, per the note's
+ * "do not materialise the future"). Days with no delivery are omitted.
+ */
+export function upcomingDeliveries(
+  subs: Subscription[],
+  vacations: Vacation[],
+  fromISO: string,
+  days: number,
+): { date: string; count: number; items: Subscription[] }[] {
+  const out: { date: string; count: number; items: Subscription[] }[] = [];
+  for (let i = 0; i < days; i++) {
+    const iso = addDaysISO(fromISO, i);
+    const items = subs.filter((s) => subscriptionDueOn(s, iso, vacations));
+    if (items.length) out.push({ date: iso, count: items.reduce((n, s) => n + s.qty, 0), items });
+  }
+  return out;
+}
+
 export async function listSubscriptions(): Promise<Subscription[]> {
-  const { data, error } = await supabase
-    .from('subscriptions')
-    .select('id, product_id, variant, qty, unit_price, frequency, delivery_slot, pay_from_wallet, status, start_date, next_delivery_date')
-    .neq('status', 'cancelled')
-    .order('created_at', { ascending: false });
-  if (error) return [];
-  return (data ?? []) as Subscription[];
+  const uid = await requireUserId();
+  const rows = await getRows<Subscription>('subscriptions', uid);
+  return rows
+    .filter((s) => s.status !== 'cancelled')
+    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
 }
 
 export async function createSubscription(params: {
@@ -77,67 +115,58 @@ export async function createSubscription(params: {
   /** ISO date (YYYY-MM-DD) the first delivery should land on. Defaults to today. */
   startDate?: string;
 }): Promise<string> {
-  const { data: userRes } = await supabase.auth.getUser();
-  const uid = userRes.user?.id;
-  if (!uid) throw new Error('Not signed in.');
+  const uid = await requireUserId();
   const start = params.startDate ?? new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabase
-    .from('subscriptions')
-    .insert({
-      user_id: uid,
-      product_id: params.productId,
-      variant: params.variant,
-      qty: params.qty,
-      unit_price: params.unitPrice,
-      frequency: params.frequency,
-      delivery_slot: params.deliverySlot ?? null,
-      pay_from_wallet: params.payFromWallet ?? true,
-      start_date: start,
-      next_delivery_date: start,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
-  return data.id as string;
+  const id = newId('sub');
+  const row: Subscription = {
+    id,
+    product_id: params.productId,
+    variant: params.variant,
+    qty: params.qty,
+    unit_price: params.unitPrice,
+    frequency: params.frequency,
+    delivery_slot: params.deliverySlot ?? null,
+    pay_from_wallet: params.payFromWallet ?? true,
+    status: 'active',
+    start_date: start,
+    next_delivery_date: start,
+    created_at: new Date().toISOString(),
+  };
+  await insertRow<Subscription>('subscriptions', uid, row);
+  return id;
 }
 
 export async function setSubscriptionStatus(id: string, status: Subscription['status']): Promise<void> {
-  const { error } = await supabase.from('subscriptions').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
-  if (error) throw error;
+  const uid = await requireUserId();
+  await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
 }
 
 export async function listVacations(): Promise<Vacation[]> {
-  const { data, error } = await supabase
-    .from('subscription_vacations')
-    .select('id, subscription_id, start_date, end_date, reason')
-    .order('start_date', { ascending: false });
-  if (error) return [];
-  return (data ?? []) as Vacation[];
+  const uid = await requireUserId();
+  const rows = await getRows<Vacation>('vacations', uid);
+  return rows.sort((a, b) => b.start_date.localeCompare(a.start_date));
 }
 
 export async function addVacation(params: { startDate: string; endDate: string; subscriptionId?: string; reason?: string }): Promise<void> {
-  const { data: userRes } = await supabase.auth.getUser();
-  const uid = userRes.user?.id;
-  if (!uid) throw new Error('Not signed in.');
-  const { error } = await supabase.from('subscription_vacations').insert({
-    user_id: uid,
+  const uid = await requireUserId();
+  await insertRow<Vacation>('vacations', uid, {
+    id: newId('vac'),
     subscription_id: params.subscriptionId ?? null,
     start_date: params.startDate,
     end_date: params.endDate,
     reason: params.reason ?? null,
   });
-  if (error) throw error;
 }
 
 export async function deleteVacation(id: string): Promise<void> {
-  await supabase.from('subscription_vacations').delete().eq('id', id);
+  const uid = await requireUserId();
+  await deleteRows<Vacation>('vacations', uid, (v) => v.id === id);
 }
 
 // ── Wallet gating ────────────────────────────────────────────────────────────
-// Deliveries are paid from the prepaid PYAAS wallet (the rider settles each
-// delivery via rider_settle_order_from_wallet). So the consumer app enforces two
-// rules: you cannot start an order/subscription the wallet cannot cover, and an
-// active subscription auto-pauses when the wallet can no longer fund it.
+// Deliveries can be paid from the prepaid PARAG wallet, so the app enforces two
+// rules: you cannot start a subscription the wallet cannot cover, and an active
+// subscription auto-pauses when the wallet can no longer fund it.
 
 /** What one delivery of a subscription costs (qty × unit price). */
 export function perDeliveryCost(s: Pick<Subscription, 'unit_price' | 'qty'>): number {
@@ -150,18 +179,16 @@ export function canAfford(balance: number, amount: number): boolean {
 }
 
 /**
- * Keep subscriptions in sync with the wallet balance:
- *  - an ACTIVE subscription the wallet can no longer fund (balance < its
- *    per-delivery cost) is paused;
- *  - a subscription WE auto-paused for low balance is resumed once the wallet
- *    can fund it again (e.g. after a top-up).
- * User-paused subscriptions are never touched (we only resume ids we paused).
- * Returns whether any subscription is currently paused for low balance.
+ * Keep subscriptions in sync with the wallet balance: pause an active one the
+ * wallet can no longer fund, and resume one WE auto-paused once it can be funded
+ * again. User-paused subscriptions are never touched.
  */
 export async function reconcileWithBalance(balance: number): Promise<{ lowBalance: boolean; changed: boolean }> {
+  const uid = await requireUserId();
+  const key = lowbalKey(uid);
   const subs = await listSubscriptions();
   let autoPaused: string[] = [];
-  try { autoPaused = JSON.parse((await AsyncStorage.getItem(LOWBAL_KEY)) || '[]'); } catch { /* ignore */ }
+  try { autoPaused = JSON.parse((await AsyncStorage.getItem(key)) || '[]'); } catch { /* ignore */ }
   const set = new Set<string>(autoPaused);
   let changed = false;
   for (const s of subs) {
@@ -174,6 +201,6 @@ export async function reconcileWithBalance(balance: number): Promise<{ lowBalanc
       set.delete(s.id); // funded + active again → clear a stale flag
     }
   }
-  await AsyncStorage.setItem(LOWBAL_KEY, JSON.stringify([...set]));
+  await AsyncStorage.setItem(key, JSON.stringify([...set]));
   return { lowBalance: set.size > 0, changed };
 }

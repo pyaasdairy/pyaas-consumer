@@ -20,7 +20,7 @@ export function useBottomBarClearance() {
 function MiniButton({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
   return (
     <Tap onPress={onPress} scaleTo={0.86} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', ...shadow.card }}>
-      <Ionicons name={icon} size={20} color={colors.roseDeep} />
+      <Ionicons name={icon} size={20} color={colors.flameDeep} />
     </Tap>
   );
 }
@@ -53,10 +53,6 @@ export function BottomBar() {
             <TextMed color="rgba(255,255,255,0.65)" style={{ fontSize: 14.5 }}>Search milk, ghee, paneer…</TextMed>
           </View>
         </Tap>
-      </Animated.View>
-
-      <Animated.View entering={FadeInDown.duration(440).delay(140)}>
-        <MiniButton icon="chatbubble-ellipses-outline" onPress={() => router.push('/support')} />
       </Animated.View>
     </Animated.View>
   );

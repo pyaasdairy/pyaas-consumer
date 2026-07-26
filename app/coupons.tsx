@@ -23,7 +23,7 @@ export default function Coupons() {
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false}>
         {loading ? (
-          <ActivityIndicator color={colors.roseDeep} style={{ marginTop: 24 }} />
+          <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 24 }} />
         ) : coupons.length === 0 ? (
           <View
             style={{
@@ -43,12 +43,12 @@ export default function Coupons() {
                 width: 44,
                 height: 44,
                 borderRadius: radius.pill,
-                backgroundColor: colors.sageSoft,
+                backgroundColor: colors.blueSoft,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="pricetags-outline" size={20} color={colors.roseDeep} />
+              <Ionicons name="pricetags-outline" size={20} color={colors.flameDeep} />
             </View>
             <TextSemi style={{ fontSize: 15 }} color={colors.ink}>No active offers right now</TextSemi>
             <TextBody style={{ fontSize: 13, textAlign: 'center' }}>New coupons appear here as soon as they go live. Check back soon.</TextBody>
@@ -58,34 +58,28 @@ export default function Coupons() {
             <View
               key={c.code}
               style={{
-                backgroundColor: c.is_golden ? colors.roseSoft : colors.white,
+                backgroundColor: colors.white,
                 borderRadius: radius.lg,
-                borderWidth: c.is_golden ? 1.5 : 1,
-                borderColor: c.is_golden ? colors.rose : colors.line,
+                borderWidth: 1,
+                borderColor: colors.line,
                 padding: spacing.lg,
                 gap: 6,
                 ...shadow.soft,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {c.is_golden ? <Ionicons name="diamond" size={16} color={colors.roseDeep} /> : <Ionicons name="pricetag" size={16} color={colors.roseDeep} />}
-                <TextSemi style={{ fontSize: 16 }} color={c.is_golden ? colors.roseDeep : colors.ink}>{c.title}</TextSemi>
+                <Ionicons name="pricetag" size={16} color={colors.flameDeep} />
+                <TextSemi style={{ fontSize: 16 }} color={colors.ink}>{c.title}</TextSemi>
               </View>
               <TextBody style={{ fontSize: 13 }}>{c.description}</TextBody>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
-                <View style={{ borderWidth: 1, borderStyle: 'dashed', borderColor: c.is_golden ? colors.rose : colors.line, borderRadius: radius.sm, paddingHorizontal: 12, paddingVertical: 6 }}>
-                  <TextSemi style={{ fontSize: 14, letterSpacing: 1 }} color={c.is_golden ? colors.roseDeep : colors.ink}>{c.code}</TextSemi>
+                <View style={{ borderWidth: 1, borderStyle: 'dashed', borderColor: colors.line, borderRadius: radius.sm, paddingHorizontal: 12, paddingVertical: 6 }}>
+                  <TextSemi style={{ fontSize: 14, letterSpacing: 1 }} color={colors.ink}>{c.code}</TextSemi>
                 </View>
                 <Pill
-                  label={
-                    c.kind === 'percent'
-                      ? `${c.value}% off`
-                      : c.kind === 'bundle_price'
-                      ? `Bundle ${rupee(c.value)}`
-                      : `${rupee(c.value)} off`
-                  }
-                  bg={c.is_golden ? colors.rose : colors.sageSoft}
-                  color={c.is_golden ? colors.white : colors.sage}
+                  label={c.kind === 'percent' ? `${c.value}% off` : `${rupee(c.value)} off`}
+                  bg={colors.blueSoft}
+                  color={colors.blue}
                 />
               </View>
               {c.min_items ? <TextBody style={{ fontSize: 11.5 }}>Add {c.min_items}+ items to use this.</TextBody> : null}

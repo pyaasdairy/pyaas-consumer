@@ -50,6 +50,23 @@ export function monthLabel(year: number, month0: number): string {
   return `${MONTHS[month0]} ${year}`;
 }
 
+/** "6:00 AM" from "06:00". */
+export function formatTime12(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(':');
+  const h = parseInt(hStr, 10);
+  const m = mStr ?? '00';
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m.padStart(2, '0')} ${ampm}`;
+}
+
+/** "between 6:00 AM and 7:00 AM" from a "06:00-07:00" delivery window. */
+export function formatDeliveryWindow(window: string | null | undefined): string {
+  if (!window || !window.includes('-')) return 'in the morning';
+  const [a, b] = window.split('-');
+  return `between ${formatTime12(a)} and ${formatTime12(b)}`;
+}
+
 /** Calendar grid (weeks of 7) for a month; null = empty leading/trailing cell. */
 export function monthGrid(year: number, month0: number): (number | null)[][] {
   const firstDay = new Date(year, month0, 1).getDay(); // 0=Sun

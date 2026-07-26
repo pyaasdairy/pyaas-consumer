@@ -1,15 +1,12 @@
 import * as Location from 'expo-location';
-import { supabase } from './supabase';
+import { getUserId } from './session';
+import { getRows, updateRows } from './localStore';
+import type { Address } from './api';
 
 /**
- * LOCATION BACKDOOR - keeps the consumer app and rider app in sync on
- * coordinates without a paid maps key.
- *
- *  • rider → consumer: rider_update_location() mirrors onto riders.current_lat/lng
- *    (already live; the tracking screen reads it).
- *  • consumer → backend: device GPS + saved-address coords are written to
- *    addresses.lat/lng and carried onto orders, so the rider app always has a
- *    destination coordinate.
+ * Location helper. Reads device GPS (for the delivery address) and remembers the
+ * chosen coordinate on the saved address so the future rider app always has a
+ * destination. No paid maps key needed.
  */
 
 // Fallback region (Lucknow) used before any GPS / address coordinate exists.
@@ -29,26 +26,28 @@ export async function getDeviceCoords(): Promise<Coords | null> {
   }
 }
 
-/** Persist coordinates onto a saved address (consumer → backend sync). */
+/** Persist coordinates onto a saved address. */
 export async function setAddressCoords(addressId: string, c: Coords): Promise<void> {
-  await supabase.from('addresses').update({ lat: c.lat, lng: c.lng }).eq('id', addressId);
+  const uid = await getUserId();
+  if (!uid) return;
+  await updateRows<Address>('addresses', uid, (r) => r.id === addressId, { lat: c.lat, lng: c.lng } as Partial<Address>);
 }
 
 /**
  * Best-known coordinate for the signed-in user: live GPS if granted, else the
- * most recent saved-address coordinate, else the default region. Used by the
- * Farm Locator and anywhere the app needs "where is this customer".
+ * most recent saved-address coordinate, else the default region.
  */
 export async function getUserCoords(): Promise<Coords> {
   const device = await getDeviceCoords();
   if (device) return device;
-  const { data } = await supabase
-    .from('addresses')
-    .select('lat, lng')
-    .not('lat', 'is', null)
-    .order('is_default', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (data?.lat != null && data?.lng != null) return { lat: data.lat, lng: data.lng };
+  const uid = await getUserId();
+  if (uid) {
+    const rows = await getRows<Address & { lat?: number | null; lng?: number | null }>('addresses', uid);
+    const withCoords = rows
+      .filter((a) => a.lat != null && a.lng != null)
+      .sort((a, b) => (a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1));
+    const a = withCoords[0];
+    if (a?.lat != null && a?.lng != null) return { lat: a.lat, lng: a.lng };
+  }
   return DEFAULT_REGION;
 }

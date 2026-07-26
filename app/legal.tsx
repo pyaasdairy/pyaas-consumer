@@ -17,13 +17,13 @@ export default function Legal() {
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false}>
         <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.soft }}>
-          <LinkRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => Linking.openURL('https://pyaasdairy.com/privacy')} />
-          <LinkRow icon="document-text-outline" label="Terms & Conditions" onPress={() => Linking.openURL('https://pyaasdairy.com/terms')} />
-          <LinkRow icon="refresh-outline" label="Refund & Cancellation" onPress={() => Linking.openURL('https://pyaasdairy.com/refunds')} last />
+          <LinkRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => Linking.openURL('https://www.paragdairy.com/privacy')} />
+          <LinkRow icon="document-text-outline" label="Terms & Conditions" onPress={() => Linking.openURL('https://www.paragdairy.com/terms')} />
+          <LinkRow icon="refresh-outline" label="Refund & Cancellation" onPress={() => Linking.openURL('https://www.paragdairy.com/refunds')} last />
         </View>
 
         <View style={{ alignItems: 'center', gap: 4, marginTop: spacing.lg }}>
-          <TextBody style={{ fontSize: 12.5 }}>PYAAS · Know your milk.</TextBody>
+          <TextBody style={{ fontSize: 12.5 }}>PARAG · Pure, natural, good health.</TextBody>
           <TextBody style={{ fontSize: 12 }}>App version {Constants.expoConfig?.version ?? '1.0.0'}</TextBody>
         </View>
       </ScrollView>

@@ -1,31 +1,36 @@
-import { supabase } from './supabase';
 import type { CartLine } from '../store/cart';
-import { PRODUCTS } from '../constants/products';
+import { PRODUCTS, type Category } from '../constants/products';
 
+/**
+ * Coupons. Validation logic is client-side against a small local catalog (the
+ * app runs offline / pre-backend); when parag-api is live, listCoupons/applyCoupon
+ * call GET /coupons and POST /coupons/validate instead, which re-derive and clamp
+ * the discount server-side (the client value is only a hint).
+ */
 export type Coupon = {
   code: string;
   title: string;
   description: string | null;
-  kind: 'percent' | 'flat' | 'bundle_price';
+  kind: 'percent' | 'flat';
   value: number;
-  applies_to: 'all' | 'milk' | 'ghee';
+  applies_to: 'all' | Category;
   min_items: number;
   min_amount: number;
   max_discount: number | null;
-  is_golden: boolean;
 };
 
+// Demo coupons so the checkout coupon field works offline. Replace with the
+// parag-api coupons table once the backend is deployed.
+const DEMO_COUPONS: Coupon[] = [
+  { code: 'PARAG50', title: '₹50 off', description: 'Flat ₹50 off orders over ₹299', kind: 'flat', value: 50, applies_to: 'all', min_items: 0, min_amount: 299, max_discount: null },
+  { code: 'MILK10', title: '10% off milk', description: '10% off all milk (max ₹40)', kind: 'percent', value: 10, applies_to: 'milk', min_items: 0, min_amount: 0, max_discount: 40 },
+];
+
 export async function listCoupons(): Promise<Coupon[]> {
-  const { data, error } = await supabase
-    .from('coupons')
-    .select('code, title, description, kind, value, applies_to, min_items, min_amount, max_discount, is_golden')
-    .eq('active', true)
-    .order('is_golden', { ascending: false });
-  if (error) return [];
-  return (data ?? []) as Coupon[];
+  return DEMO_COUPONS;
 }
 
-function categoryOf(line: CartLine): 'milk' | 'ghee' | undefined {
+function categoryOf(line: CartLine): Category | undefined {
   return PRODUCTS.find((p) => p.id === line.id)?.category;
 }
 
@@ -49,21 +54,14 @@ export function discountFor(coupon: Coupon, lines: CartLine[]): number {
   let d = 0;
   if (coupon.kind === 'percent') d = (amount * coupon.value) / 100;
   else if (coupon.kind === 'flat') d = coupon.value;
-  else if (coupon.kind === 'bundle_price') d = 0; // handled by bundle pricing, not coupons
   if (coupon.max_discount) d = Math.min(d, coupon.max_discount);
   return Math.round(Math.min(d, amount));
 }
 
 /** Look up + validate a coupon code against the cart. */
 export async function applyCoupon(code: string, lines: CartLine[]): Promise<{ coupon: Coupon; discount: number }> {
-  const { data, error } = await supabase
-    .from('coupons')
-    .select('code, title, description, kind, value, applies_to, min_items, min_amount, max_discount, is_golden')
-    .eq('code', code.trim().toUpperCase())
-    .eq('active', true)
-    .maybeSingle();
-  if (error || !data) throw new Error('Invalid coupon code.');
-  const coupon = data as Coupon;
+  const coupon = DEMO_COUPONS.find((c) => c.code === code.trim().toUpperCase());
+  if (!coupon) throw new Error('Invalid coupon code.');
   const discount = discountFor(coupon, lines);
   return { coupon, discount };
 }

@@ -1,7 +1,16 @@
-import { supabase } from './supabase';
 import type { CartLine } from '../store/cart';
-import { cartTotals, bundleUnitPrice } from './pricing';
-import { getOrderRider } from './saathi';
+import { cartTotals } from './pricing';
+import { requireUserId, getProfile } from './session';
+import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
+import { debitWallet, autoSettleTopUp } from './walletApi';
+import { api, isBackendConfigured, HttpError } from './apiClient';
+
+/**
+ * Consumer data layer: addresses + orders. Runs against the on-device store so
+ * the app works before the NestJS backend is deployed. Each function maps 1:1 to
+ * a parag-api endpoint (addresses.controller / orders.controller); to go live,
+ * swap the localStore calls for apiClient.get/post/etc against those routes.
+ */
 
 export type Address = {
   id: string;
@@ -60,6 +69,13 @@ export type Order = {
   proof_photo_url?: string | null;
   order_items?: OrderItem[];
   riders?: Rider | null;
+  // 'instant' = one-off order placed now; 'subscription' = a recurring delivery.
+  order_type?: 'instant' | 'subscription';
+  // Optional company GSTIN captured at checkout → printed on the proforma bill.
+  buyer_gstin?: string | null;
+  // Review-after-delivery (populated by the shared backend when configured).
+  can_review?: boolean;
+  review?: { rating: number; comment: string; created_at: string } | null;
 };
 
 export const DELIVERY_FEE = 15;
@@ -69,48 +85,54 @@ export function deliveryFeeFor(subtotal: number): number {
   return subtotal >= FREE_DELIVERY_OVER || subtotal === 0 ? 0 : DELIVERY_FEE;
 }
 
+// The demo rider assigned when a customer simulates a rider pickup. Matches the
+// seeded rider in apps/parag-api schema.sql.
+const DEMO_RIDER: Rider = {
+  id: 'rider-demo',
+  full_name: 'Ram Kumar',
+  phone: '+919999900000',
+  vehicle: 'Bike · UP32 CD 5678',
+  rating: 4.8,
+  current_lat: 26.8467,
+  current_lng: 80.9462,
+};
+
 // ── Addresses ────────────────────────────────────────────────────────────────
 export async function listAddresses(): Promise<Address[]> {
-  const { data, error } = await supabase
-    .from('addresses')
-    .select('*')
-    .order('is_default', { ascending: false })
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  const uid = await requireUserId();
+  const rows = await getRows<Address>('addresses', uid);
+  return rows.sort((a, b) => {
+    if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
+    return b.created_at.localeCompare(a.created_at);
+  });
 }
 
 export async function addAddress(a: Omit<Address, 'id' | 'user_id' | 'created_at'>): Promise<Address> {
-  const { data: userRes } = await supabase.auth.getUser();
-  const uid = userRes.user?.id;
-  if (!uid) throw new Error('Not signed in.');
-  // First address becomes default automatically.
-  const existing = await listAddresses();
+  const uid = await requireUserId();
+  const existing = await getRows<Address>('addresses', uid);
   const is_default = existing.length === 0 ? true : a.is_default;
   if (is_default) {
-    await supabase.from('addresses').update({ is_default: false }).eq('user_id', uid);
+    await updateRows<Address>('addresses', uid, () => true, { is_default: false });
   }
-  const { data, error } = await supabase
-    .from('addresses')
-    .insert({ ...a, is_default, user_id: uid })
-    .select('*')
-    .single();
-  if (error) throw error;
-  return data;
+  const row: Address = {
+    ...a,
+    is_default,
+    id: newId('addr'),
+    user_id: uid,
+    created_at: new Date().toISOString(),
+  };
+  return insertRow<Address>('addresses', uid, row);
 }
 
 export async function setDefaultAddress(id: string): Promise<void> {
-  const { data: userRes } = await supabase.auth.getUser();
-  const uid = userRes.user?.id;
-  if (!uid) throw new Error('Not signed in.');
-  await supabase.from('addresses').update({ is_default: false }).eq('user_id', uid);
-  const { error } = await supabase.from('addresses').update({ is_default: true }).eq('id', id);
-  if (error) throw error;
+  const uid = await requireUserId();
+  await updateRows<Address>('addresses', uid, () => true, { is_default: false });
+  await updateRows<Address>('addresses', uid, (r) => r.id === id, { is_default: true });
 }
 
 export async function deleteAddress(id: string): Promise<void> {
-  const { error } = await supabase.from('addresses').delete().eq('id', id);
-  if (error) throw error;
+  const uid = await requireUserId();
+  await deleteRows<Address>('addresses', uid, (r) => r.id === id);
 }
 
 // ── Orders ───────────────────────────────────────────────────────────────────
@@ -123,122 +145,170 @@ export async function placeOrder(params: {
   vipDiscount?: number;
   deliveryPrefs?: Record<string, unknown> | null;
   priority?: 'vip' | 'normal';
+  orderType?: 'instant' | 'subscription';
+  buyerGstin?: string | null;
 }): Promise<string> {
   const { lines, address, paymentMethod } = params;
   const couponDiscount = params.couponDiscount ?? 0;
-  const vipDiscount = params.vipDiscount ?? 0;
-  const { data: userRes } = await supabase.auth.getUser();
-  const uid = userRes.user?.id;
-  if (!uid) throw new Error('Not signed in.');
+  const uid = await requireUserId();
 
-  // Bundle-aware subtotal + per-unit charged price.
   const { subtotal } = cartTotals(lines);
   const delivery_fee = deliveryFeeFor(subtotal);
-  const total = Math.max(0, subtotal - couponDiscount - vipDiscount) + delivery_fee;
+  const total = Math.max(0, subtotal - couponDiscount) + delivery_fee;
   const address_text = [address.line1, address.line2, address.city, address.pincode]
     .filter(Boolean)
     .join(', ');
 
-  const { data: order, error } = await supabase
-    .from('orders')
-    .insert({
-      user_id: uid,
-      status: 'placed',
-      subtotal,
-      delivery_fee,
-      total,
-      payment_method: paymentMethod,
-      address_label: address.label,
-      address_text,
-      coupon_code: params.couponCode ?? null,
-      coupon_discount: couponDiscount,
-      vip_discount: vipDiscount,
-      delivery_prefs: params.deliveryPrefs ?? null,
-      // Set delivery priority/window at INSERT so it doesn't ride on a separate
-      // UPDATE (which the orders RLS policy may not permit post-placement).
-      priority: params.priority ?? 'normal',
-      delivery_window: params.priority === 'vip' ? '05:00-06:00' : '06:00-07:00',
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+  const orderId = newId('ord');
+  const order: Order = {
+    id: orderId,
+    user_id: uid,
+    status: 'placed',
+    subtotal,
+    delivery_fee,
+    total,
+    payment_method: paymentMethod,
+    address_label: address.label,
+    address_text,
+    rider_id: null,
+    placed_at: new Date().toISOString(),
+    priority: params.priority ?? 'normal',
+    delivery_window: '06:00-07:00',
+    order_type: params.orderType ?? 'instant',
+    buyer_gstin: params.buyerGstin?.trim() || null,
+    order_items: lines.map((l) => ({
+      id: newId('item'),
+      product_id: l.id,
+      name: l.name,
+      variant: l.variant,
+      price: l.price,
+      qty: l.qty,
+    })),
+    riders: null,
+  };
 
-  const items = lines.map((l) => ({
-    order_id: order.id,
-    product_id: l.id,
-    name: l.name,
-    variant: l.variant,
-    price: bundleUnitPrice(l.id, l.qty) || l.price,
-    qty: l.qty,
-  }));
-  const { error: itemsErr } = await supabase.from('order_items').insert(items);
-  if (itemsErr) throw itemsErr;
-
-  // Record coupon redemption (best-effort). The server re-derives + clamps the
-  // discount from the coupon rule and the order subtotal; the client value is
-  // only a hint (see redeem_coupon).
-  if (params.couponCode && couponDiscount > 0) {
-    await supabase.rpc('redeem_coupon', { p_code: params.couponCode, p_order_id: order.id, p_discount: couponDiscount });
+  // When the shared backend is configured, it OWNS the order (and debits the
+  // wallet on delivery), so it reaches the Saathi rider queue. We must NOT debit
+  // locally here, or the order is charged twice (once now, once on delivery).
+  if (isBackendConfigured()) {
+    const prof = await getProfile().catch(() => null);
+    const geo = (address as unknown as { lat?: number; lng?: number });
+    const created = await api.post<Order>('/orders', {
+      ...order,
+      consumer_name: prof?.full_name ?? undefined,
+      phone: (prof as { phone?: string } | null)?.phone ?? undefined,
+      geo: geo.lat != null && geo.lng != null ? { lat: geo.lat, lng: geo.lng } : undefined,
+    });
+    return created.id;
   }
 
-  return order.id as string;
+  await insertRow<Order>('orders', uid, order);
+  // Wallet/prepaid orders are settled immediately from the prepaid wallet (this
+  // records a 'debit' in the ledger). COD orders are paid on delivery.
+  if (paymentMethod === 'wallet' || paymentMethod === 'prepaid') {
+    await debitWallet(total, 'order', `Order ${orderId.slice(-6)}`);
+  }
+  return orderId;
 }
 
 export async function listOrders(): Promise<Order[]> {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*, order_items(*)')
-    .order('placed_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as Order[];
+  const uid = await requireUserId();
+  if (isBackendConfigured()) {
+    const orders = await api.get<Order[]>(`/orders?user_id=${encodeURIComponent(uid)}`);
+    // Reconcile prepaid wallet against delivered orders here too — not only on the
+    // tracking screen — so an order the customer never re-opens is still charged.
+    // debitWallet is idempotent by 'delivery:<orderId>', so this never double-charges.
+    await settleDeliveredOrders(orders);
+    return orders;
+  }
+  const rows = await getRows<Order>('orders', uid);
+  return rows.sort((a, b) => b.placed_at.localeCompare(a.placed_at));
+}
+
+/**
+ * Charge the prepaid wallet for any backend order that has been delivered and is
+ * not COD. Idempotent (debitWallet keys on 'delivery:<orderId>'). If the wallet
+ * is short and the member has an ACTIVE Paytm AutoPay mandate, the shortfall is
+ * covered by executing the mandate (idempotent by order id end to end) and the
+ * debit retried — so with AutoPay on, delivered milk is always paid for.
+ * Returns the ids that still could not be settled (for callers that want to nudge).
+ */
+export async function settleDeliveredOrders(orders: Order[]): Promise<string[]> {
+  if (!isBackendConfigured()) return [];
+  const unsettled: string[] = [];
+  for (const o of orders) {
+    if (o.status !== 'delivered' || o.payment_method === 'cod') continue;
+    try {
+      await debitWallet(o.total, 'delivery', o.id);
+    } catch {
+      // Insufficient balance → AutoPay: execute the mandate for the shortfall
+      // (keyed on the order id so a retried sweep can never double-charge),
+      // then settle the delivery.
+      const covered = await autoSettleTopUp(o.total, `order:${o.id}`).catch(() => false);
+      if (covered) {
+        try { await debitWallet(o.total, 'delivery', o.id); continue; } catch { /* still short */ }
+      }
+      unsettled.push(o.id); // retried on next load / manual top-up
+    }
+  }
+  return unsettled;
 }
 
 export async function getOrder(id: string): Promise<Order | null> {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*, order_items(*), riders(*)')
-    .eq('id', id)
-    .maybeSingle(); // a missing/RLS-hidden order returns null (→ "Order not found"), not a PGRST116 throw
-  if (error) throw error;
-  const order = (data ?? null) as Order | null;
-
-  // Saathi sync: riders write their app_users id onto orders.rider_id, so the
-  // legacy riders(*) join comes back null. Resolve the live rider (name,
-  // phone, vehicle, GPS updated every few seconds) and map it into the same
-  // shape the tracking screen already renders.
-  if (order?.rider_id && !order.riders) {
-    const live = await getOrderRider(order.rider_id);
-    if (live) {
-      order.riders = {
-        id: live.id,
-        full_name: live.full_name ?? 'Your rider',
-        phone: live.phone ?? '',
-        vehicle: live.vehicle,
-        rating: live.rating,
-        current_lat: live.current_lat,
-        current_lng: live.current_lng,
-      };
+  const uid = await requireUserId();
+  if (isBackendConfigured()) {
+    try {
+      return await api.get<Order>(`/orders/${id}`);
+    } catch (e) {
+      // Only a genuine 404 means "no such order" → null. A timeout / 5xx / network
+      // blip must propagate so the tracking screen keeps the last-known order
+      // instead of flashing "Order not found" for a live delivery.
+      if (e instanceof HttpError && e.status === 404) return null;
+      throw e;
     }
   }
-  return order;
+  const rows = await getRows<Order>('orders', uid);
+  return rows.find((o) => o.id === id) ?? null;
 }
 
 export async function cancelOrder(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('orders')
-    .update({ status: 'cancelled' })
-    .eq('id', id)
-    .in('status', ['placed', 'confirmed']);
-  if (error) throw error;
+  const uid = await requireUserId();
+  if (isBackendConfigured()) { await api.post(`/orders/${id}/cancel`); return; }
+  await updateRows<Order>('orders', uid, (o) => o.id === id && ['placed', 'confirmed'].includes(o.status), {
+    status: 'cancelled',
+  });
+}
+
+/** Submit a review for a DELIVERED order (backend) — the review-after-delivery
+ *  write. Falls back to a local write when no backend is configured. */
+export async function reviewOrder(id: string, rating: number, comment: string): Promise<Order | null> {
+  if (isBackendConfigured()) {
+    try { return await api.post<Order>(`/orders/${id}/review`, { rating, comment }); } catch { return null; }
+  }
+  // Local fallback: mark the local order reviewed so the UI dedupes.
+  const uid = await requireUserId();
+  await updateRows<Order>('orders', uid, (o) => o.id === id, { can_review: false, review: { rating, comment, created_at: new Date().toISOString() } });
+  return getOrder(id);
 }
 
 /**
  * RIDER BACKDOOR (demo): simulates the future rider app claiming this order and
  * heading out for delivery, so you can see the "connected with your rider" UI
- * end to end before the rider app exists. The real rider app will call the same
- * underlying tables/RPCs. Safe to ship; it only acts on the caller's own order.
+ * end to end. When parag-api is live this calls POST /orders/:id/simulate-rider.
  */
 export async function simulateRiderAssignment(orderId: string): Promise<void> {
-  const { error } = await supabase.rpc('simulate_rider_assignment', { p_order_id: orderId });
-  if (error) throw error;
+  const uid = await requireUserId();
+  const rows = await getRows<Order>('orders', uid);
+  const next = rows.map((o) =>
+    o.id === orderId ? { ...o, status: 'out_for_delivery' as OrderStatus, rider_id: DEMO_RIDER.id, riders: DEMO_RIDER } : o,
+  );
+  await setRows<Order>('orders', uid, next);
+}
+
+/** DEMO (local mode only): mark an order delivered so the review-after-delivery
+ *  flow is testable without the rider app. With a real backend, delivery comes
+ *  from the rider's /deliver call instead. */
+export async function simulateDelivered(orderId: string): Promise<void> {
+  const uid = await requireUserId();
+  await updateRows<Order>('orders', uid, (o) => o.id === orderId, { status: 'delivered', can_review: true });
 }

@@ -90,15 +90,15 @@ export default function AddAddress() {
         <Field label="Pincode" value={pincode} onChangeText={setPincode} placeholder="226001" keyboardType="number-pad" maxLength={6} />
 
         {/* Location backdoor: pin precise GPS so the rider has exact coordinates */}
-        <Tap haptic={false} onPress={pinLocation} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: coords ? colors.sage : colors.line, padding: spacing.md }}>
-          <Ionicons name={coords ? 'checkmark-circle' : 'navigate-circle-outline'} size={22} color={coords ? colors.sage : colors.roseDeep} />
+        <Tap haptic={false} onPress={pinLocation} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: coords ? colors.blue : colors.line, padding: spacing.md }}>
+          <Ionicons name={coords ? 'checkmark-circle' : 'navigate-circle-outline'} size={22} color={coords ? colors.blue : colors.flameDeep} />
           <View style={{ flex: 1 }}>
             <TextMed style={{ fontSize: 14 }}>{coords ? 'Location pinned' : pinning ? 'Getting location…' : 'Pin my current location'}</TextMed>
             <TextBody style={{ fontSize: 12 }}>{coords ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)} · helps your rider reach the exact door` : 'Optional · gives your rider precise coordinates'}</TextBody>
           </View>
         </Tap>
 
-        {error ? <TextBody color={colors.roseDeep} style={{ fontSize: 13.5 }}>{error}</TextBody> : null}
+        {error ? <TextBody color={colors.flameDeep} style={{ fontSize: 13.5 }}>{error}</TextBody> : null}
         <Button title="Save address" onPress={save} loading={saving} style={{ marginTop: 6 }} />
       </ScrollView>
     </KeyboardAvoidingView>

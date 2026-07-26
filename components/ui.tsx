@@ -84,7 +84,7 @@ type BtnProps = {
 
 export function Button({ title, onPress, variant = 'rose', loading, disabled, style, small }: BtnProps) {
   const bg =
-    variant === 'rose' ? colors.roseDeep : variant === 'sage' ? colors.sage : 'transparent';
+    variant === 'rose' ? colors.flameDeep : variant === 'sage' ? colors.blue : 'transparent';
   const fg =
     variant === 'ghost' || variant === 'outline' ? colors.ink : colors.white;
   const border = variant === 'outline' ? { borderWidth: 1.5, borderColor: colors.line } : null;
@@ -144,13 +144,16 @@ export function Card({ style, children, ...p }: ViewProps & { children: React.Re
 // ── Pill / badge ───────────────────────────────────────────────────────────────
 export function Pill({
   label,
-  bg = colors.sageSoft,
-  color = colors.sage,
+  bg = colors.blueSoft,
+  color = colors.blue,
+  small = false,
   style,
 }: {
   label: string;
   bg?: string;
   color?: string;
+  /** Compact variant for badges overlaid on product-card images. */
+  small?: boolean;
   style?: any;
 }) {
   return (
@@ -159,14 +162,22 @@ export function Pill({
         {
           alignSelf: 'flex-start',
           backgroundColor: bg,
-          paddingHorizontal: 10,
-          paddingVertical: 4,
+          paddingHorizontal: small ? 6 : 10,
+          paddingVertical: small ? 3 : 4,
           borderRadius: radius.pill,
         },
         style,
       ]}
     >
-      <Text style={{ fontFamily: fonts.sansSemi, fontWeight: '600', color, fontSize: 11.5, letterSpacing: 0.3 }}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        // Small badges live in width-capped boxes on product cards; shrink the
+        // type to keep the full label ("MOST ORDERED") on narrow screens
+        // instead of ellipsizing it.
+        adjustsFontSizeToFit={small}
+        minimumFontScale={0.7}
+        style={{ fontFamily: fonts.sansSemi, fontWeight: '600', color, fontSize: small ? 10 : 11.5, letterSpacing: small ? 0.2 : 0.3 }}
+      >{label}</Text>
     </View>
   );
 }
@@ -284,5 +295,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  stepGlyph: { fontFamily: fonts.sansSemi, fontWeight: '600' as const, fontSize: 18, color: colors.roseDeep, lineHeight: 22 },
+  stepGlyph: { fontFamily: fonts.sansSemi, fontWeight: '600' as const, fontSize: 18, color: colors.flameDeep, lineHeight: 22 },
 });

@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { View, ScrollView, ActivityIndicator } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Modal } from 'react-native';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { Image } from 'expo-image';
-import { WebView } from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { haptics } from '../lib/haptics';
 import { colors, radius, spacing, shadow, tabular, rupee } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, BackButton } from '../components/ui';
-import { ShineSweep } from '../components/VipFx';
+import { ShineSweep } from '../components/Fx';
 import { useWallet } from '../store/wallet';
+import { useAuth } from '../lib/auth';
 import { rechargeBonus } from '../lib/pricing';
-import { creditWallet, LIVE_PAYMENTS, GATEWAY_KEY } from '../lib/paymentGateway';
+import { rechargeWallet } from '../lib/walletApi';
 import { reconcileWithBalance } from '../lib/subscriptions';
+import { createTopupOrder, checkoutHtml, verifyTopup, creditIsServerSide, WALLET_TEST_TOPUP, testTopup, type CheckoutResult } from '../lib/razorpay';
 
 // Real brand marks (generated from the official single-colour logos).
 const BRAND = {
@@ -29,103 +31,116 @@ const UPI_APPS = [
   { key: 'paytm', label: 'Paytm', logo: BRAND.paytm },
 ];
 
-// Razorpay Checkout (the live path) already provides UPI / cards / netbanking;
-// this screen is the branded picker that opens it once a real key is present.
-function checkoutHtml(keyId: string, amountPaise: number, method: string) {
-  const cfg =
-    method === 'card' ? `method: { card: true }`
-    : method === 'netbanking' ? `method: { netbanking: true }`
-    : `method: { upi: true }`;
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <style>html,body{margin:0;height:100%;background:#FFF1F8;font-family:-apple-system,system-ui;display:flex;align-items:center;justify-content:center;color:#5E5057}</style></head>
-  <body><div>Opening secure payment…</div>
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-  <script>
-    var rzp = new Razorpay({
-      key: "${keyId}", amount: ${amountPaise}, currency: "INR", name: "PYAAS",
-      description: "Wallet top-up", theme: { color: "#F36CB5" }, ${cfg},
-      handler: function (resp) { window.ReactNativeWebView.postMessage(JSON.stringify({ status: "success", id: resp.razorpay_payment_id })); },
-      modal: { ondismiss: function () { window.ReactNativeWebView.postMessage(JSON.stringify({ status: "dismissed" })); } }
-    });
-    rzp.on('payment.failed', function (r) { window.ReactNativeWebView.postMessage(JSON.stringify({ status: "failed", error: r.error && r.error.description })); });
-    rzp.open();
-  </script></body></html>`;
-}
-
+/**
+ * Wallet top-up via Razorpay. Choosing a method opens the Razorpay Standard
+ * Checkout inside a WebView; the wallet is credited only AFTER the payment
+ * succeeds (server-verified when a backend is configured, provisionally in the
+ * offline demo). See lib/razorpay.ts for the security model and what the
+ * backend/key_secret must do. No tap ever credits money without a payment.
+ */
 export default function Payment() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { profile } = useAuth();
   const { amount } = useLocalSearchParams<{ amount: string }>();
   const value = Math.max(0, Number(amount) || 0);
   const refresh = useWallet((s) => s.refresh);
   const bonus = rechargeBonus(value);
   const credited = value + (bonus?.bonus ?? 0);
 
-  const [method, setMethod] = useState('upi'); // upi | card | netbanking
-  const [paying, setPaying] = useState(false); // live checkout open
   const [crediting, setCrediting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+  // The Razorpay Standard Checkout runs inside this WebView overlay.
+  const [checkout, setCheckout] = useState<string | null>(null);
+  const method = React.useRef('upi');
 
-  // The actual settle. In test mode this IS the payment (credits the real
-  // wallet); in live mode it runs only after a verified gateway success.
-  async function settle() {
+  // Credit the wallet ONLY after a payment succeeds. With a backend, the server
+  // verifies the signature and credits; locally (demo) we credit here against
+  // the razorpay_payment_id so the ledger row carries the receipt.
+  async function creditFromPayment(r: CheckoutResult) {
     setCrediting(true); setError('');
     try {
-      await creditWallet(value);
+      const v = await verifyTopup(r);
+      if (!v.verified) { setError('We could not verify that payment. If money was debited it will be refunded.'); return; }
+      if (!creditIsServerSide()) {
+        await rechargeWallet(value, method.current, r.razorpay_payment_id);
+      }
       await refresh();
-      // Topping up may re-fund subscriptions that were paused for low balance.
+      // Topping up may re-fund subscriptions paused for low balance.
       try { await reconcileWithBalance(useWallet.getState().balance); } catch { /* non-fatal */ }
       haptics.confirm();
       setDone(true);
     } catch (e: any) {
       setError(e?.message || 'Could not add money. Please try again.');
-    } finally { setCrediting(false); setPaying(false); }
+    } finally { setCrediting(false); }
   }
-  function onMessage(raw: string) {
-    let msg: any = {};
-    try { msg = JSON.parse(raw); } catch { /* ignore */ }
-    if (msg.status === 'success') settle();
-    else if (msg.status === 'failed') { setPaying(false); setError(msg.error || 'Payment failed.'); }
-    else setPaying(false);
-  }
-  function pay(m: string) {
+
+  async function pay(m: string) {
     haptics.press();
-    setMethod(m); setError('');
-    if (LIVE_PAYMENTS) setPaying(true); // open the real checkout
-    else settle();                      // test mode: credit the wallet now
+    setError('');
+    method.current = m;
+    if (value <= 0) return;
+    // TEST mode: credit directly, no payment gateway (see razorpay.ts).
+    if (WALLET_TEST_TOPUP) {
+      setCrediting(true);
+      try {
+        await testTopup(value);
+        await refresh();
+        try { await reconcileWithBalance(useWallet.getState().balance); } catch { /* non-fatal */ }
+        haptics.confirm();
+        setDone(true);
+      } catch (e: any) {
+        setError(e?.message || 'Could not add test money. Please try again.');
+      } finally { setCrediting(false); }
+      return;
+    }
+    setCrediting(true);
+    try {
+      const order = await createTopupOrder(Math.round(value * 100));
+      const html = checkoutHtml({
+        keyId: order.keyId,
+        amountPaise: order.amountPaise,
+        orderId: order.orderId,
+        name: profile?.full_name ?? '',
+        contact: (profile as any)?.phone ?? '',
+        email: (profile as any)?.email ?? '',
+        themeColor: colors.flameDeep,
+      });
+      setCheckout(html);
+    } catch (e: any) {
+      setError(e?.message || 'Could not start the payment. Please try again.');
+    } finally { setCrediting(false); }
+  }
+
+  function onCheckoutMessage(e: WebViewMessageEvent) {
+    let msg: any;
+    try { msg = JSON.parse(e.nativeEvent.data); } catch { return; }
+    if (msg?.type === 'success') {
+      setCheckout(null);
+      void creditFromPayment({
+        razorpay_payment_id: String(msg.razorpay_payment_id ?? ''),
+        razorpay_order_id: msg.razorpay_order_id,
+        razorpay_signature: msg.razorpay_signature,
+      });
+    } else if (msg?.type === 'failed') {
+      setCheckout(null);
+      setError(typeof msg.error === 'string' ? msg.error : 'Payment failed. Please try again.');
+    } else if (msg?.type === 'dismiss') {
+      setCheckout(null);
+    }
   }
 
   // ── Success ────────────────────────────────────────────────────────────────
   if (done) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: 12 }}>
-        <Ionicons name="checkmark-circle" size={72} color={colors.sage} />
+        <Ionicons name="checkmark-circle" size={72} color={colors.blue} />
         <Serif style={{ fontSize: 24, ...tabular }}>{rupee(credited)} added</Serif>
         <TextBody style={{ textAlign: 'center' }}>
-          {bonus ? `Includes ${rupee(bonus.bonus)} ${bonus.kind === 'cashback' ? 'cashback' : 'bonus'}. ` : ''}It is in your PYAAS Wallet and logged in your transactions.
+          {bonus ? `Includes ${rupee(bonus.bonus)} ${bonus.kind === 'cashback' ? 'cashback' : 'bonus'}. ` : ''}It is in your PARAG Wallet and logged in your transactions.
         </TextBody>
         <Button title="Back to wallet" onPress={() => router.back()} style={{ alignSelf: 'stretch', marginTop: 8 }} />
-      </View>
-    );
-  }
-
-  // ── Live Razorpay checkout (only when a real key is configured) ──────────────
-  if (paying && LIVE_PAYMENTS) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.milk }}>
-        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <BackButton onPress={() => setPaying(false)} />
-          <Serif style={{ fontSize: 22 }}>Secure payment</Serif>
-        </View>
-        {crediting ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-            <ActivityIndicator color={colors.roseDeep} />
-            <TextBody>Confirming payment…</TextBody>
-          </View>
-        ) : (
-          <WebView originWhitelist={['*']} source={{ html: checkoutHtml(GATEWAY_KEY, Math.round(value * 100), method) }} onMessage={(e) => onMessage(e.nativeEvent.data)} style={{ flex: 1, backgroundColor: colors.milk }} />
-        )}
       </View>
     );
   }
@@ -156,8 +171,8 @@ export default function Payment() {
       <View style={{ flexDirection: 'row', backgroundColor: colors.milk, borderBottomWidth: 1, borderBottomColor: colors.line }}>
         {[
           { l: 'You pay', v: rupee(value), c: colors.ink },
-          { l: bonus?.kind === 'cashback' ? 'Cashback' : 'Bonus', v: rupee(bonus?.bonus ?? 0), c: colors.roseDeep },
-          { l: 'Credited', v: rupee(credited), c: colors.sage },
+          { l: bonus?.kind === 'cashback' ? 'Cashback' : 'Bonus', v: rupee(bonus?.bonus ?? 0), c: colors.flameDeep },
+          { l: 'Credited', v: rupee(credited), c: colors.blue },
         ].map((s, i) => (
           <View key={s.l} style={{ flex: 1, alignItems: 'center', paddingVertical: 14, borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: colors.line }}>
             <TextBody style={{ fontSize: 11.5 }}>{s.l}</TextBody>
@@ -179,14 +194,14 @@ export default function Payment() {
               </Tap>
             ))}
           </View>
-          <MethodRow icon="at-outline" label="Add UPI ID" sub="Pay from any UPI app" tint={colors.roseDeep} onPress={() => pay('upi')} disabled={busy} />
+          <MethodRow icon="at-outline" label="Add UPI ID" sub="Pay from any UPI app" tint={colors.flameDeep} onPress={() => pay('upi')} disabled={busy} />
         </Section>
 
         {/* Cards · real network logos */}
         <Section title="Cards">
           <Tap onPress={() => pay('card')} disabled={busy} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 }}>
             <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="card-outline" size={18} color={colors.roseDeep} />
+              <Ionicons name="card-outline" size={18} color={colors.flameDeep} />
             </View>
             <View style={{ flex: 1 }}>
               <TextMed style={{ fontSize: 14.5 }}>Credit or Debit card</TextMed>
@@ -199,15 +214,15 @@ export default function Payment() {
           </Tap>
         </Section>
 
-        {/* Netbanking · legit method, no fabricated copy */}
+        {/* Netbanking */}
         <Section title="Netbanking">
-          <MethodRow icon="business-outline" label="All Indian banks" sub="Pay straight from your bank" tint={colors.sage} onPress={() => pay('netbanking')} disabled={busy} />
+          <MethodRow icon="business-outline" label="All Indian banks" sub="Pay straight from your bank" tint={colors.blue} onPress={() => pay('netbanking')} disabled={busy} />
         </Section>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 4, paddingHorizontal: spacing.md }}>
           <Ionicons name="lock-closed" size={14} color={colors.inkMute} />
           <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>
-            256-bit encrypted · your card details are never stored on PYAAS.
+            256-bit encrypted · your card details are never stored on PARAG.
           </TextBody>
         </View>
       </ScrollView>
@@ -215,13 +230,42 @@ export default function Payment() {
       {/* Sticky pay */}
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: 'rgba(255,255,255,0.95)', borderTopWidth: 1, borderTopColor: colors.line }}>
         <Tap onPress={() => pay('upi')} disabled={busy}>
-          <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: colors.roseDeep, height: 54, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.card }}>
+          <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: colors.flameDeep, height: 54, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.card }}>
             {busy ? <ActivityIndicator color={colors.white} /> : null}
             <TextSemi color={colors.white} style={{ fontSize: 16.5, ...tabular }}>{busy ? 'Adding money…' : `Pay ${rupee(value)}`}</TextSemi>
             {!busy ? <ShineSweep dur={2400} travel={320} bandWidth={70} angle="16deg" delay={400} /> : null}
           </View>
         </Tap>
       </View>
+
+      {/* Razorpay Standard Checkout (WebView overlay) */}
+      <Modal visible={!!checkout} animationType="slide" onRequestClose={() => setCheckout(null)} presentationStyle="fullScreen">
+        <View style={{ flex: 1, backgroundColor: colors.cream }}>
+          <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.milk, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+            <Tap onPress={() => setCheckout(null)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+              <Ionicons name="close" size={22} color={colors.ink} />
+            </Tap>
+            <Serif style={{ fontSize: 20, flex: 1 }}>Secure payment</Serif>
+            <Ionicons name="lock-closed" size={16} color={colors.inkSoft} />
+          </View>
+          {checkout ? (
+            <WebView
+              source={{ html: checkout, baseUrl: 'https://checkout.razorpay.com' }}
+              originWhitelist={['*']}
+              javaScriptEnabled
+              domStorageEnabled
+              onMessage={onCheckoutMessage}
+              startInLoadingState
+              renderLoading={() => (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream }}>
+                  <ActivityIndicator color={colors.flameDeep} size="large" />
+                </View>
+              )}
+              style={{ flex: 1, backgroundColor: colors.cream }}
+            />
+          ) : null}
+        </View>
+      </Modal>
     </View>
   );
 }

@@ -10,30 +10,32 @@ export const STATUS_FLOW: OrderStatus[] = [
   'delivered',
 ];
 
+// Consumer-facing delivery states, aligned to the Saathi delivery note:
+// Scheduled -> (packed) -> Out for delivery -> Live -> At your door -> Delivered.
 export const STATUS_LABEL: Record<OrderStatus, string> = {
-  placed: 'Order placed',
+  placed: 'Scheduled',
   confirmed: 'Confirmed',
   preparing: 'Being packed',
-  assigned: 'Rider assigned',
+  assigned: 'Out for delivery',
   out_for_delivery: 'On the way',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
 };
 
 export const STATUS_SUB: Record<OrderStatus, string> = {
-  placed: 'We have received your order.',
-  confirmed: 'Your order is confirmed.',
-  preparing: 'Your milk is being packed fresh.',
-  assigned: 'A rider has picked up your order.',
-  out_for_delivery: 'Your rider is on the way to you.',
-  delivered: 'Enjoy your PYAAS. See you tomorrow!',
+  placed: 'Scheduled for delivery tomorrow morning.',
+  confirmed: 'Reserved from your nearest PARAG store.',
+  preparing: 'Being packed fresh for your morning route.',
+  assigned: "Loaded on your rider's route. Live tracking is on.",
+  out_for_delivery: 'Your rider is on the way. Track them live.',
+  delivered: 'Delivered. Your wallet was charged on delivery.',
   cancelled: 'This order was cancelled.',
 };
 
 export function statusColor(s: OrderStatus): string {
-  if (s === 'cancelled') return colors.roseDeep;
-  if (s === 'delivered') return colors.sage;
-  return colors.roseDeep;
+  if (s === 'cancelled') return colors.flameDeep;
+  if (s === 'delivered') return colors.blue;
+  return colors.flameDeep;
 }
 
 export function statusIndex(s: OrderStatus): number {

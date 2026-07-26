@@ -3,8 +3,7 @@ import { Image } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withDelay, Easing, runOnJS } from 'react-native-reanimated';
 import { colors } from '../lib/theme';
 
-const LOGO_W = 320; // bigger than the native splash wordmark
-const LOGO_AR = 3.555; // pyaas-logo-white-trim aspect ratio
+const BADGE = 168; // white badge that holds the colourful PARAG sunburst logo
 
 /**
  * Branded launch splash. Overlays the app and fades out when it's ready, so the
@@ -44,13 +43,17 @@ export function Splash({ ready, onDone }: { ready: boolean; onDone: () => void }
   return (
     <Animated.View
       pointerEvents="none"
-      style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.roseDeep, alignItems: 'center', justifyContent: 'center' }, overlayStyle]}
+      style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }, overlayStyle]}
     >
       <Animated.View style={logoStyle}>
-        <Image source={require('../assets/pyaas-logo-white-trim.png')} style={{ width: LOGO_W, height: LOGO_W / LOGO_AR }} resizeMode="contain" />
+        <Image
+          source={require('../assets/parag-logo.png')}
+          style={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: colors.white }}
+          resizeMode="contain"
+        />
       </Animated.View>
-      <Animated.Text style={[{ position: 'absolute', top: '57%', color: 'rgba(255,255,255,0.92)', fontWeight: '600', fontSize: 14, letterSpacing: 2.5 }, tagStyle]}>
-        KNOW YOUR MILK
+      <Animated.Text style={[{ position: 'absolute', top: '62%', color: 'rgba(255,255,255,0.92)', fontWeight: '600', fontSize: 13, letterSpacing: 2.5 }, tagStyle]}>
+        PURE · NATURAL · GOOD HEALTH
       </Animated.Text>
     </Animated.View>
   );

@@ -68,7 +68,7 @@ export const useCart = create<CartState>()(
       subtotal: () => get().lines.reduce((s, l) => s + l.price * l.qty, 0),
     }),
     {
-      name: 'pyaas_cart_v1',
+      name: 'parag_cart_v1',
       storage: createJSONStorage(() => AsyncStorage),
       // image is a require()'d module id; persist everything else and rehydrate fine.
       partialize: (s) => ({ lines: s.lines }),

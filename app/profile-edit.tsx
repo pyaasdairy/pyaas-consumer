@@ -73,7 +73,7 @@ export default function ProfileEdit() {
     } finally { setSaving(false); }
   }
 
-  if (!p && !form) return <ActivityIndicator color={colors.roseDeep} style={{ flex: 1 }} />;
+  if (!p && !form) return <ActivityIndicator color={colors.flameDeep} style={{ flex: 1 }} />;
   const name = form.full_name || 'PYAAS member';
 
   return (
@@ -90,7 +90,7 @@ export default function ProfileEdit() {
             {form.avatar_url ? (
               <Image source={{ uri: form.avatar_url }} style={{ width: 88, height: 88, borderRadius: 44 }} contentFit="cover" />
             ) : (
-              <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: colors.roseSoft, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+              <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
                 <Serif color={colors.white} style={{ fontSize: 34 }}>{name.charAt(0).toUpperCase()}</Serif>
               </View>
             )}
@@ -99,7 +99,7 @@ export default function ProfileEdit() {
                 <ActivityIndicator color={colors.white} />
               </View>
             ) : null}
-            <View style={{ position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15, backgroundColor: colors.roseDeep, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.milk }}>
+            <View style={{ position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.milk }}>
               <Ionicons name={uploading ? 'hourglass' : 'camera'} size={15} color={colors.white} />
             </View>
           </Tap>
@@ -130,7 +130,7 @@ export default function ProfileEdit() {
           </View>
         </View>
 
-        {msg ? <TextBody color={/saved|updated/i.test(msg) ? colors.sage : colors.inkSoft} style={{ fontSize: 13 }}>{msg}</TextBody> : null}
+        {msg ? <TextBody color={/saved|updated/i.test(msg) ? colors.blue : colors.inkSoft} style={{ fontSize: 13 }}>{msg}</TextBody> : null}
         <Button title="Save profile" loading={saving} onPress={save} />
       </ScrollView>
     </View>

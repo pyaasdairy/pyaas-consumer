@@ -1,80 +1,113 @@
+import { api, isBackendConfigured } from './apiClient';
+
 /**
- * Razorpay - PLACEHOLDER integration.
+ * Razorpay wallet top-up (WebView Standard Checkout, no native module — keeps
+ * the app Expo/OTA-friendly via react-native-webview).
  *
- * Razorpay is NOT set up yet. These functions simulate the shape of the real
- * SDK/API so the wallet, autopay and checkout UI can be built and tested now,
- * then swapped for the real flow with minimal changes.
- *
- * Real flow (see DEVELOPER_NOTES.md §4):
- *   client → Edge Function creates a Razorpay order → Razorpay Checkout sheet →
- *   webhook (server, service_role) verifies signature → wallet_credit().
- * Never trust the client for "payment succeeded" in production.
+ * SECURITY MODEL (read before shipping real money):
+ *  - The key_id below is PUBLIC; it ships inside every Razorpay checkout. That
+ *    is fine to keep in the client.
+ *  - The key_SECRET must live ONLY on the server. A trustworthy top-up needs the
+ *    backend to (1) CREATE the order so the amount is bound server-side (a
+ *    tampered client cannot pay Rs1 for a Rs299 top-up) and (2) VERIFY the
+ *    signature HMAC_SHA256(order_id + '|' + payment_id, key_secret) before it
+ *    credits the ledger. The client success handler is only a hint and is
+ *    trivially spoofable, so it must NEVER credit real money on its own in prod.
+ *  - This is a LIVE key => real charges. In dev, override it with a TEST key via
+ *    EXPO_PUBLIC_RAZORPAY_KEY_ID so you never move real money while testing.
  */
+export const RAZORPAY_KEY_ID =
+  process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID ?? 'rzp_live_T0LwnoiGRHGIGG';
 
-export type RazorpayOrder = {
-  id: string;
-  amount: number; // in paise, like the real API
-  currency: 'INR';
-  status: 'created';
-};
+/**
+ * TEST top-up mode. When EXPO_PUBLIC_WALLET_TEST_TOPUP=true the "Add money"
+ * screen credits the wallet DIRECTLY (no Razorpay), so testing works before the
+ * payment gateway is wired. Backend-gated: only credits when the server runs in
+ * dev mode (OTP_DEV_MODE). Flip this off + set real Razorpay keys for production.
+ */
+export const WALLET_TEST_TOPUP = process.env.EXPO_PUBLIC_WALLET_TEST_TOPUP === 'true';
 
-export type RazorpayResult = {
-  success: boolean;
-  paymentId: string;
-  orderId: string;
-  signature: string;
-};
-
-export type RazorpayMandate = {
-  id: string;
-  status: 'created' | 'active';
-  maxAmount: number;
-  upiId?: string;
-};
-
-const TODO = '[razorpay-placeholder]';
-
-function fakeId(prefix: string): string {
-  // Deterministic-ish fake id; replace with real Razorpay ids.
-  return `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+/** TEST-ONLY: credit the wallet directly via the dev top-up endpoint. */
+export async function testTopup(rupees: number): Promise<{ credited: boolean }> {
+  const ref = `test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  await api.post('/wallet/topup', { amount: rupees, method: 'test', ref });
+  return { credited: true };
 }
 
-/** Placeholder: create a payment order. Real impl calls an Edge Function. */
-export async function createOrder(amountInr: number): Promise<RazorpayOrder> {
-  console.warn(`${TODO} createOrder(₹${amountInr}) - wire to Edge Function + Razorpay Orders API`);
-  return { id: fakeId('order'), amount: Math.round(amountInr * 100), currency: 'INR', status: 'created' };
-}
+export type TopupOrder = { orderId?: string; keyId: string; amountPaise: number };
 
-/** Placeholder: open Checkout and resolve as paid. Real impl uses react-native-razorpay. */
-export async function openCheckout(order: RazorpayOrder): Promise<RazorpayResult> {
-  // Hard stop: never let an UNCONFIGURED gateway report "paid". Callers must gate
-  // their UI on RAZORPAY_CONFIGURED (checkout shows only Wallet + COD until live).
-  if (!RAZORPAY_CONFIGURED) {
-    throw new Error('Online payments are not available yet. Please use Cash on delivery or your PYAAS Wallet.');
+export type CheckoutResult = {
+  razorpay_payment_id: string;
+  razorpay_order_id?: string;
+  razorpay_signature?: string;
+};
+
+/** Ask the backend to create a Razorpay order (binds the amount). Falls back to
+ *  an order-less checkout when no backend is configured — demo only, since an
+ *  order-less payment cannot be server-verified. */
+export async function createTopupOrder(amountPaise: number): Promise<TopupOrder> {
+  if (isBackendConfigured()) {
+    const r = await api.post<{ orderId: string; keyId?: string }>('/wallet/order', { amountPaise });
+    return { orderId: r.orderId, keyId: r.keyId ?? RAZORPAY_KEY_ID, amountPaise };
   }
-  console.warn(`${TODO} openCheckout(${order.id}) - replace with Razorpay Checkout sheet`);
-  return { success: true, paymentId: fakeId('pay'), orderId: order.id, signature: fakeId('sig') };
+  return { keyId: RAZORPAY_KEY_ID, amountPaise };
 }
 
-/** Placeholder: one-shot helper used by wallet recharge UI. */
-export async function payAmount(amountInr: number): Promise<RazorpayResult> {
-  const order = await createOrder(amountInr);
-  return openCheckout(order);
-}
-
-/** Placeholder: create a UPI autopay mandate (PYAAS MONEY / Smart Recharge). */
-export async function createMandate(params: { maxAmount: number; upiId?: string }): Promise<RazorpayMandate> {
-  if (!RAZORPAY_CONFIGURED) {
-    throw new Error('AutoPay needs the payments gateway, which is coming soon.');
+/** Verify a completed payment server-side (authoritative) before crediting.
+ *  With no backend we cannot verify, so the caller treats client success as a
+ *  provisional demo credit (see the security note above). */
+export async function verifyTopup(r: CheckoutResult): Promise<{ verified: boolean; balance?: number }> {
+  if (isBackendConfigured()) {
+    try {
+      return await api.post<{ verified: boolean; balance?: number }>('/wallet/verify', r);
+    } catch {
+      return { verified: false };
+    }
   }
-  console.warn(`${TODO} createMandate(₹${params.maxAmount}) - wire to Razorpay UPI AutoPay (Subscriptions/Mandates)`);
-  return { id: fakeId('mandate'), status: 'created', maxAmount: params.maxAmount, upiId: params.upiId };
+  return { verified: true }; // demo (no backend): accept the client result
 }
 
-/** Placeholder: cancel/pause an existing mandate. */
-export async function cancelMandate(mandateId: string): Promise<{ success: boolean }> {
-  console.warn(`${TODO} cancelMandate(${mandateId})`);
-  return { success: true };
+/** Whether the wallet credit is authoritative on the server (backend present)
+ *  or must be applied locally for the offline demo. */
+export function creditIsServerSide(): boolean {
+  return isBackendConfigured();
 }
 
-export const RAZORPAY_CONFIGURED = false; // flip to true once keys + Edge Functions are live
+/** Build the self-contained Razorpay checkout page loaded inside a WebView. */
+export function checkoutHtml(opts: {
+  keyId: string;
+  amountPaise: number;
+  orderId?: string;
+  name?: string;
+  email?: string;
+  contact?: string;
+  themeColor?: string;
+}): string {
+  const { keyId, amountPaise, orderId, name = '', email = '', contact = '', themeColor = '#E8491D' } = opts;
+  const options = {
+    key: keyId,
+    amount: amountPaise,
+    currency: 'INR',
+    name: 'PYAAS',
+    description: 'Wallet top-up',
+    ...(orderId ? { order_id: orderId } : {}),
+    prefill: { name, email, contact },
+    theme: { color: themeColor },
+  };
+  const json = JSON.stringify(options).replace(/</g, '\\u003c');
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script></head>
+<body style="margin:0;background:#FFF6EC;font-family:-apple-system,system-ui,sans-serif;">
+<script>
+  function post(o){ if(window.ReactNativeWebView){ window.ReactNativeWebView.postMessage(JSON.stringify(o)); } }
+  var options = ${json};
+  options.handler = function(r){ post({ type:'success', razorpay_payment_id:r.razorpay_payment_id, razorpay_order_id:r.razorpay_order_id, razorpay_signature:r.razorpay_signature }); };
+  options.modal = { ondismiss: function(){ post({ type:'dismiss' }); } };
+  try {
+    var rzp = new Razorpay(options);
+    rzp.on('payment.failed', function(resp){ post({ type:'failed', error: (resp && resp.error) ? resp.error.description : 'Payment failed' }); });
+    rzp.open();
+  } catch(e){ post({ type:'failed', error: String(e) }); }
+</script>
+</body></html>`;
+}

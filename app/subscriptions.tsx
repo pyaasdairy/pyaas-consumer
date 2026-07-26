@@ -10,7 +10,8 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackButton } from '../components/ui';
 import { SkeletonBlock } from '../components/Skeleton';
 import { PRODUCTS, getProduct } from '../constants/products';
-import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, type Subscription, type Frequency } from '../lib/subscriptions';
+import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, listVacations, upcomingDeliveries, type Subscription, type Frequency } from '../lib/subscriptions';
+import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
 
 const FREQS: { key: Frequency; label: string }[] = [
@@ -23,6 +24,7 @@ export default function Subscriptions() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [subs, setSubs] = useState<Subscription[]>([]);
+  const [upcoming, setUpcoming] = useState<{ date: string; count: number; items: Subscription[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,7 +33,7 @@ export default function Subscriptions() {
   const refreshWallet = useWallet((s) => s.refresh);
 
   // new-subscription form
-  const subscribable = PRODUCTS.filter((p) => p.subscribable);
+  const subscribable = PRODUCTS.filter((p) => p.subscribable && !p.outOfStock);
   const [pid, setPid] = useState(subscribable[0]?.id ?? '');
   const [qty, setQty] = useState(1);
   const [freq, setFreq] = useState<Frequency>('daily');
@@ -44,7 +46,12 @@ export default function Subscriptions() {
       await refreshWallet();
       const r = await reconcileWithBalance(useWallet.getState().balance);
       setLowBalance(r.lowBalance);
-      setSubs(await listSubscriptions());
+      const list = await listSubscriptions();
+      setSubs(list);
+      // Rolling preview: evaluate the next 10 days of demand on the fly from
+      // cadence + pauses/skips (the note's "do not materialise the future").
+      const vs = await listVacations();
+      setUpcoming(upcomingDeliveries(list, vs, todayISO(), 10));
     } catch { /* keep last-known list */ }
     finally { setLoading(false); }
   }, [refreshWallet]);
@@ -89,24 +96,44 @@ export default function Subscriptions() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.sageSoft, borderRadius: radius.md, padding: 12 }}>
-          <Ionicons name="infinite" size={18} color={colors.sage} />
-          <TextBody style={{ flex: 1, fontSize: 12.5 }} color={colors.sage}>Fresh milk on autopilot. Pause anytime or set a vacation when you travel.</TextBody>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.blueSoft, borderRadius: radius.md, padding: 12 }}>
+          <Ionicons name="infinite" size={18} color={colors.blue} />
+          <TextBody style={{ flex: 1, fontSize: 12.5 }} color={colors.blue}>Fresh milk on autopilot. Pause anytime or set a vacation when you travel.</TextBody>
         </View>
 
         {lowBalance ? (
-          <Tap onPress={() => router.push('/(tabs)/wallet')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.roseSoft, borderRadius: radius.md, padding: 12, borderWidth: 1, borderColor: colors.roseDeep }}>
-            <Ionicons name="alert-circle" size={18} color={colors.roseDeep} />
-            <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.roseDeep}>Wallet balance is low, so deliveries are paused. Add money to resume them.</TextMed>
-            <Ionicons name="chevron-forward" size={18} color={colors.roseDeep} />
+          <Tap onPress={() => router.push('/(tabs)/wallet')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 12, borderWidth: 1, borderColor: colors.flameDeep }}>
+            <Ionicons name="alert-circle" size={18} color={colors.flameDeep} />
+            <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.flameDeep}>Wallet balance is low, so deliveries are paused. Add money to resume them.</TextMed>
+            <Ionicons name="chevron-forward" size={18} color={colors.flameDeep} />
           </Tap>
         ) : null}
 
         <Tap onPress={() => router.push('/vacations')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, ...shadow.soft }}>
-          <Ionicons name="airplane-outline" size={20} color={colors.roseDeep} />
+          <Ionicons name="airplane-outline" size={20} color={colors.flameDeep} />
           <TextMed style={{ flex: 1, fontSize: 14.5 }}>Set a vacation</TextMed>
           <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
         </Tap>
+
+        {/* Rolling delivery preview · computed live from cadence + pauses/skips */}
+        {upcoming.length ? (
+          <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10, ...shadow.soft }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="calendar" size={16} color={colors.flameDeep} />
+              <TextSemi style={{ fontSize: 15 }}>Upcoming deliveries</TextSemi>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {upcoming.map((d) => (
+                <View key={d.date} style={{ minWidth: 96, alignItems: 'center', gap: 1, backgroundColor: colors.cream, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingVertical: 10, paddingHorizontal: 10 }}>
+                  <TextBody style={{ fontSize: 10.5 }} color={colors.inkMute} numberOfLines={1}>{formatWeekday(d.date)}</TextBody>
+                  <TextSemi style={{ fontSize: 18, ...tabular }} color={colors.flameDeep}>{d.count}</TextSemi>
+                  <TextBody style={{ fontSize: 10 }}>pack{d.count === 1 ? '' : 's'}</TextBody>
+                </View>
+              ))}
+            </ScrollView>
+            <TextBody style={{ fontSize: 11 }} color={colors.inkMute}>Computed live from your cadence, pauses and skips. Editable until 9 PM the night before.</TextBody>
+          </View>
+        ) : null}
 
         {err ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{err}</TextBody> : null}
 
@@ -129,30 +156,58 @@ export default function Subscriptions() {
             <TextBody>No subscriptions yet.</TextBody>
           </View>
         ) : (
-          subs.map((s) => {
-            const p = getProduct(s.product_id);
-            return (
-              <Animated.View
-                key={s.id}
-                layout={LinearTransition.springify().damping(18).stiffness(200)}
-                entering={FadeInDown.duration(260)}
-                exiting={FadeOutUp.duration(180)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 12, ...shadow.soft }}
-              >
-                <View style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
-                  {p ? <Image source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <TextSemi style={{ fontSize: 14.5 }}>{s.qty} × {p?.name ?? s.product_id}</TextSemi>
-                  <TextBody style={{ fontSize: 12.5, ...tabular }}>{FREQS.find((f) => f.key === s.frequency)?.label} · {rupee(s.unit_price * s.qty)}/delivery</TextBody>
-                  <Pill label={s.status === 'active' ? 'ACTIVE' : 'PAUSED'} bg={s.status === 'active' ? colors.sageSoft : colors.cream} color={s.status === 'active' ? colors.sage : colors.inkMute} />
-                </View>
-                <Tap onPress={() => toggle(s)} disabled={busy} style={{ padding: 8 }}>
-                  <Ionicons name={s.status === 'active' ? 'pause-circle' : 'play-circle'} size={30} color={colors.roseDeep} />
-                </Tap>
-              </Animated.View>
+          (() => {
+            // Segregate recurring "Daily subscriptions" from one-off "Instant
+            // deliveries" so each list reads clearly.
+            const recurring = subs.filter((s) => s.frequency !== 'one_time');
+            const instant = subs.filter((s) => s.frequency === 'one_time');
+            const card = (s: (typeof subs)[number]) => {
+              const p = getProduct(s.product_id);
+              return (
+                <Animated.View
+                  key={s.id}
+                  layout={LinearTransition.springify().damping(18).stiffness(200)}
+                  entering={FadeInDown.duration(260)}
+                  exiting={FadeOutUp.duration(180)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 12, ...shadow.soft }}
+                >
+                  <View style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
+                    {p ? <Image source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <TextSemi style={{ fontSize: 14.5 }}>{s.qty} × {p?.name ?? s.product_id}</TextSemi>
+                    <TextBody style={{ fontSize: 12.5, ...tabular }}>{FREQS.find((f) => f.key === s.frequency)?.label} · {rupee(s.unit_price * s.qty)}/delivery</TextBody>
+                    <Pill label={s.status === 'active' ? 'ACTIVE' : 'PAUSED'} bg={s.status === 'active' ? colors.blueSoft : colors.cream} color={s.status === 'active' ? colors.blue : colors.inkMute} />
+                  </View>
+                  <Tap onPress={() => toggle(s)} disabled={busy} style={{ padding: 8 }}>
+                    <Ionicons name={s.status === 'active' ? 'pause-circle' : 'play-circle'} size={30} color={colors.flameDeep} />
+                  </Tap>
+                </Animated.View>
+              );
+            };
+            const sectionHeader = (label: string, sub: string) => (
+              <View style={{ gap: 1, marginTop: 4 }}>
+                <TextSemi style={{ fontSize: 15 }}>{label}</TextSemi>
+                <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>{sub}</TextBody>
+              </View>
             );
-          })
+            return (
+              <>
+                {recurring.length > 0 ? (
+                  <>
+                    {sectionHeader('Daily subscriptions', 'Recurring deliveries, paid from your wallet')}
+                    {recurring.map(card)}
+                  </>
+                ) : null}
+                {instant.length > 0 ? (
+                  <>
+                    {sectionHeader('Instant deliveries', 'One-time orders')}
+                    {instant.map(card)}
+                  </>
+                ) : null}
+              </>
+            );
+          })()
         )}
 
         {/* New subscription form */}
@@ -168,7 +223,7 @@ export default function Subscriptions() {
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {FREQS.map((f) => (
-                <Tap key={f.key} onPress={() => setFreq(f.key)} style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md, backgroundColor: freq === f.key ? colors.roseDeep : colors.milk, borderWidth: 1, borderColor: freq === f.key ? colors.roseDeep : colors.line }}>
+                <Tap key={f.key} onPress={() => setFreq(f.key)} style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md, backgroundColor: freq === f.key ? colors.flameDeep : colors.milk, borderWidth: 1, borderColor: freq === f.key ? colors.flameDeep : colors.line }}>
                   <TextMed color={freq === f.key ? colors.white : colors.inkSoft} style={{ fontSize: 12.5 }}>{f.label}</TextMed>
                 </Tap>
               ))}

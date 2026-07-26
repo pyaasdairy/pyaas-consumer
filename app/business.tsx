@@ -3,14 +3,14 @@ import { View, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { colors, radius, spacing, shadow } from '../lib/theme';
-import { Serif, TextBody, TextMed, TextSemi, Button, Field, Tap, BackButton } from '../components/ui';
+import { colors, radius, spacing } from '../lib/theme';
+import { Serif, TextBody, TextMed, Button, Field, Tap, BackButton } from '../components/ui';
 import { submitLead, type LeadKind } from '../lib/leads';
 
 const KINDS: { key: LeadKind; label: string; icon: any; blurb: string }[] = [
-  { key: 'bulk_order', label: 'Bulk order', icon: 'cube-outline', blurb: 'Daily milk for offices, cafés, sweet shops & events.' },
-  { key: 'franchise', label: 'Franchise', icon: 'storefront-outline', blurb: 'Run a PYAAS franchise in your neighbourhood.' },
-  { key: 'vendor', label: 'Vendor', icon: 'people-outline', blurb: 'Supply to PYAAS as a farmer or distributor.' },
+  { key: 'bulk_order', label: 'Bulk order', icon: 'cube-outline', blurb: 'Daily milk, curd and paneer for offices, cafes, sweet shops and events.' },
+  { key: 'franchise', label: 'Franchise', icon: 'storefront-outline', blurb: 'Run a PARAG parlour or franchise outlet in your neighbourhood.' },
+  { key: 'vendor', label: 'Distributor', icon: 'people-outline', blurb: 'Distribute PARAG products across your area, or join a member dairy union.' },
 ];
 
 export default function Business() {
@@ -32,7 +32,7 @@ export default function Business() {
       await submitLead({ kind, name, phone, businessName: business, city, message });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDone(true);
-    } catch (e: any) { setErr(e?.message ?? 'Could not submit. Try again.'); }
+    } catch (e: any) { setErr(e?.message ?? 'Could not submit. Please try again.'); }
     finally { setBusy(false); }
   }
 
@@ -44,9 +44,9 @@ export default function Business() {
           <Serif style={{ fontSize: 24 }}>Thank you</Serif>
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: 12 }}>
-          <Ionicons name="checkmark-circle" size={64} color={colors.sage} />
-          <Serif style={{ fontSize: 22, textAlign: 'center' }}>We’ve got your details.</Serif>
-          <TextBody style={{ textAlign: 'center' }}>Our team will reach out on {phone} shortly.</TextBody>
+          <Ionicons name="checkmark-circle" size={64} color={colors.blue} />
+          <Serif style={{ fontSize: 22, textAlign: 'center' }}>We have your details.</Serif>
+          <TextBody style={{ textAlign: 'center' }}>Our cooperative team will reach out on {phone} shortly.</TextBody>
         </View>
       </View>
     );
@@ -70,17 +70,17 @@ export default function Business() {
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.cream, borderRadius: radius.md, padding: 12 }}>
-          <Ionicons name="information-circle" size={18} color={colors.roseDeep} />
+          <Ionicons name="information-circle" size={18} color={colors.flameDeep} />
           <TextBody style={{ flex: 1, fontSize: 12.5 }}>{KINDS.find((k) => k.key === kind)?.blurb}</TextBody>
         </View>
 
         <Field label="Your name *" value={name} onChangeText={setName} placeholder="Full name" />
         <Field label="Phone *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10-digit mobile" />
-        <Field label={kind === 'vendor' ? 'Farm / company' : 'Business name'} value={business} onChangeText={setBusiness} placeholder="Optional" />
+        <Field label={kind === 'vendor' ? 'Company / dairy union' : 'Business name'} value={business} onChangeText={setBusiness} placeholder="Optional" />
         <Field label="City" value={city} onChangeText={setCity} placeholder="e.g. Lucknow" />
-        <Field label="Tell us more" value={message} onChangeText={setMessage} placeholder={kind === 'bulk_order' ? 'Litres/day, products…' : 'A few details'} multiline style={{ minHeight: 80, textAlignVertical: 'top' }} />
+        <Field label="Tell us more" value={message} onChangeText={setMessage} placeholder={kind === 'bulk_order' ? 'Litres per day, products needed' : 'A few details'} multiline style={{ minHeight: 80, textAlignVertical: 'top' }} />
 
-        {err ? <TextBody color={colors.roseDeep} style={{ fontSize: 13 }}>{err}</TextBody> : null}
+        {err ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{err}</TextBody> : null}
         <Button title="Submit enquiry" loading={busy} onPress={submit} />
       </ScrollView>
     </View>

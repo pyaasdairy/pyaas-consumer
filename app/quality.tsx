@@ -4,76 +4,129 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow } from '../lib/theme';
-import { Serif, TextBody, BackButton } from '../components/ui';
-import { getMilkPassport, type MilkPassport } from '../lib/milk';
+import { Serif, TextBody, TextSemi, BackButton, Pill } from '../components/ui';
+import { ShineSweep, useCountUp } from '../components/Fx';
+import { getQualitySummary, type QualitySummary, type QualityTest } from '../lib/quality';
 
+/**
+ * PARAG quality dashboard. PARAG is a cooperative federation, so this is an
+ * honest, batch-level view: the pass rate and averages roll up the recent lab
+ * tests each member district dairy union logged, and every card is backed by a
+ * real batch record below. Solid colours only, effects clipped inside the hero.
+ */
 export default function Quality() {
   const insets = useSafeAreaInsets();
-  const [p, setP] = useState<MilkPassport | null>(null);
+  const [s, setS] = useState<QualitySummary | null>(null);
   const [loading, setLoading] = useState(true);
-  useFocusEffect(useCallback(() => { getMilkPassport().then((d) => { setP(d); setLoading(false); }); }, []));
 
-  // Freshness is only shown when the batch actually carries a measured score
-  // (the ops bridge does not compute one · we never fabricate a number).
-  const fresh = p?.freshness_score ?? null;
-  const hasFat = p?.fat != null;
-  const hasSnf = p?.snf != null;
-  const hasTemp = p?.temperature_c != null;
-  // Adulteration is only "Passed" when the source truly reports it; otherwise we
-  // state what we know rather than painting a green pass on every batch.
-  const adultPassed = p?.adulteration_passed === true;
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      getQualitySummary().then((d) => {
+        if (!alive) return;
+        setS(d);
+        setLoading(false);
+      });
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
+  const passRate = useCountUp(s?.passRate ?? 0, 1200, !loading && !!s);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
-      <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View
+        style={{
+          paddingTop: insets.top + 8,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: 8,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
         <BackButton />
         <Serif style={{ fontSize: 24 }}>Quality dashboard</Serif>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <ActivityIndicator color={colors.roseDeep} style={{ marginTop: 30 }} />
+      <ScrollView
+        contentContainerStyle={{ padding: spacing.lg, paddingTop: 8, gap: spacing.md, paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {loading || !s ? (
+          <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 40 }} />
         ) : (
           <>
-            {/* Solid pink hero · no gradient. Shows the measured score when present,
-                otherwise the batch is identified honestly without a fake number. */}
-            <View style={{ borderRadius: radius.xl, padding: spacing.lg, gap: 4, backgroundColor: colors.roseDeep, ...shadow.card }}>
-              {fresh != null ? (
-                <>
-                  <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 13 }}>Measured freshness score</TextBody>
-                  <Serif color={colors.white} style={{ fontSize: 40 }}>{fresh}<TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 18 }}> / 100</TextBody></Serif>
-                </>
-              ) : (
-                <>
-                  <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 13 }}>Your latest batch</TextBody>
-                  <Serif color={colors.white} style={{ fontSize: 30 }}>{p?.batch_code ?? 'Not yet linked'}</Serif>
-                </>
-              )}
-              <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5 }}>Batch {p?.batch_code ?? '-'}</TextBody>
+            {/* Hero: batch pass rate across the recent federation tests. Solid
+                flame fill, sheen clipped inside the box (no gradient, no halo). */}
+            <View
+              style={{
+                borderRadius: radius.xl,
+                padding: spacing.lg,
+                gap: 4,
+                backgroundColor: colors.flameDeep,
+                overflow: 'hidden',
+                ...shadow.card,
+              }}
+            >
+              <ShineSweep />
+              <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 13 }}>
+                Batch pass rate
+              </TextBody>
+              <Serif color={colors.white} style={{ fontSize: 46 }}>
+                {passRate}
+                <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 20 }}>
+                  %
+                </TextBody>
+              </Serif>
+              <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5 }}>
+                {s.total} recent batches tested across member dairy unions
+              </TextBody>
             </View>
 
-            {/* Real measured values · FAT and SNF carry a confirmed glyph only when a
-                number is actually present. Temperature shows only if the source has it. */}
+            {/* Roll-up stats. Blue is the brand success colour (no green). */}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
-              <Card label="FAT" value={hasFat ? `${p?.fat}%` : 'Not reported'} sub="Lab-measured" ok={hasFat} muted={!hasFat} />
-              <Card label="SNF" value={hasSnf ? `${p?.snf}%` : 'Not reported'} sub="Lab-measured" ok={hasSnf} muted={!hasSnf} />
-              {hasTemp ? (
-                <Card label="Temperature" value={`${p?.temperature_c}°C`} sub="Cold-chain reading" ok />
-              ) : (
-                <Card label="Temperature" value="Not logged" sub="Cold-chain maintained" muted />
-              )}
-              <Card
-                label="Adulteration"
-                value={adultPassed ? 'Passed' : 'Not reported'}
-                sub="Water · starch · detergent"
-                ok={adultPassed}
-                muted={!adultPassed}
+              <Stat label="Average FAT" value={`${s.avgFat}%`} sub="Lab-measured" icon="water-outline" />
+              <Stat label="Average SNF" value={`${s.avgSnf}%`} sub="Lab-measured" icon="nutrition-outline" />
+              <Stat
+                label="Adulteration-free"
+                value={`${s.cleanStreak} in a row`}
+                sub="Water, starch, detergent"
+                icon="shield-checkmark-outline"
+                accent
               />
+              <Stat label="Batches tested" value={`${s.total}`} sub="Last few days" icon="flask-outline" />
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.sageSoft, borderRadius: radius.md, padding: 12 }}>
-              <Ionicons name="shield-checkmark" size={18} color={colors.sage} />
-              <TextBody style={{ flex: 1, fontSize: 12.5 }} color={colors.sage}>Each batch is formed only from quality-approved collections at the centre. Figures here come straight from that batch record.</TextBody>
+            <TextSemi style={{ fontSize: 16, marginTop: spacing.xs }}>Recent quality tests</TextSemi>
+            <View style={{ gap: spacing.sm }}>
+              {s.tests.map((t) => (
+                <TestRow key={t.id} t={t} />
+              ))}
+            </View>
+
+            {/* Cooperative framing note, honest about how testing works. */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+                backgroundColor: colors.cream,
+                borderRadius: radius.md,
+                borderWidth: 1,
+                borderColor: colors.line,
+                padding: 14,
+                marginTop: spacing.xs,
+              }}
+            >
+              <Ionicons name="shield-checkmark" size={18} color={colors.blue} style={{ marginTop: 1 }} />
+              <TextBody style={{ flex: 1, fontSize: 12.5 }}>
+                Milk is tested at the village society and again at the member dairy union plant before
+                pasteurisation. Every figure here is read straight from that batch record, scan a pack
+                QR to trace your own batch.
+              </TextBody>
             </View>
           </>
         )}
@@ -82,15 +135,108 @@ export default function Quality() {
   );
 }
 
-function Card({ label, value, sub, ok, muted }: { label: string; value: string; sub?: string; ok?: boolean; muted?: boolean }) {
+function Stat({
+  label,
+  value,
+  sub,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accent?: boolean;
+}) {
   return (
-    <View style={{ width: '47%', flexGrow: 1, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 2, ...shadow.soft }}>
+    <View
+      style={{
+        width: '47%',
+        flexGrow: 1,
+        backgroundColor: colors.white,
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: colors.line,
+        padding: spacing.md,
+        gap: 3,
+        ...shadow.soft,
+      }}
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <TextBody style={{ fontSize: 12 }}>{label}</TextBody>
-        {ok ? <Ionicons name="checkmark-circle" size={16} color={colors.sage} /> : null}
+        <Ionicons name={icon} size={16} color={accent ? colors.blue : colors.inkMute} />
       </View>
-      <Serif style={{ fontSize: 22 }} color={muted ? colors.inkMute : colors.ink}>{value}</Serif>
-      {sub ? <TextBody style={{ fontSize: 11 }} color={muted ? colors.inkMute : colors.inkSoft}>{sub}</TextBody> : null}
+      <Serif style={{ fontSize: 22 }} color={colors.ink}>
+        {value}
+      </Serif>
+      {sub ? (
+        <TextBody style={{ fontSize: 11 }} color={colors.inkMute}>
+          {sub}
+        </TextBody>
+      ) : null}
+    </View>
+  );
+}
+
+function TestRow({ t }: { t: QualityTest }) {
+  const date = new Date(t.tested_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  return (
+    <View
+      style={{
+        backgroundColor: colors.white,
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: colors.line,
+        padding: spacing.md,
+        gap: 10,
+        ...shadow.soft,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+        <View style={{ flex: 1, gap: 1 }}>
+          <TextSemi style={{ fontSize: 14.5 }}>{t.batch_code}</TextSemi>
+          <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>
+            {t.union_name}
+          </TextBody>
+          <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>
+            {t.plant} · {date}
+          </TextBody>
+        </View>
+        {t.passed ? (
+          <Pill label="Passed" bg={colors.blueSoft} color={colors.blue} />
+        ) : (
+          <Pill label="Review" bg="rgba(198,40,40,0.1)" color={colors.danger} />
+        )}
+      </View>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Metric label="FAT" value={`${t.fat}%`} />
+        <Metric label="SNF" value={`${t.snf}%`} />
+        <Metric label="Temp" value={`${t.temperature_c}°C`} />
+        <Metric label="Adulteration" value={t.adulteration_passed ? 'Clean' : 'Flag'} ok={t.adulteration_passed} />
+      </View>
+    </View>
+  );
+}
+
+function Metric({ label, value, ok }: { label: string; value: string; ok?: boolean }) {
+  return (
+    <View
+      style={{
+        backgroundColor: colors.wash,
+        borderRadius: radius.sm,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+      }}
+    >
+      {ok ? <Ionicons name="checkmark-circle" size={13} color={colors.blue} /> : null}
+      <TextBody style={{ fontSize: 11 }} color={colors.inkMute}>
+        {label}
+      </TextBody>
+      <TextSemi style={{ fontSize: 12.5 }}>{value}</TextSemi>
     </View>
   );
 }

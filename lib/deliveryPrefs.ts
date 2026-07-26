@@ -1,4 +1,5 @@
-import { supabase } from './supabase';
+import { requireUserId, getUserId } from './session';
+import { getSingle, putSingle } from './localStore';
 
 export type DeliveryPrefs = {
   call_before: boolean;
@@ -17,20 +18,14 @@ export const DEFAULT_PREFS: DeliveryPrefs = {
 };
 
 export async function getDeliveryPrefs(): Promise<DeliveryPrefs> {
-  const { data, error } = await supabase
-    .from('delivery_preferences')
-    .select('call_before, ring_bell, voice_instructions_url, door_image_url, notes')
-    .maybeSingle();
-  if (error || !data) return { ...DEFAULT_PREFS };
-  return data as DeliveryPrefs;
+  const uid = await getUserId();
+  if (!uid) return { ...DEFAULT_PREFS };
+  const row = await getSingle<DeliveryPrefs>('delivery_prefs', uid);
+  return row ?? { ...DEFAULT_PREFS };
 }
 
 export async function saveDeliveryPrefs(prefs: Partial<DeliveryPrefs>): Promise<void> {
-  const { data: userRes } = await supabase.auth.getUser();
-  const uid = userRes.user?.id;
-  if (!uid) throw new Error('Not signed in.');
-  const { error } = await supabase
-    .from('delivery_preferences')
-    .upsert({ user_id: uid, ...prefs, updated_at: new Date().toISOString() });
-  if (error) throw error;
+  const uid = await requireUserId();
+  const current = (await getSingle<DeliveryPrefs>('delivery_prefs', uid)) ?? { ...DEFAULT_PREFS };
+  await putSingle<DeliveryPrefs>('delivery_prefs', uid, { ...current, ...prefs });
 }

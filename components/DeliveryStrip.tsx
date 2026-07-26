@@ -64,7 +64,7 @@ export function DeliveryStrip() {
     <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md, gap: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <TextSemi style={{ fontSize: 16 }}>Your deliveries</TextSemi>
-        <TextBody style={{ fontSize: 12 }} color={colors.roseDeep}>Order today · get it by 7 AM</TextBody>
+        <TextBody style={{ fontSize: 12 }} color={colors.flameDeep}>Order today · get it by 7 AM</TextBody>
       </View>
 
       {/* Day selector — small chips; TODAY is selected by default. */}
@@ -84,18 +84,18 @@ export function DeliveryStrip() {
                 justifyContent: 'center',
                 paddingVertical: 9,
                 borderRadius: radius.lg,
-                backgroundColor: selected ? colors.roseDeep : colors.white,
+                backgroundColor: selected ? colors.flameDeep : colors.white,
                 borderWidth: 1.5,
-                borderColor: selected ? colors.roseDeep : today ? colors.sage : colors.line,
+                borderColor: selected ? colors.flameDeep : today ? colors.blue : colors.line,
                 ...shadow.soft,
               }}
             >
-              <TextBody style={{ fontSize: 10.5 }} color={selected ? 'rgba(255,255,255,0.92)' : today ? colors.sage : colors.inkMute}>
+              <TextBody style={{ fontSize: 10.5 }} color={selected ? 'rgba(255,255,255,0.92)' : today ? colors.blue : colors.inkMute}>
                 {today ? 'Today' : d.dow}
               </TextBody>
-              <Serif style={{ fontSize: 19 }} color={selected ? colors.white : today ? colors.sage : colors.ink}>{d.date}</Serif>
+              <Serif style={{ fontSize: 19 }} color={selected ? colors.white : today ? colors.blue : colors.ink}>{d.date}</Serif>
               {/* a small marker on days that already have a delivery scheduled */}
-              <View style={{ width: 5, height: 5, borderRadius: 3, marginTop: 2, backgroundColor: dayCount > 0 ? (selected ? colors.white : colors.roseDeep) : 'transparent' }} />
+              <View style={{ width: 5, height: 5, borderRadius: 3, marginTop: 2, backgroundColor: dayCount > 0 ? (selected ? colors.white : colors.flameDeep) : 'transparent' }} />
             </Tap>
           );
         })}
@@ -103,10 +103,10 @@ export function DeliveryStrip() {
 
       {/* Full-width card for the selected day — always fully visible (its own row, not the scroll). */}
       <Animated.View key={selDay.iso} entering={FadeIn.duration(200)}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.roseDeep, paddingVertical: 12, paddingHorizontal: 14, ...shadow.soft }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flameDeep, paddingVertical: 12, paddingHorizontal: 14, ...shadow.soft }}>
           <View style={{ alignItems: 'center', minWidth: 34 }}>
             <TextBody style={{ fontSize: 11 }}>{selDay.dow}</TextBody>
-            <Serif style={{ fontSize: 24 }} color={colors.roseDeep}>{selDay.date}</Serif>
+            <Serif style={{ fontSize: 24 }} color={colors.flameDeep}>{selDay.date}</Serif>
           </View>
           <View style={{ flex: 1 }}>
             {selDelivery.count > 0 ? (
@@ -121,7 +121,7 @@ export function DeliveryStrip() {
               </>
             )}
           </View>
-          <Tap weight="medium" onPress={() => setPicking(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 18, paddingVertical: 11, borderRadius: radius.pill, backgroundColor: colors.roseDeep, ...shadow.soft }}>
+          <Tap weight="medium" onPress={() => setPicking(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 18, paddingVertical: 11, borderRadius: radius.pill, backgroundColor: colors.flameDeep, ...shadow.soft }}>
             <Ionicons name="add" size={16} color={colors.white} />
             <TextSemi color={colors.white} style={{ fontSize: 13.5 }}>Add</TextSemi>
           </Tap>
@@ -143,7 +143,7 @@ export function DeliveryStrip() {
             </Tap>
           </View>
           <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 8, gap: 8 }} showsVerticalScrollIndicator={false}>
-            {PRODUCTS.map((p) => (
+            {PRODUCTS.filter((p) => !p.outOfStock).map((p) => (
               <Tap key={p.id} onPress={() => pickProduct(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 10, ...shadow.soft }}>
                 <View style={{ width: 52, height: 52, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                   <Image source={p.image} style={{ width: '82%', height: '82%' }} contentFit="contain" />
@@ -152,7 +152,7 @@ export function DeliveryStrip() {
                   <TextSemi style={{ fontSize: 14.5 }} numberOfLines={1}>{p.name}</TextSemi>
                   <TextBody style={{ fontSize: 12 }} numberOfLines={1}>{p.variant} · {p.subscribable ? 'subscription or one-time' : 'one-time'}</TextBody>
                 </View>
-                <TextSemi style={{ fontSize: 15 }} color={colors.roseDeep}>{rupee(p.price)}</TextSemi>
+                <TextSemi style={{ fontSize: 15 }} color={colors.flameDeep}>{rupee(p.price)}</TextSemi>
                 <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
               </Tap>
             ))}

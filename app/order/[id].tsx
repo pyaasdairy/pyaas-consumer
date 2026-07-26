@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, Linking } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Linking, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,11 +12,27 @@ import Animated, {
   withTiming,
   withSequence,
 } from 'react-native-reanimated';
-import { colors, radius, spacing, shadow, rupee } from '../../lib/theme';
+import { colors, radius, spacing, shadow, rupee, fonts } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Divider } from '../../components/ui';
-import { getOrder, cancelOrder, simulateRiderAssignment, type Order } from '../../lib/api';
-import { supabase } from '../../lib/supabase';
+import { getOrder, cancelOrder, simulateRiderAssignment, simulateDelivered, reviewOrder, type Order } from '../../lib/api';
 import { STATUS_FLOW, STATUS_LABEL, STATUS_SUB, statusIndex } from '../../lib/orderStatus';
+import { isBackendConfigured } from '../../lib/apiClient';
+import { debitWallet } from '../../lib/walletApi';
+import { useWallet } from '../../store/wallet';
+import { haptics } from '../../lib/haptics';
+
+/** "06:00-07:00" → "7:00 AM" (the end of the window). Returns null for a
+ *  malformed/blank window so the caller hides the ETA line instead of showing
+ *  "Arriving by " with an empty or garbage time. */
+function formatWindowEnd(win: string): string | null {
+  const raw = win.split('-')[1]?.trim();
+  const end = raw && raw.length ? raw : win.trim();
+  const [h, m] = end.split(':').map((n) => parseInt(n, 10));
+  if (Number.isNaN(h) || h < 0 || h > 23) return null;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}:${String(m || 0).padStart(2, '0')} ${ampm}`;
+}
 
 export default function OrderTracking() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -27,6 +43,12 @@ export default function OrderTracking() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshWallet = useWallet((s) => s.refresh);
+  const [reviewStars, setReviewStars] = useState(5);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewed, setReviewed] = useState(false);
+  const debitedRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -40,37 +62,69 @@ export default function OrderTracking() {
     }
   }, [id]);
 
-  // Realtime: reflect rider-app changes (status, assigned rider, live GPS)
-  // instantly. Falls back to a slow poll if Realtime isn't enabled on the
-  // tables yet (Supabase → Database → Replication: orders, riders).
+  // Poll while the screen is focused so rider-app status changes (status,
+  // assigned rider, live GPS) show up without a manual refresh. When parag-api
+  // is live this can be upgraded to a websocket/SSE push instead of polling.
   useFocusEffect(
     useCallback(() => {
-      load();
-      const channel = supabase
-        .channel(`order-${id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `id=eq.${id}` }, () => load())
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'riders' }, () => load())
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_events', filter: `order_id=eq.${id}` }, () => load())
-        .subscribe();
-      pollRef.current = setInterval(load, 15000); // safety-net fallback
-      return () => {
-        if (pollRef.current) clearInterval(pollRef.current);
-        supabase.removeChannel(channel);
+      let active = true;
+      const tick = () => {
+        // Stop the moment the screen is torn down (e.g. an auth sign-out
+        // redirect) so an in-flight poll never setStates on an unmounted
+        // screen — the churn the root ErrorBoundary otherwise has to catch.
+        if (active) void load();
       };
-    }, [load, id])
+      tick();
+      pollRef.current = setInterval(tick, 10000);
+      return () => {
+        active = false;
+        if (pollRef.current) clearInterval(pollRef.current);
+      };
+    }, [load])
   );
+
+  // Debit-on-delivery: when a backend-owned order becomes delivered, charge the
+  // local prepaid wallet exactly once (idempotent by ref), per the delivery note.
+  useEffect(() => {
+    if (order?.status === 'delivered' && isBackendConfigured() && order.payment_method !== 'cod' && !debitedRef.current) {
+      debitedRef.current = true;
+      debitWallet(order.total, 'delivery', order.id).then(() => refreshWallet()).catch(() => { /* insufficient funds is non-fatal in the demo */ });
+    }
+  }, [order?.status, order?.id, order?.total, order?.payment_method, refreshWallet]);
+
+  async function submitReview() {
+    if (!order) return;
+    setReviewBusy(true);
+    try {
+      await reviewOrder(order.id, reviewStars, reviewText.trim());
+      haptics.success();
+      setReviewed(true);
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not submit your review.');
+    } finally { setReviewBusy(false); }
+  }
+
+  async function onSimulateDelivered() {
+    setBusy(true);
+    try { await simulateDelivered(order!.id); await load(); }
+    catch (e: any) { setError(e?.message ?? 'Could not simulate delivery.'); }
+    finally { setBusy(false); }
+  }
 
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.roseDeep} />
+        <ActivityIndicator color={colors.flameDeep} />
       </View>
     );
   }
   if (!order) {
+    // error set (timeout / network) => offer a retry; otherwise a genuine 404.
     return (
       <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center', padding: spacing.lg, gap: 12 }}>
-        <TextBody>{error || 'Order not found.'}</TextBody>
+        <TextBody style={{ textAlign: 'center' }}>{error || 'Order not found.'}</TextBody>
+        {error ? <Button title="Try again" onPress={() => { setLoading(true); load(); }} /> : null}
         <Button title="Back" onPress={() => router.back()} />
       </View>
     );
@@ -123,7 +177,7 @@ export default function OrderTracking() {
             borderRadius: radius.xl,
             padding: spacing.lg,
             gap: 6,
-            backgroundColor: cancelled ? colors.cream : delivered ? '#2A1018' : colors.roseDeep,
+            backgroundColor: cancelled ? colors.cream : delivered ? '#2A1018' : colors.flameDeep,
             borderWidth: cancelled ? 1 : 0,
             borderColor: colors.line,
             ...shadow.soft,
@@ -140,13 +194,72 @@ export default function OrderTracking() {
           </TextBody>
         </View>
 
+        {/* ETA / delivery window — prominent while the order is on its way.
+            Hidden when the window can't be parsed (formatWindowEnd → null). */}
+        {(() => {
+          const eta =
+            !delivered && !cancelled && order.delivery_window
+              ? formatWindowEnd(order.delivery_window)
+              : null;
+          return eta ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.flameSoft, borderWidth: 1, borderColor: colors.flame, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: 14 }}>
+              <Ionicons name="time-outline" size={22} color={colors.flameDeep} />
+              <View style={{ flex: 1 }}>
+                <TextSemi style={{ fontSize: 15 }} color={colors.ink}>Arriving by {eta}</TextSemi>
+                <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>
+                  {order.payment_method === 'cod' ? 'Cash on delivery · keep the amount ready' : 'Fresh at your door in the morning slot'}
+                </TextBody>
+              </View>
+            </View>
+          ) : null;
+        })()}
+
+        {/* Review-after-delivery */}
+        {delivered ? (
+          order.review ? (
+            <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: 8, ...shadow.soft }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.blue} />
+                <TextSemi style={{ fontSize: 15 }}>Thanks for rating</TextSemi>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 3 }}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Ionicons key={n} name={n <= order.review!.rating ? 'star' : 'star-outline'} size={20} color={colors.gold} />
+                ))}
+              </View>
+              {order.review.comment ? <TextBody style={{ fontSize: 13.5 }}>{order.review.comment}</TextBody> : null}
+            </View>
+          ) : (
+            <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: 12, ...shadow.soft }}>
+              <TextSemi style={{ fontSize: 16 }}>Rate your order</TextSemi>
+              <TextBody style={{ fontSize: 13 }}>How was your PARAG delivery?</TextBody>
+              <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'center' }}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Tap key={n} haptic={false} onPress={() => { haptics.press(); setReviewStars(n); }}>
+                    <Ionicons name={n <= reviewStars ? 'star' : 'star-outline'} size={34} color={colors.gold} />
+                  </Tap>
+                ))}
+              </View>
+              <TextInput
+                value={reviewText}
+                onChangeText={setReviewText}
+                placeholder="Add a comment (optional)"
+                placeholderTextColor={colors.inkMute}
+                multiline
+                style={{ backgroundColor: colors.milk, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12, minHeight: 64, textAlignVertical: 'top', fontFamily: fonts.sans, fontSize: 14.5, color: colors.ink }}
+              />
+              <Button title="Submit review" loading={reviewBusy} onPress={submitReview} />
+            </View>
+          )
+        ) : null}
+
         {/* Live rider card */}
         {hasRider && order.riders ? (
           <Animated.View entering={FadeIn} style={{ backgroundColor: colors.white, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.card }}>
             <LiveTrackStrip active={order.status === 'out_for_delivery'} />
             <View style={{ padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="person" size={26} color={colors.roseDeep} />
+                <Ionicons name="person" size={26} color={colors.flameDeep} />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
                 <TextSemi style={{ fontSize: 16 }}>{order.riders.full_name}</TextSemi>
@@ -162,7 +275,7 @@ export default function OrderTracking() {
               </View>
               <Tap
                 onPress={() => order.riders?.phone && Linking.openURL(`tel:${order.riders.phone}`)}
-                style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: colors.sage, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}
+                style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}
               >
                 <Ionicons name="call" size={20} color={colors.white} />
               </Tap>
@@ -174,7 +287,7 @@ export default function OrderTracking() {
         {order.proof_photo_url ? (
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.soft }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: spacing.md }}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.sage} />
+              <Ionicons name="checkmark-circle" size={18} color={colors.blue} />
               <TextSemi style={{ fontSize: 14.5 }}>Delivered · see photo</TextSemi>
             </View>
             <Image source={{ uri: order.proof_photo_url }} style={{ width: '100%', height: 200 }} contentFit="cover" />
@@ -197,16 +310,16 @@ export default function OrderTracking() {
                         width: 22,
                         height: 22,
                         borderRadius: 11,
-                        backgroundColor: done ? colors.roseDeep : colors.white,
+                        backgroundColor: done ? colors.flameDeep : colors.white,
                         borderWidth: 2,
-                        borderColor: done ? colors.roseDeep : colors.line,
+                        borderColor: done ? colors.flameDeep : colors.line,
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
                       {done ? <Ionicons name="checkmark" size={13} color={colors.white} /> : null}
                     </View>
-                    {!last ? <View style={{ width: 2, flex: 1, minHeight: 26, backgroundColor: i < idx ? colors.roseDeep : colors.line }} /> : null}
+                    {!last ? <View style={{ width: 2, flex: 1, minHeight: 26, backgroundColor: i < idx ? colors.flameDeep : colors.line }} /> : null}
                   </View>
                   <View style={{ paddingBottom: last ? 0 : spacing.sm, flex: 1 }}>
                     <TextMed color={done ? colors.ink : colors.inkMute} style={{ fontSize: 14.5, fontFamily: current ? undefined : undefined }}>
@@ -241,7 +354,7 @@ export default function OrderTracking() {
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
             <TextBody>Delivery</TextBody>
-            <TextMed color={order.delivery_fee === 0 ? colors.sage : colors.ink}>{order.delivery_fee === 0 ? 'FREE' : rupee(order.delivery_fee)}</TextMed>
+            <TextMed color={order.delivery_fee === 0 ? colors.blue : colors.ink}>{order.delivery_fee === 0 ? 'FREE' : rupee(order.delivery_fee)}</TextMed>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <TextSemi style={{ fontSize: 16 }}>Total</TextSemi>
@@ -254,19 +367,24 @@ export default function OrderTracking() {
           </TextBody>
         </View>
 
-        {error ? <TextBody color={colors.roseDeep} style={{ fontSize: 13 }}>{error}</TextBody> : null}
+        {error ? <TextBody color={colors.flameDeep} style={{ fontSize: 13 }}>{error}</TextBody> : null}
 
         {/* Actions */}
+        <Button title="View bill" variant="outline" onPress={() => router.push(`/invoice/${order.id}`)} />
         {canCancel ? <Button title="Cancel order" variant="outline" onPress={onCancel} loading={busy} /> : null}
 
-        {/* RIDER BACKDOOR (demo): visible until the real rider app is live. */}
-        {canSimulate ? (
+        {/* RIDER BACKDOOR (demo, local mode only): the real Saathi rider app
+            drives these when the shared backend is configured. */}
+        {canSimulate && !isBackendConfigured() ? (
           <View style={{ gap: 8 }}>
             <Button title="Simulate rider pickup (demo)" variant="sage" onPress={onSimulate} loading={busy} />
             <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>
               Demo only. The rider app will trigger this for real. Hidden once a real rider claims the order.
             </TextBody>
           </View>
+        ) : null}
+        {order.status === 'out_for_delivery' && !isBackendConfigured() ? (
+          <Button title="Simulate delivered (demo)" variant="sage" onPress={onSimulateDelivered} loading={busy} />
         ) : null}
       </ScrollView>
     </View>
@@ -293,16 +411,16 @@ function LiveTrackStrip({ active }: { active: boolean }) {
       <View style={{ position: 'absolute', left: '8%', right: '8%', top: 44, height: 2, backgroundColor: 'rgba(199,91,110,0.35)' }} />
       {/* store marker */}
       <View style={{ position: 'absolute', left: '6%', top: 34, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-        <Ionicons name="storefront" size={12} color={colors.sage} />
+        <Ionicons name="storefront" size={12} color={colors.blue} />
       </View>
       {/* home marker */}
       <View style={{ position: 'absolute', right: '6%', top: 34, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-        <Ionicons name="home" size={12} color={colors.roseDeep} />
+        <Ionicons name="home" size={12} color={colors.flameDeep} />
       </View>
       {/* moving rider */}
       <Animated.View style={[{ position: 'absolute', top: 30 }, markerStyle]}>
         <Animated.View style={[{ position: 'absolute', top: -3, left: -3, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(199,91,110,0.25)' }, pulseStyle]} />
-        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.roseDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
           <Ionicons name="bicycle" size={16} color={colors.white} />
         </View>
       </Animated.View>

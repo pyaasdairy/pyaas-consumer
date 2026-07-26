@@ -8,7 +8,7 @@ import { TextSemi, TextBody, Tap } from './ui';
 import { WEEK_HEADERS, monthGrid, monthLabel, isoOf, parseISO } from '../lib/dates';
 
 /**
- * PYAAS start-date calendar. Parent mounts/unmounts it (so it reopens fresh).
+ * PARAG start-date calendar. Parent mounts/unmounts it (so it reopens fresh).
  * Dates before `minISO` are disabled. Confirm fires onConfirm(selectedISO).
  */
 export function StartDatePicker({ value, minISO, onConfirm, onClose }: {
@@ -52,11 +52,11 @@ export function StartDatePicker({ value, minISO, onConfirm, onClose }: {
             <TextSemi style={{ fontSize: 20 }}>Start Date</TextSemi>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Tap haptic={false} onPress={() => shift(-1)} disabled={!canPrev} style={{ opacity: canPrev ? 1 : 0.25, padding: 2 }}>
-                <Ionicons name="chevron-back" size={24} color={colors.roseDeep} />
+                <Ionicons name="chevron-back" size={24} color={colors.flameDeep} />
               </Tap>
               <TextSemi style={{ fontSize: 16, minWidth: 116, textAlign: 'center' }}>{monthLabel(y, m)}</TextSemi>
               <Tap haptic={false} onPress={() => shift(1)} style={{ padding: 2 }}>
-                <Ionicons name="chevron-forward" size={24} color={colors.roseDeep} />
+                <Ionicons name="chevron-forward" size={24} color={colors.flameDeep} />
               </Tap>
             </View>
           </View>
@@ -87,7 +87,7 @@ export function StartDatePicker({ value, minISO, onConfirm, onClose }: {
                         style={{ flex: 1, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: selected ? 'transparent' : 'transparent' }}
                       >
                         {selected ? (
-                          <View style={[StyleSheet.absoluteFill, { borderRadius: radius.md, backgroundColor: colors.roseDeep }]} />
+                          <View style={[StyleSheet.absoluteFill, { borderRadius: radius.md, backgroundColor: colors.flameDeep }]} />
                         ) : null}
                         <Text style={{ fontSize: 16, fontFamily: fonts.sansSemi, ...tabular, color: selected ? colors.white : disabled ? '#D8CCD2' : colors.ink }}>{day}</Text>
                       </Tap>
@@ -98,11 +98,11 @@ export function StartDatePicker({ value, minISO, onConfirm, onClose }: {
             ))}
           </View>
 
-          <TextBody style={{ fontSize: 12, textAlign: 'center', marginTop: 2 }}>Order by midnight · delivered by 7 AM</TextBody>
+          <TextBody style={{ fontSize: 12, textAlign: 'center', marginTop: 2 }}>Order by 9 PM · delivered by 7 AM</TextBody>
 
           {/* Done */}
           <Tap onPress={() => onConfirm(sel)} style={{ alignSelf: 'center', marginTop: 2 }}>
-            <View style={{ backgroundColor: colors.roseDeep, paddingHorizontal: 56, height: 50, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+            <View style={{ backgroundColor: colors.flameDeep, paddingHorizontal: 56, height: 50, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
               <TextSemi color={colors.white} style={{ fontSize: 16 }}>Done</TextSemi>
             </View>
           </Tap>

@@ -55,7 +55,7 @@ export default function Addresses() {
                 <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
                   {!a.is_default ? (
                     <Tap haptic={false} onPress={() => makeDefault(a.id)}>
-                      <TextMed color={colors.sage} style={{ fontSize: 12.5 }}>Set default</TextMed>
+                      <TextMed color={colors.blue} style={{ fontSize: 12.5 }}>Set default</TextMed>
                     </Tap>
                   ) : null}
                   <Tap haptic={false} onPress={() => remove(a.id)}>

@@ -14,10 +14,16 @@ export default function Search() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
-  const data = useMemo(
-    () => (q ? PRODUCTS.filter((p) => [p.name, p.variant, p.tag].some((t) => t.toLowerCase().includes(q))) : PRODUCTS),
-    [q]
-  );
+  const data = useMemo(() => {
+    if (!q) return PRODUCTS;
+    const POPULAR_WORDS = ['popular', 'bestseller', 'best seller', 'most ordered', 'trending', 'top'];
+    const wantsPopular = q.length >= 3 && POPULAR_WORDS.some((k) => k.includes(q));
+    return PRODUCTS.filter(
+      (p) =>
+        [p.name, p.variant, p.tag, p.category].some((t) => t.toLowerCase().includes(q)) ||
+        (wantsPopular && !!p.mostOrdered)
+    );
+  }, [q]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>

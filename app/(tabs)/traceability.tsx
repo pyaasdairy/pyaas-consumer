@@ -8,17 +8,16 @@ import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, wit
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap } from '../../components/ui';
-import { normalizeBatchCode } from '../../lib/saathi';
-import { warmOpsApi } from '../../lib/opsPassport';
+import { normalizeBatchCode, DEMO_BATCH_CODES } from '../../lib/milk';
 
 const FRAME = Math.min(280, Dimensions.get('window').width - 80);
-const MASK = 'rgba(18,6,12,0.6)';
+const MASK = 'rgba(18,10,6,0.6)';
 
-// The label printer stamps the batch code as a 1D barcode and/or a QR of the
-// plain code — read every common symbology, not just QR.
+// The pack label carries the batch code as a QR and/or a 1D barcode, so read
+// every common symbology, not just QR.
 const BARCODE_TYPES: BarcodeType[] = ['qr', 'code128', 'code39', 'ean13', 'ean8', 'codabar', 'itf14'];
 
-export default function KnowYourMilkScanner() {
+export default function Traceability() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
@@ -33,7 +32,6 @@ export default function KnowYourMilkScanner() {
     useCallback(() => {
       setFocused(true);
       handled.current = false; // re-arm so a second scan works on return
-      warmOpsApi(); // wake the ops backend now so the passport resolves fast on scan
       scan.value = withRepeat(withSequence(
         withTiming(FRAME - 12, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
         withTiming(4, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
@@ -45,10 +43,10 @@ export default function KnowYourMilkScanner() {
 
   const lineStyle = useAnimatedStyle(() => ({ transform: [{ translateY: scan.value }] }));
 
+  // Open the passport for a scanned/typed code. know-your-milk normalizes again
+  // and resolves the batch via lib/milk.
   const open = useCallback((raw: string | null) => {
-    // The batch code is the token; know-your-milk normalizes again + resolves
-    // via /traceability/:batchCode.
-    router.push(raw ? { pathname: '/know-your-milk', params: { token: raw } } : '/know-your-milk');
+    router.push(raw ? { pathname: '/know-your-milk', params: { code: raw } } : '/know-your-milk');
   }, [router]);
 
   const onScan = useCallback(({ data }: { data?: string }) => {
@@ -69,22 +67,22 @@ export default function KnowYourMilkScanner() {
 
   const enterModal = (
     <Modal visible={manual} transparent animationType="fade" onRequestClose={() => setManual(false)}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(18,6,12,0.55)', justifyContent: 'center', padding: spacing.xl }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'center', padding: spacing.xl }}>
         <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: spacing.md }}>
           <Serif style={{ fontSize: 22 }}>Enter batch code</Serif>
-          <TextBody color={colors.inkMute} style={{ fontSize: 13 }}>It’s printed on your pack near the MFG/EXP date.</TextBody>
+          <TextBody color={colors.inkMute} style={{ fontSize: 13 }}>It is printed on your pack near the MFG and best-before date.</TextBody>
           <TextInput
             value={code}
             onChangeText={setCode}
             autoCapitalize="characters"
             autoCorrect={false}
-            placeholder="PYAAS-LKO-20260612-M-007"
+            placeholder={DEMO_BATCH_CODES[0]}
             placeholderTextColor={colors.inkMute}
             returnKeyType="search"
             onSubmitEditing={submitManual}
             style={{ borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, color: colors.ink, letterSpacing: 0.5 }}
           />
-          <Button title="Find my milk" onPress={submitManual} style={{ alignSelf: 'stretch' }} />
+          <Button title="Trace my milk" onPress={submitManual} style={{ alignSelf: 'stretch' }} />
           <Tap haptic={false} onPress={() => { setManual(false); Keyboard.dismiss(); }} style={{ alignSelf: 'center' }}>
             <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Cancel</TextMed>
           </Tap>
@@ -96,17 +94,17 @@ export default function KnowYourMilkScanner() {
   if (!permission || !permission.granted) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md }}>
-        <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: colors.roseSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="barcode-outline" size={36} color={colors.roseDeep} />
+        <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="barcode-outline" size={36} color={colors.flameDeep} />
         </View>
         <Serif style={{ fontSize: 25, textAlign: 'center' }}>Know your milk</Serif>
-        <TextBody style={{ textAlign: 'center' }}>Scan the barcode on your pack, or type the batch code printed on it, to see the farmer, farm and lab test behind it.</TextBody>
+        <TextBody style={{ textAlign: 'center' }}>Scan the QR or barcode on your pack, or type the batch code printed on it, to see the member dairy union and the quality tests behind it.</TextBody>
         <Button title="Allow camera" onPress={requestPermission} style={{ alignSelf: 'stretch' }} />
         <Tap haptic={false} onPress={() => setManual(true)}>
-          <TextMed color={colors.roseDeep} style={{ fontSize: 14 }}>Enter the batch code instead</TextMed>
+          <TextMed color={colors.flameDeep} style={{ fontSize: 14 }}>Enter the batch code instead</TextMed>
         </Tap>
         <Tap haptic={false} onPress={() => router.push('/know-your-milk')}>
-          <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>View my latest milk passport</TextMed>
+          <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>How cooperative tracing works</TextMed>
         </Tap>
         {enterModal}
       </View>
@@ -120,14 +118,13 @@ export default function KnowYourMilkScanner() {
       ) : null}
 
       <View style={{ flex: 1 }}>
-        {/* Top mask + title · hugs the frame; the frame sits above centre so the
-            controls below never crowd the floating tab bar */}
+        {/* Top mask + title */}
         <View style={{ flex: 1, backgroundColor: MASK, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 22, paddingTop: insets.top + 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Ionicons name="scan-outline" size={18} color={colors.roseSoft} />
+            <Ionicons name="scan-outline" size={18} color={colors.flameSoft} />
             <TextSemi color={colors.white} style={{ fontSize: 19 }}>Know your milk</TextSemi>
           </View>
-          <TextBody color="rgba(255,255,255,0.82)" style={{ fontSize: 13, textAlign: 'center', marginTop: 4 }}>Point at the barcode or QR on your PYAAS pack</TextBody>
+          <TextBody color="rgba(255,255,255,0.82)" style={{ fontSize: 13, textAlign: 'center', marginTop: 4 }}>Point at the barcode or QR on your Parag pack</TextBody>
         </View>
 
         {/* Frame row */}
@@ -135,16 +132,15 @@ export default function KnowYourMilkScanner() {
           <View style={{ flex: 1, backgroundColor: MASK }} />
           <View style={{ width: FRAME, height: FRAME, overflow: 'hidden', borderRadius: radius.lg }}>
             <Corner pos="tl" /><Corner pos="tr" /><Corner pos="bl" /><Corner pos="br" />
-            <Animated.View style={[{ position: 'absolute', left: 14, right: 14, height: 2.5, borderRadius: 2, backgroundColor: colors.roseDeep, shadowColor: colors.roseDeep, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } }, lineStyle]} />
+            <Animated.View style={[{ position: 'absolute', left: 14, right: 14, height: 2.5, borderRadius: 2, backgroundColor: colors.flameDeep }, lineStyle]} />
           </View>
           <View style={{ flex: 1, backgroundColor: MASK }} />
         </View>
 
-        {/* Bottom mask + controls · hug the frame (symmetric with the title above),
-            leaving clean space down to the floating tab bar */}
+        {/* Bottom mask + controls */}
         <View style={{ flex: 1.7, backgroundColor: MASK, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 22, paddingBottom: insets.bottom + 24 }}>
           <Tap onPress={() => setTorch((t) => !t)} style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: torch ? colors.white : 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }}>
-            <Ionicons name={torch ? 'flashlight' : 'flashlight-outline'} size={23} color={torch ? colors.roseDeep : colors.white} />
+            <Ionicons name={torch ? 'flashlight' : 'flashlight-outline'} size={23} color={torch ? colors.flameDeep : colors.white} />
           </Tap>
           <TextBody color="rgba(255,255,255,0.6)" style={{ fontSize: 11.5, marginTop: 8 }}>{torch ? 'Torch on' : 'Tap for torch'}</TextBody>
           <Tap haptic={false} onPress={() => setManual(true)} style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)', backgroundColor: 'rgba(255,255,255,0.08)' }}>
@@ -159,8 +155,8 @@ export default function KnowYourMilkScanner() {
 
 function Corner({ pos }: { pos: 'tl' | 'tr' | 'bl' | 'br' }) {
   const L = 34, T = 4;
-  const base: any = { position: 'absolute', width: L, height: L, borderColor: colors.white };
-  const map: any = {
+  const base = { position: 'absolute' as const, width: L, height: L, borderColor: colors.white };
+  const map: Record<string, object> = {
     tl: { top: 0, left: 0, borderTopWidth: T, borderLeftWidth: T, borderTopLeftRadius: 18 },
     tr: { top: 0, right: 0, borderTopWidth: T, borderRightWidth: T, borderTopRightRadius: 18 },
     bl: { bottom: 0, left: 0, borderBottomWidth: T, borderLeftWidth: T, borderBottomLeftRadius: 18 },

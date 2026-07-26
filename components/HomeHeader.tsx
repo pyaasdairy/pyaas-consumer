@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, FadeIn } from 'react-native-reanimated';
@@ -36,15 +37,19 @@ export function HomeHeader({ firstName }: { firstName: string }) {
       {/* Subtle frosted glass: the feed faintly shows through the pinned header. */}
       <BlurView tint="light" intensity={28} experimentalBlurMethod="dimezisBlurView" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.72)' }} />
       <Animated.View entering={FadeIn.duration(420)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.sage }} />
-            <TextBody style={{ fontSize: 12, letterSpacing: 0.2 }}>Morning delivery · 5–7:30 AM</TextBody>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+          {/* PARAG sun logo · brand presence, top left */}
+          <Image source={require('../assets/parag-logo.png')} style={{ width: 38, height: 38 }} contentFit="contain" />
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.blue }} />
+              <TextBody style={{ fontSize: 12, letterSpacing: 0.2 }}>Morning delivery · 5–7:30 AM</TextBody>
+            </View>
+            <Serif style={{ fontSize: 21, lineHeight: 26, letterSpacing: -0.3 }} numberOfLines={1}>{greetingFor(firstName)}</Serif>
           </View>
-          <Serif style={{ fontSize: 22, lineHeight: 27, letterSpacing: -0.3 }} numberOfLines={1}>{greetingFor(firstName)}</Serif>
         </View>
-        <Tap onPress={() => router.push('/(tabs)/profile')} scaleTo={0.92} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, borderWidth: 1.5, borderColor: colors.roseSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontFamily: fonts.sansBold, fontSize: 16, color: colors.roseDeep }}>{initial}</Text>
+        <Tap onPress={() => router.push('/(tabs)/profile')} scaleTo={0.92} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, borderWidth: 1.5, borderColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontFamily: fonts.sansBold, fontSize: 16, color: colors.flameDeep }}>{initial}</Text>
         </Tap>
       </Animated.View>
     </Animated.View>
