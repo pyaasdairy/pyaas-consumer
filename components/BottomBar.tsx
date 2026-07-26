@@ -8,7 +8,6 @@ import { colors, radius, spacing, shadow } from '../lib/theme';
 import { TextMed, Tap } from './ui';
 import { navHidden } from '../lib/navVisibility';
 
-const INK = '#2A1018';
 
 /** Vertical space a scroll view should reserve so its last row clears the
  *  floating bar (bottom: insets.bottom + 112, ~50px tall) on every device. */
@@ -48,9 +47,9 @@ export function BottomBar() {
 
       <Animated.View entering={FadeInDown.duration(440)} style={{ flex: 1 }}>
         <Tap onPress={() => router.push('/search')} scaleTo={0.97}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: INK, borderRadius: radius.pill, paddingHorizontal: 18, height: 50, ...shadow.card }}>
-            <Ionicons name="search" size={18} color="rgba(255,255,255,0.85)" />
-            <TextMed color="rgba(255,255,255,0.65)" style={{ fontSize: 14.5 }}>Search milk, ghee, paneer…</TextMed>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, borderRadius: radius.pill, paddingHorizontal: 18, height: 50, ...shadow.card }}>
+            <Ionicons name="search" size={18} color={colors.flameDeep} />
+            <TextMed color={colors.inkSoft} style={{ fontSize: 14.5 }}>Search milk, ghee, paneer…</TextMed>
           </View>
         </Tap>
       </Animated.View>
