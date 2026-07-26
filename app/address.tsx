@@ -71,9 +71,9 @@ export default function AddAddress() {
                   paddingHorizontal: 18,
                   paddingVertical: 9,
                   borderRadius: radius.pill,
-                  backgroundColor: active ? colors.ink : colors.white,
+                  backgroundColor: active ? colors.action : colors.white,
                   borderWidth: 1,
-                  borderColor: active ? colors.ink : colors.line,
+                  borderColor: active ? colors.action : colors.line,
                 }}
               >
                 <TextMed color={active ? colors.white : colors.inkSoft} style={{ fontSize: 13.5 }}>

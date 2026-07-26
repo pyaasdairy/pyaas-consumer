@@ -1,38 +1,38 @@
 /**
- * PARAG brand theme. Palette is derived from the PARAG sunburst logo:
- * flame orange-red (primary CTA), sun gold (secondary accent) and the
- * ribbon blue (tertiary accent, also the "success" colour so the app stays
- * tightly on the orange/gold/blue identity, no green). Type, spacing, radius
+ * PYAAS brand theme. Palette is the PYAAS pink identity (milk white +
+ * rose/deep-pink #F36CB5 primary CTA, berry #D63C95 secondary/success and
+ * restrained gold for badges), matching the PYAAS SAATHI operator app so
+ * both apps share one identity. Type, spacing, radius
  * and shadow scales are shared with the sibling PYAAS app so both apps feel
  * equally premium. Solid constant colours only, no gradients anywhere.
  */
 export const colors = {
   milk: '#FFFFFF',        // app background, pure white (Blinkit-style)
-  cream: '#FFF6EC',       // pale warm-cream surface (section headers, soft chips)
-  wash: '#FFF1E0',        // warm-cream fill for image tiles / steppers on white cards
+  cream: '#FFF1F8',       // pale warm-cream surface (section headers, soft chips)
+  wash: '#FBF0F6',        // warm-cream fill for image tiles / steppers on white cards
   // PARAG flame orange-red (#E8491D) and its tints
-  flameSoft: '#FBD9CC',
-  flame: '#F0855C',
-  flameDeep: '#E8491D',
+  flameSoft: '#FBC9E6',
+  flame: '#F491CC',
+  flameDeep: '#F36CB5',
   // ribbon blue, tertiary accent (badges / links / secondary buttons)
-  blue: '#2E5AAC',
-  blueSoft: 'rgba(46,90,172,0.12)',
+  blue: '#D63C95',
+  blueSoft: 'rgba(214,60,149,0.12)',
   // sun gold, general accent for badges only (no membership tier in this app)
-  gold: '#FDB813',
-  goldDeep: '#B07E08',
-  goldSoft: '#FFF3D1',
-  ink: '#241A15',
-  inkSoft: '#5E5047',
-  inkMute: '#9A8D83',
-  inkDeep: '#241A15',
-  line: '#EDE4DA',
+  gold: '#C9A24B',
+  goldDeep: '#A87E2E',
+  goldSoft: '#F6ECD2',
+  ink: '#2E2329',
+  inkSoft: '#5E5057',
+  inkMute: '#9A8C92',
+  inkDeep: '#2E2329',
+  line: '#ECE2DC',
   white: '#FFFFFF',
   // semantic
-  success: '#2E5AAC',
-  danger: '#C62828',
-  overlay: 'rgba(36,26,21,0.45)',
+  success: '#D63C95',
+  danger: '#E04B6E',
+  overlay: 'rgba(42,16,24,0.45)',
   // premium token aliases (intent-named)
-  action: '#E8491D',   // primary CTAs (== flameDeep)
+  action: '#F36CB5',   // primary CTAs (== flameDeep)
   onAction: '#FFFFFF', // text/icons on a primary CTA
 };
 

@@ -216,7 +216,7 @@ export default function Subscriptions() {
             <TextSemi style={{ fontSize: 16 }}>New subscription</TextSemi>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {subscribable.map((p) => (
-                <Tap key={p.id} onPress={() => setPid(p.id)} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.pill, backgroundColor: pid === p.id ? colors.ink : colors.milk, borderWidth: 1, borderColor: pid === p.id ? colors.ink : colors.line }}>
+                <Tap key={p.id} onPress={() => setPid(p.id)} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.pill, backgroundColor: pid === p.id ? colors.action : colors.milk, borderWidth: 1, borderColor: pid === p.id ? colors.action : colors.line }}>
                   <TextMed color={pid === p.id ? colors.white : colors.inkSoft} style={{ fontSize: 13 }}>{p.name} {p.variant}</TextMed>
                 </Tap>
               ))}

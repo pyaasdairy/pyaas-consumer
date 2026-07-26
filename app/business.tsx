@@ -62,7 +62,7 @@ export default function Business() {
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {KINDS.map((k) => (
-            <Tap key={k.key} onPress={() => setKind(k.key)} style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 14, borderRadius: radius.md, backgroundColor: kind === k.key ? colors.ink : colors.white, borderWidth: 1, borderColor: kind === k.key ? colors.ink : colors.line }}>
+            <Tap key={k.key} onPress={() => setKind(k.key)} style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 14, borderRadius: radius.md, backgroundColor: kind === k.key ? colors.action : colors.white, borderWidth: 1, borderColor: kind === k.key ? colors.action : colors.line }}>
               <Ionicons name={k.icon} size={20} color={kind === k.key ? colors.white : colors.inkSoft} />
               <TextMed color={kind === k.key ? colors.white : colors.inkSoft} style={{ fontSize: 12.5 }}>{k.label}</TextMed>
             </Tap>

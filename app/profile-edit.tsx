@@ -139,7 +139,7 @@ export default function ProfileEdit() {
 
 function Chip({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
   return (
-    <Tap onPress={onPress} style={{ flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: radius.md, backgroundColor: active ? colors.ink : colors.white, borderWidth: 1, borderColor: active ? colors.ink : colors.line }}>
+    <Tap onPress={onPress} style={{ flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: radius.md, backgroundColor: active ? colors.action : colors.white, borderWidth: 1, borderColor: active ? colors.action : colors.line }}>
       <TextMed color={active ? colors.white : colors.inkSoft} style={{ fontSize: 13.5 }}>{label}</TextMed>
     </Tap>
   );

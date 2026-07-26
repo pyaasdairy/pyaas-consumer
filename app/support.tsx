@@ -71,7 +71,7 @@ export default function Support() {
           <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
         </Tap>
 
-        <Tap onPress={() => Linking.openURL(SUPPORT_EMAIL)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.ink, borderRadius: radius.lg, padding: spacing.md, ...shadow.soft }}>
+        <Tap onPress={() => Linking.openURL(SUPPORT_EMAIL)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.action, borderRadius: radius.lg, padding: spacing.md, ...shadow.soft }}>
           <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="mail-outline" size={20} color={colors.white} />
           </View>
@@ -104,7 +104,7 @@ export default function Support() {
             <TextSemi style={{ fontSize: 16 }}>Raise a complaint</TextSemi>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {TYPES.map((t) => (
-                <Tap key={t.key} onPress={() => setKind(t.key)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '47%', flexGrow: 1, paddingVertical: 12, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: kind === t.key ? colors.ink : colors.white, borderWidth: 1, borderColor: kind === t.key ? colors.ink : colors.line }}>
+                <Tap key={t.key} onPress={() => setKind(t.key)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '47%', flexGrow: 1, paddingVertical: 12, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: kind === t.key ? colors.action : colors.white, borderWidth: 1, borderColor: kind === t.key ? colors.action : colors.line }}>
                   <Ionicons name={t.icon as any} size={18} color={kind === t.key ? colors.white : colors.inkSoft} />
                   <TextMed color={kind === t.key ? colors.white : colors.inkSoft} style={{ fontSize: 13 }}>{t.label}</TextMed>
                 </Tap>

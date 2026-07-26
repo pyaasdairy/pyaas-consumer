@@ -124,7 +124,7 @@ export default function Shop() {
             {/* Low-wallet nudge · only when balance is low */}
             {lowBalance ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-                <Tap onPress={() => router.push('/(tabs)/wallet')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.ink, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
+                <Tap onPress={() => router.push('/(tabs)/wallet')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
                   <Ionicons name="wallet" size={18} color={colors.gold} />
                   <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.white}>Low wallet balance. Top up so tomorrow's delivery is not paused.</TextMed>
                   <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.8)" />
