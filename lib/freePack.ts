@@ -137,7 +137,26 @@ export async function claimFreePack(phone: string): Promise<{ ok: boolean; value
     }
   }
   await markSeen();
+  notifyFreePackChanged();
   return { ok: true, value: FREE_PACK_VALUE, subscriptionId };
+}
+
+// ── Change listeners ─────────────────────────────────────────────────────────
+// The claim can happen from the boot modal while the home tab stays focused, so
+// focus-based rechecks never fire. Screens showing claim-dependent UI (the home
+// "Claim your free pack" card) subscribe here and re-check on every claim.
+const freePackListeners = new Set<() => void>();
+
+/** Subscribe to free-pack claims; returns an unsubscribe. */
+export function onFreePackChanged(cb: () => void): () => void {
+  freePackListeners.add(cb);
+  return () => freePackListeners.delete(cb);
+}
+
+function notifyFreePackChanged() {
+  for (const cb of freePackListeners) {
+    try { cb(); } catch { /* listener errors never break the claim */ }
+  }
 }
 
 type Snooze = { dismissals: number; snoozed_until: string };

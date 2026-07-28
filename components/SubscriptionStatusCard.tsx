@@ -53,8 +53,12 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
 
   if (!loaded) return null;
 
-  const active = subs.filter((s) => s.status === 'active');
-  const paused = subs.filter((s) => s.status === 'paused');
+  // Newest first — the free-pack auto-subscription should lead the card even
+  // when an older subscription is also live.
+  const byNewest = (a: Subscription, b: Subscription) =>
+    String(b.created_at ?? b.start_date ?? '').localeCompare(String(a.created_at ?? a.start_date ?? ''));
+  const active = subs.filter((s) => s.status === 'active').sort(byNewest);
+  const paused = subs.filter((s) => s.status === 'paused').sort(byNewest);
 
   // ── No subscription at all ─────────────────────────────────────────────────
   if (!active.length && !paused.length) {

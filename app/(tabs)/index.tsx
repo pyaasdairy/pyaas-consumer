@@ -21,12 +21,12 @@ import { PRODUCTS, CATEGORIES, mostOrderedProducts, getProduct, type Category } 
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
-import { freePackEligible, FREE_PACK_DAILY_PRICE, FREE_PACK_DAYS } from '../../lib/freePack';
+import { freePackEligible, onFreePackChanged, FREE_PACK_DAILY_PRICE, FREE_PACK_DAYS } from '../../lib/freePack';
 import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
 import { useAuth } from '../../lib/auth';
 
-const TAAZA = require('../../assets/products/taaza.png');
+const TAAZA = require('../../assets/products/pyaas-toned-pouch.png');
 
 // Ionicons for each catalog category (outline set), used in the category rail.
 const CAT_ICON: Record<string, string> = {
@@ -48,7 +48,7 @@ const CAT_ICON: Record<string, string> = {
 // Small real product photo per category for the category rail (All keeps the
 // grid icon). Reuses the bundled pack shots.
 const CAT_IMAGE: Record<string, ReturnType<typeof require>> = {
-  milk: require('../../assets/products/taaza.png'),
+  milk: require('../../assets/products/pyaas-toned-pouch.png'),
   dahi: require('../../assets/products/dahi-cup.png'),
   paneer: require('../../assets/products/paneer.png'),
   ghee: require('../../assets/products/ghee.png'),
@@ -103,7 +103,10 @@ export default function Shop() {
         })
         .catch(() => { /* signed out / offline — show nothing */ });
       recheckClaim();
-      return () => { on = false; };
+      // The boot modal can claim while home stays focused (no focus change) —
+      // subscribe so the claim card hides the moment ANY path claims the pack.
+      const off = onFreePackChanged(recheckClaim);
+      return () => { on = false; off(); };
     }, [recheckClaim])
   );
   const onScroll = useHideTabBarOnScroll(); // hides the header + bottom bar + tab bar on scroll-down

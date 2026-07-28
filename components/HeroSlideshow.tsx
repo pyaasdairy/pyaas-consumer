@@ -18,8 +18,9 @@ import { Tap, Pill } from './ui';
  * through to the out-of-stock SKU (wishlist tap captures a restock lead).
  */
 const SLIDES: { img: ReturnType<typeof require>; product: string; pyaas?: boolean }[] = [
-  // PYAAS brand banner — full-bleed creative (renders 'cover' like PARAG art).
-  { img: require('../assets/creatives/creative-pyaas.png'), product: 'pyaas-a2-1l' },
+  // NOTE: creative-pyaas.png is retired — its artwork bakes a "Now on PARAG"
+  // pill into the pixels (made for the cross-listing era). The pure PYAAS pack
+  // shots below carry the brand slides instead.
   { img: require('../assets/creatives/creative-milk.png'), product: 'taaza-1l' },
   { img: require('../assets/products/pyaas-a2-1l.png'), product: 'pyaas-a2-1l', pyaas: true },
   { img: require('../assets/creatives/creative-dairy.png'), product: 'paneer-vac-200g' },

@@ -14,7 +14,7 @@ import { formatDeliveryWindow } from '../lib/dates';
 import { useAuth } from '../lib/auth';
 import { useWallet } from '../store/wallet';
 
-const TAAZA = require('../assets/products/taaza.png');
+const TAAZA = require('../assets/products/pyaas-toned-pouch.png');
 const DELIVERY_WINDOW = '06:00-07:00'; // matches placeOrder's stamped window
 
 type Step = 'intro' | 'address' | 'confirm' | 'done';
