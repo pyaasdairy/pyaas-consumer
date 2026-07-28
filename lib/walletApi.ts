@@ -466,6 +466,20 @@ export async function addPromoCredit(
   const amt = money(amount);
   if (amt <= 0) return settledAvailable(rows);
   const refId = opts?.ref_id ?? newId('rwd');
+  // SERVER-FIRST: with a backend configured the app displays the SERVER wallet,
+  // so a local-only promo row would be invisible money. POST /wallet/promo
+  // credits the REWARDS bucket exactly-once by ref; the local ledger below
+  // stays the offline fallback.
+  if (isBackendConfigured()) {
+    try {
+      const view = await api.post<{ available?: number }>('/wallet/promo', {
+        amount: amt,
+        ref: refId,
+        remark: opts?.remark ?? `Reward (+₹${amt})`,
+      });
+      if (view && typeof view.available === 'number') return view.available;
+    } catch { /* offline / older server — fall through to the local ledger */ }
+  }
   if (opts?.ref_id && hasEntryFor(rows, refId)) return settledAvailable(rows);
   const created = await append(uid, [
     {
