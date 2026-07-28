@@ -78,6 +78,9 @@ export function DeliveryStrip() {
               key={d.i}
               haptic={false}
               onPress={() => { haptics.select(); setSel(d.i); }}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${d.rel}, ${d.date}, ${dayCount > 0 ? `${dayCount} ${dayCount === 1 ? 'delivery' : 'deliveries'} scheduled` : 'no deliveries scheduled'}`}
               style={{
                 width: 54,
                 alignItems: 'center',

@@ -22,6 +22,18 @@ export const CARE_PHONE: string = process.env.EXPO_PUBLIC_CARE_PHONE || '1800 12
 /** Digits-only `tel:` variant — DERIVED from CARE_PHONE, never duplicated. */
 export const CARE_PHONE_TEL: string = CARE_PHONE.replace(/\D/g, '');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER — founder to supply the real PYAAS WhatsApp Business number.
+// A SEPARATE seam from CARE_PHONE on purpose: wa.me links require FULL
+// INTERNATIONAL format (country code + subscriber number, digits only, no '+'),
+// and a domestic toll-free 1800 line can neither be parsed by wa.me nor host
+// WhatsApp Business — so this must NEVER be derived from CARE_PHONE.
+// Override per build with EXPO_PUBLIC_CARE_WHATSAPP (e.g. "919123456780").
+// ─────────────────────────────────────────────────────────────────────────────
+export const WHATSAPP_NUMBER: string = (process.env.EXPO_PUBLIC_CARE_WHATSAPP || '919123456780').replace(/\D/g, '');
+/** Ready-to-open WhatsApp chat link for the support number. */
+export const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
+
 // PLACEHOLDER — founder to confirm the real PYAAS support inbox and website.
 export const CARE_EMAIL = 'care@pyaasdairy.in';
 export const SITE_URL = 'https://www.pyaasdairy.in';

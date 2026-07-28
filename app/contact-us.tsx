@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../lib/theme';
 import { DocScreen, DocCard, DocLinkRow } from '../components/DocScreen';
 
-import { CARE_EMAIL, CARE_PHONE, CARE_PHONE_TEL, SITE_URL } from '../lib/support';
+import { CARE_EMAIL, CARE_PHONE, CARE_PHONE_TEL, SITE_URL, WHATSAPP_URL } from '../lib/support';
 
 export default function ContactUs() {
   return (
@@ -35,9 +35,10 @@ export default function ContactUs() {
         />
         <DocLinkRow
           icon={<Ionicons name="logo-whatsapp" size={20} color={colors.flameDeep} />}
-          label="WhatsApp"
+          label="WhatsApp (placeholder)"
           value="Chat with us for order updates"
-          href={`https://wa.me/${CARE_PHONE_TEL}`}
+          // wa.me needs a FULL international number — never the toll-free digits.
+          href={WHATSAPP_URL}
         />
         <DocLinkRow
           icon={<Ionicons name="globe-outline" size={20} color={colors.flameDeep} />}

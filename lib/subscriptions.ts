@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { parseISO, addDaysISO } from './dates';
+import { parseISO, addDaysISO, todayISO } from './dates';
 import { requireUserId } from './session';
 import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 
@@ -116,7 +116,9 @@ export async function createSubscription(params: {
   startDate?: string;
 }): Promise<string> {
   const uid = await requireUserId();
-  const start = params.startDate ?? new Date().toISOString().slice(0, 10);
+  // LOCAL calendar date (lib/dates), never toISOString(): UTC would be
+  // yesterday between local midnight and 05:30 IST and phase-shift the cadence.
+  const start = params.startDate ?? todayISO();
   const id = newId('sub');
   const row: Subscription = {
     id,
@@ -139,6 +141,20 @@ export async function createSubscription(params: {
 export async function setSubscriptionStatus(id: string, status: Subscription['status']): Promise<void> {
   const uid = await requireUserId();
   await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
+}
+
+/**
+ * Reactivate a paused subscription with a fresh schedule anchor: back to
+ * 'active' AND start/next-delivery reset to `startDate` (deliveries resume
+ * from that day, cadence re-anchored — not back-dated to the old start).
+ */
+export async function reactivateSubscription(id: string, startDate: string): Promise<void> {
+  const uid = await requireUserId();
+  await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, {
+    status: 'active',
+    start_date: startDate,
+    next_delivery_date: startDate,
+  });
 }
 
 export async function listVacations(): Promise<Vacation[]> {

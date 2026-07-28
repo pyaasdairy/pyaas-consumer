@@ -38,21 +38,27 @@ export function FlipCard({
   const pausedRef = useRef(false);
 
   // Timer-driven flips run on the JS side (a slow 2.5s cadence, not a gesture),
-  // so plain refs + state are enough and pointerEvents stays in sync for free.
+  // so plain refs + state are enough. The pointerEvents swap is deferred to the
+  // 90° MIDPOINT of the flip: until then the outgoing face is still the one the
+  // user visually sees (rotation < 90°), so it must keep receiving taps — an
+  // instant swap would let the invisible face steal a tap on the CTA.
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
+    let midpoint: ReturnType<typeof setTimeout> | null = null;
     const kickoff = setTimeout(() => {
       interval = setInterval(() => {
         if (pausedRef.current) return;
         const next = !showingBackRef.current;
         showingBackRef.current = next;
-        setShowingBack(next);
         flip.value = withTiming(next ? 1 : 0, { duration: FLIP_DURATION, easing: Easing.inOut(Easing.cubic) });
+        if (midpoint) clearTimeout(midpoint);
+        midpoint = setTimeout(() => setShowingBack(next), FLIP_DURATION / 2);
       }, flipEvery);
     }, (index % 8) * STAGGER_MS);
     return () => {
       clearTimeout(kickoff);
       if (interval) clearInterval(interval);
+      if (midpoint) clearTimeout(midpoint);
     };
   }, [flip, flipEvery, index]);
 

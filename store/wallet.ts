@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { getUserId } from '../lib/session';
-import { getBalances } from '../lib/walletApi';
+import { getBalances, replayPendingPromos } from '../lib/walletApi';
 
 /**
  * PYAAS wallet balance store. Reads the DERIVED balances off the append-only
@@ -34,6 +34,10 @@ export const useWallet = create<WalletState>((set) => ({
         set({ ...ZERO, loading: false });
         return;
       }
+      // Backend mode: land any parked promo credits (idempotent by ref) BEFORE
+      // reading the server balance, so a promo that failed at claim time shows
+      // up the moment the wallet next refreshes. No-op offline / local mode.
+      await replayPendingPromos().catch(() => { /* still offline — retried next refresh */ });
       const b = await getBalances();
       set({
         balance: b.available,

@@ -44,6 +44,10 @@ export type MemberDairy = {
  * Seeded member district milk unions across Uttar Pradesh. Names, districts and
  * coordinates are real UP district-union locations; the society/capacity numbers
  * are representative demo figures and are labelled as such in the UI copy.
+ *
+ * BRANDING (deliberate, not a leftover): plant lines keep their REAL facility
+ * names ('Parag Dairy Plant, …' — that is what the building is called and what
+ * a maps deep-link must find); all app/brand-experience copy says PYAAS.
  */
 const SEED: MemberDairy[] = [
   {

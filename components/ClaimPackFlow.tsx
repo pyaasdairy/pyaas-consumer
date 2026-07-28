@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Modal, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +17,10 @@ import { useWallet } from '../store/wallet';
 const TAAZA = require('../assets/products/pyaas-toned-pouch.png');
 const DELIVERY_WINDOW = '06:00-07:00'; // matches placeOrder's stamped window
 
-type Step = 'intro' | 'address' | 'confirm' | 'done';
+// 'done' is reached ONLY on a real successful claim. A signed-out member lands
+// on 'signin'; a failed gate (phone/device already claimed) lands on
+// 'ineligible' with the gate's reason — never a false delivery promise.
+type Step = 'intro' | 'address' | 'confirm' | 'done' | 'signin' | 'ineligible';
 
 /**
  * "Claim my pack" onboarding — the subscription funnel. Claiming now grants
@@ -32,6 +35,7 @@ type Step = 'intro' | 'address' | 'confirm' | 'done';
  */
 export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: { visible: boolean; onClose: () => void; onClaimed?: () => void; onStartShopping?: () => void }) {
   const { profile } = useAuth();
+  const router = useRouter();
   const refreshWallet = useWallet((s) => s.refresh);
   const [step, setStep] = useState<Step>('intro');
   const [line1, setLine1] = useState('');
@@ -40,8 +44,12 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locBusy, setLocBusy] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Synchronous re-entry guard: setBusy only disables the button after a
+  // re-render, so a fast double-tap would run confirm() twice without this ref.
+  const busyRef = useRef(false);
   const [err, setErr] = useState('');
   const [subStarted, setSubStarted] = useState(false);
+  const [blockReason, setBlockReason] = useState('');
 
   // Reset to a clean intro each time it opens (so a VIP re-open never prefills
   // the previous address).
@@ -54,6 +62,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
       setPincode('');
       setCoords(null);
       setSubStarted(false);
+      setBlockReason('');
     }
   }, [visible]);
 
@@ -70,25 +79,45 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   }
 
   async function confirm() {
+    if (busyRef.current) return; // synchronous double-tap guard
+    busyRef.current = true;
     setBusy(true); setErr('');
     try {
+      const phone = profile?.phone ?? '';
+      // No signed-in phone → nothing to claim against. Never show the delivery
+      // promise; send the member to sign in instead.
+      if (!phone) { setStep('signin'); return; }
       const addr = await addAddress({ label: 'Home', line1: line1.trim(), line2: null, city: city.trim() || 'Lucknow', pincode: pincode.trim().replace(/\D/g, ''), is_default: true });
       if (coords) { try { await setAddressCoords(addr.id, coords); } catch { /* non-fatal */ } }
-      const phone = profile?.phone ?? '';
       // Claim = promo credit + auto-started daily subscription (+ test top-up).
-      if (phone) {
-        try {
-          const r = await claimFreePack(phone);
-          setSubStarted(r.ok && !!r.subscriptionId);
-          await refreshWallet();
-        } catch { /* already claimed / non-fatal */ }
+      // The result decides the screen: only a REAL success reaches 'done'.
+      let r: Awaited<ReturnType<typeof claimFreePack>>;
+      try {
+        r = await claimFreePack(phone);
+      } catch (e: any) {
+        // Hard failure (signed out mid-flow / storage error): nothing was
+        // claimed, so it stays claimable — surface it and stay on this step.
+        if (/not signed in/i.test(String(e?.message ?? ''))) { setStep('signin'); return; }
+        setErr(e?.message ?? 'Could not claim just now. Please try again.');
+        return;
       }
+      if (!r.ok) {
+        // Gate rejected (phone/device already claimed): show WHY, no promises.
+        setBlockReason(r.reason ?? 'This free pack has already been claimed.');
+        setStep('ineligible');
+        return;
+      }
+      setSubStarted(!!r.subscriptionId);
+      try { await refreshWallet(); } catch { /* balance refreshes on next focus */ }
       haptics.confirm();
       setStep('done');
       onClaimed?.();
     } catch (e: any) {
       setErr(e?.message ?? 'Could not confirm just now. Please try again.');
-    } finally { setBusy(false); }
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   }
 
   return (
@@ -105,10 +134,18 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             </View>
             <Image source={TAAZA} style={{ width: 120, height: 120 }} contentFit="contain" />
             <Serif color={colors.white} style={{ fontSize: 22, textAlign: 'center', marginTop: 4 }}>
-              {step === 'done' ? 'All set, see you at dawn' : `${FREE_PACK_DAYS} mornings of free milk`}
+              {step === 'done'
+                ? 'All set, see you at dawn'
+                : step === 'ineligible'
+                  ? 'Already claimed'
+                  : step === 'signin'
+                    ? 'Sign in to claim'
+                    : `${FREE_PACK_DAYS} mornings of free milk`}
             </Serif>
             <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
-              PYAAS Taaza · 500 ml daily · first {FREE_PACK_DAYS} days on us
+              {step === 'ineligible' || step === 'signin'
+                ? 'PYAAS Taaza · 500 ml fresh every morning'
+                : `PYAAS Taaza · 500 ml daily · first ${FREE_PACK_DAYS} days on us`}
             </TextBody>
           </View>
 
@@ -178,6 +215,35 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                     : ' We will notify you when the rider sets off.'}
                 </TextBody>
                 <PrimaryButton title="Start shopping" onPress={onStartShopping ?? onClose} />
+              </Animated.View>
+            ) : null}
+
+            {step === 'ineligible' ? (
+              /* Gate rejected (phone/device already used) — say WHY, promise nothing. */
+              <Animated.View entering={FadeInDown.duration(300)} style={{ gap: spacing.md, alignItems: 'center' }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="gift-outline" size={30} color={colors.flameDeep} />
+                </View>
+                <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
+                  {blockReason} You can still get PYAAS Taaza every morning — a daily subscription is just {rupee(FREE_PACK_DAILY_PRICE)}/day, pause anytime.
+                </TextBody>
+                <PrimaryButton title="Start shopping" onPress={onStartShopping ?? onClose} />
+              </Animated.View>
+            ) : null}
+
+            {step === 'signin' ? (
+              /* No signed-in phone — the claim is per phone number, so sign in first. */
+              <Animated.View entering={FadeInDown.duration(300)} style={{ gap: spacing.md, alignItems: 'center' }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person-circle-outline" size={32} color={colors.flameDeep} />
+                </View>
+                <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
+                  Your free pack is claimed against your phone number. Sign in (or finish setting up your profile) and come back — the offer will be waiting.
+                </TextBody>
+                <PrimaryButton title="Sign in" onPress={() => { onClose(); router.replace('/(auth)/sign-in'); }} />
+                <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
+                  <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Not now</TextMed>
+                </Tap>
               </Animated.View>
             ) : null}
           </ScrollView>

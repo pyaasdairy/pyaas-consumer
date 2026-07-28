@@ -106,6 +106,12 @@ export function normalizeBatchCode(raw: string | null | undefined): string | nul
 // Real-sounding UP member district dairy unions under the PARAG federation. All
 // tests pass (a batch only forms from QA-approved collections). Codes follow the
 // on-pack format PARAG-<UNION>-<YYYYMMDD>-<PRODUCT>-<seq>.
+//
+// BRANDING (deliberate, not a leftover): the PYAAS provenance story is "PYAAS
+// milk is packed at PARAG federation plants", so the ONLY user-visible Parag
+// strings in the app are (a) on-pack batch codes ('PARAG-…' — they must match
+// what is printed on the pouch) and (b) real facility names ('Parag Dairy
+// Plant, …'). Everything that names the APP/brand experience says PYAAS.
 
 function tests(fat: number, snf: number): QualityTest[] {
   return [

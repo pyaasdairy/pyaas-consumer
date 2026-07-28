@@ -4,7 +4,7 @@ import { requireUserId } from './session';
 import { addPromoCredit, rechargeWallet } from './walletApi';
 import { WALLET_TEST_TOPUP, testTopup } from './razorpay';
 import { isBackendConfigured } from './apiClient';
-import { createSubscription, listSubscriptions } from './subscriptions';
+import { createSubscription, listSubscriptions, reactivateSubscription } from './subscriptions';
 import { tomorrowISO } from './dates';
 import { getProduct } from '../constants/products';
 
@@ -84,33 +84,54 @@ export async function freePackEligible(phone: string): Promise<{ eligible: boole
   return { eligible: true };
 }
 
-/** Claim the 2-day free pack for the signed-in phone. Idempotent + guarded.
- *  Credits ₹58 promo, auto-starts the taaza-500ml DAILY subscription (from
- *  tomorrow) and, in test mode, tops the wallet up so day 3 charges cleanly. */
-export async function claimFreePack(phone: string): Promise<{ ok: boolean; value: number; reason?: string; subscriptionId?: string }> {
+// Module-level in-flight mutex: a double-tap (or the flow mounted on several
+// screens at once) must never run two claims concurrently — the second caller
+// simply awaits the first claim's result. Single JS thread makes this promise
+// latch a complete guard against the check-then-act race over AsyncStorage.
+let claimInFlight: Promise<{ ok: boolean; value: number; reason?: string; subscriptionId?: string }> | null = null;
+
+/** Claim the 2-day free pack for the signed-in phone. Idempotent + guarded
+ *  (serialized — concurrent calls share one claim). Credits ₹58 promo,
+ *  auto-starts the taaza-500ml DAILY subscription (from tomorrow) and, in test
+ *  mode, tops the wallet up so day 3 charges cleanly. */
+export function claimFreePack(phone: string): Promise<{ ok: boolean; value: number; reason?: string; subscriptionId?: string }> {
+  if (!claimInFlight) {
+    claimInFlight = doClaimFreePack(phone).finally(() => { claimInFlight = null; });
+  }
+  return claimInFlight;
+}
+
+async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: number; reason?: string; subscriptionId?: string }> {
   const uid = await requireUserId();
   const gate = await freePackEligible(phone);
   if (!gate.eligible) return { ok: false, value: 0, reason: gate.reason };
   const deviceId = await getDeviceId();
   const p = normPhone(phone);
-  // Record the claim (device-global) before crediting.
-  await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
-    phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
-  });
-  // (a) Grant the 2-day promo credit, idempotent on the phone so a race cannot double-credit.
+  // (a) Grant the 2-day promo credit FIRST, idempotent on the phone. In backend
+  // mode this either lands on the server or is durably parked for replay
+  // (walletApi pending_promos); a HARD failure throws before the claim row is
+  // written below, so a failed claim stays claimable instead of burning the
+  // one-per-device gate with no money behind it.
   await addPromoCredit(FREE_PACK_VALUE, {
     ref_id: `free_pack_2day:${p}`,
     remark: `Free pack · ${FREE_PACK_DAYS} days of PYAAS Taaza 500 ml`,
   });
+  // Record the claim (device-global) only now that the credit path succeeded.
+  await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
+    phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
+  });
   // (b) Auto-start the daily subscription (first delivery tomorrow). Days 1–2
   // are covered by the promo credit; from day 3 the wallet pays and it keeps
   // running until paused/cancelled. Reuses an existing daily sub for the SKU
-  // instead of doubling the member's milk.
+  // instead of doubling the member's milk — and REACTIVATES it (fresh start
+  // date, deliveries from tomorrow) if it was paused, so "your subscription is
+  // LIVE" is never reported over a sub that would deliver nothing.
   let subscriptionId: string | undefined;
   try {
     const existing = await listSubscriptions();
     const dup = existing.find((s) => s.product_id === FREE_PACK_PRODUCT_ID && s.frequency === 'daily' && s.status !== 'cancelled');
     if (dup) {
+      if (dup.status === 'paused') await reactivateSubscription(dup.id, tomorrowISO());
       subscriptionId = dup.id;
     } else {
       const sku = getProduct(FREE_PACK_PRODUCT_ID);
@@ -131,9 +152,12 @@ export async function claimFreePack(phone: string): Promise<{ ok: boolean; value
       if (isBackendConfigured()) await testTopup(TEST_TOPUP_AMOUNT);
       else await rechargeWallet(TEST_TOPUP_AMOUNT, 'test', topupRef);
     } catch {
-      // Server path failed (offline / non-dev server): fall back to the local
-      // ledger so the demo still works; idempotent on the phone-scoped ref.
-      try { await rechargeWallet(TEST_TOPUP_AMOUNT, 'test', topupRef); } catch { /* non-fatal */ }
+      // Backend-mode failure is left alone (a local row would be invisible
+      // money next to the server wallet); this is a dev convenience only.
+      // In local mode, retry the ledger write once — idempotent on the ref.
+      if (!isBackendConfigured()) {
+        try { await rechargeWallet(TEST_TOPUP_AMOUNT, 'test', topupRef); } catch { /* non-fatal */ }
+      }
     }
   }
   await markSeen();

@@ -456,6 +456,47 @@ export async function refundToWallet(
   return created[created.length - 1].closing_balance;
 }
 
+// ── Pending promos (backend mode durability) ─────────────────────────────────
+// With a backend configured the SERVER wallet is what the app displays, so a
+// promo that fails to POST must never fall back to the local ledger (it would
+// be invisible money that also trips the auto-pause). Instead the credit is
+// parked as a durable pending record and REPLAYED — idempotent by ref, the
+// server enforces exactly-once — on every wallet refresh until it lands.
+const PENDING_PROMOS_TABLE = 'pending_promos';
+
+export type PendingPromo = { ref: string; amount: number; remark: string; created_at: string };
+
+/** Durably park a promo credit that could not reach the server yet. */
+async function recordPendingPromo(uid: string, p: Omit<PendingPromo, 'created_at'>): Promise<void> {
+  const rows = await getRows<PendingPromo>(PENDING_PROMOS_TABLE, uid);
+  if (rows.some((r) => r.ref === p.ref)) return; // already parked — idempotent
+  await setRows(PENDING_PROMOS_TABLE, uid, [...rows, { ...p, created_at: new Date().toISOString() }]);
+}
+
+/**
+ * Replay parked promo credits against POST /wallet/promo (exactly-once by ref
+ * server-side). A row is removed only once the server accepts it; failures keep
+ * it parked for the next refresh. Returns how many landed.
+ */
+export async function replayPendingPromos(): Promise<number> {
+  if (!isBackendConfigured()) return 0;
+  const uid = await requireUserId().catch(() => null);
+  if (!uid) return 0;
+  const rows = await getRows<PendingPromo>(PENDING_PROMOS_TABLE, uid);
+  if (rows.length === 0) return 0;
+  const landed: string[] = [];
+  for (const p of rows) {
+    try {
+      await api.post('/wallet/promo', { amount: money(p.amount), ref: p.ref, remark: p.remark });
+      landed.push(p.ref);
+    } catch { /* still offline / server error — keep parked */ }
+  }
+  if (landed.length > 0) {
+    await setRows(PENDING_PROMOS_TABLE, uid, rows.filter((r) => !landed.includes(r.ref)));
+  }
+  return landed.length;
+}
+
 /** Add a promotional credit (reward / cashback) to the PROMO balance. */
 export async function addPromoCredit(
   amount: number,
@@ -466,19 +507,27 @@ export async function addPromoCredit(
   const amt = money(amount);
   if (amt <= 0) return settledAvailable(rows);
   const refId = opts?.ref_id ?? newId('rwd');
+  const remark = opts?.remark ?? `Reward (+₹${amt})`;
   // SERVER-FIRST: with a backend configured the app displays the SERVER wallet,
   // so a local-only promo row would be invisible money. POST /wallet/promo
-  // credits the REWARDS bucket exactly-once by ref; the local ledger below
-  // stays the offline fallback.
+  // credits the REWARDS bucket exactly-once by ref. On failure the credit is
+  // parked durably (NOT written to the local ledger) and replayed — idempotent
+  // by ref — on the next wallet refresh, so it can never be silently lost.
   if (isBackendConfigured()) {
     try {
       const view = await api.post<{ available?: number }>('/wallet/promo', {
         amount: amt,
         ref: refId,
-        remark: opts?.remark ?? `Reward (+₹${amt})`,
+        remark,
       });
       if (view && typeof view.available === 'number') return view.available;
-    } catch { /* offline / older server — fall through to the local ledger */ }
+      return (await getBalances()).available;
+    } catch {
+      // Offline / 5xx: park it durably. If even this write throws, the error
+      // propagates so the caller knows the credit did NOT land anywhere.
+      await recordPendingPromo(uid, { ref: refId, amount: amt, remark });
+      return (await getBalances().catch(() => ({ available: 0 }))).available;
+    }
   }
   if (opts?.ref_id && hasEntryFor(rows, refId)) return settledAvailable(rows);
   const created = await append(uid, [

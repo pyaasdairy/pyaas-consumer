@@ -22,6 +22,7 @@ import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
 import { freePackEligible, onFreePackChanged, FREE_PACK_DAILY_PRICE, FREE_PACK_DAYS } from '../../lib/freePack';
+import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
 import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
 import { useAuth } from '../../lib/auth';
@@ -97,17 +98,28 @@ export default function Shop() {
   useFocusEffect(
     useCallback(() => {
       let on = true;
-      listOrders()
-        .then((os) => {
-          if (on) setActiveOrders(os.filter((o) => !['delivered', 'cancelled'].includes(o.status)));
+      const loadOrders = () =>
+        listOrders()
+          .then((os) => {
+            if (on) setActiveOrders(os.filter((o) => !['delivered', 'cancelled'].includes(o.status)));
+          })
+          .catch(() => { /* signed out / offline — show nothing */ });
+      loadOrders();
+      // SUBSCRIPTION SWEEP: turn today's due subscriptions into real morning
+      // orders (idempotent per sub+day). Runs on launch + every home focus,
+      // non-blocking and error-soft; when it places anything, re-pull the
+      // wallet + the order strip so the new delivery shows immediately.
+      void sweepDueSubscriptions()
+        .then((placed) => {
+          if (placed > 0 && on) { void refreshWallet(); loadOrders(); }
         })
-        .catch(() => { /* signed out / offline — show nothing */ });
+        .catch(() => { /* error-soft — retried on next focus */ });
       recheckClaim();
       // The boot modal can claim while home stays focused (no focus change) —
       // subscribe so the claim card hides the moment ANY path claims the pack.
       const off = onFreePackChanged(recheckClaim);
       return () => { on = false; off(); };
-    }, [recheckClaim])
+    }, [recheckClaim, refreshWallet])
   );
   const onScroll = useHideTabBarOnScroll(); // hides the header + bottom bar + tab bar on scroll-down
 
@@ -378,6 +390,7 @@ function DeliveryModeToggle({ instant }: { instant: boolean }) {
         icon="sunny"
         label="Morning"
         sub="5–7:30 AM"
+        a11yLabel="Morning delivery, 5 to 7:30 AM slot"
       />
       <ModeSegment
         active={instant}
@@ -385,16 +398,20 @@ function DeliveryModeToggle({ instant }: { instant: boolean }) {
         icon="flash"
         label="Instant"
         badge="⚡ 90 मिनट/90 min"
+        a11yLabel="Instant delivery, 90 minutes"
       />
     </View>
   );
 }
 
-function ModeSegment({ active, onPress, icon, label, sub, badge }: { active: boolean; onPress: () => void; icon: any; label: string; sub?: string; badge?: string }) {
+function ModeSegment({ active, onPress, icon, label, sub, badge, a11yLabel }: { active: boolean; onPress: () => void; icon: any; label: string; sub?: string; badge?: string; a11yLabel?: string }) {
   return (
     <Tap
       haptic
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={a11yLabel ?? label}
       style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, backgroundColor: active ? colors.action : 'transparent' }}
     >
       <Ionicons name={icon} size={15} color={active ? colors.onAction : colors.flameDeep} />
@@ -405,7 +422,9 @@ function ModeSegment({ active, onPress, icon, label, sub, badge }: { active: boo
         ) : null}
         {badge ? (
           <View style={{ backgroundColor: active ? 'rgba(255,255,255,0.22)' : colors.flameSoft, borderRadius: radius.pill, paddingHorizontal: 5, paddingVertical: 1, marginTop: 1 }}>
-            <TextSemi color={active ? colors.onAction : colors.flameDeep} style={{ fontSize: 8.5, lineHeight: 11, letterSpacing: 0.2 }}>{badge}</TextSemi>
+            {/* lineHeight ≥ ~1.5× font size: Devanagari matras ("मिनट") clip on
+                Android under the previous 11px line box. */}
+            <TextSemi color={active ? colors.onAction : colors.flameDeep} style={{ fontSize: 8.5, lineHeight: 13, letterSpacing: 0.2 }}>{badge}</TextSemi>
           </View>
         ) : null}
       </View>
