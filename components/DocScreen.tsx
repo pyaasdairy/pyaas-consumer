@@ -9,7 +9,7 @@ import { Serif, TextBody, TextMed, TextSemi, Tap, BackButton } from './ui';
  * Shared layout for the consumer legal / policy / info screens (privacy, terms,
  * refunds, shipping, about, FSSAI, FAQ, contact). Keeps every mandatory page on
  * one honest, readable template so copy is the only thing that varies. Solid
- * colours only, no gradients. PARAG is a multi-dairy cooperative (Pradeshik
+ * colours only, no gradients. PYAAS sources from a multi-dairy cooperative network (Pradeshik
  * Cooperative Dairy Federation, UP), so copy never tells a single-farm story.
  */
 
@@ -74,7 +74,7 @@ export function DocScreen({
         ) : null}
 
         <View style={{ alignItems: 'center', gap: 3, marginTop: spacing.md }}>
-          <TextBody style={{ fontSize: 12 }}>PARAG · Pradeshik Cooperative Dairy Federation, UP</TextBody>
+          <TextBody style={{ fontSize: 12 }}>PYAAS · Fresh cooperative dairy, Uttar Pradesh</TextBody>
           <TextBody style={{ fontSize: 11.5 }}>App version {version}</TextBody>
         </View>
       </ScrollView>

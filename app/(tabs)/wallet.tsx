@@ -91,7 +91,7 @@ export default function Wallet() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Serif style={{ fontSize: 30 }}>PARAG Wallet</Serif>
+        <Serif style={{ fontSize: 30 }}>PYAAS Wallet</Serif>
         <Tap onPress={() => router.push('/wallet-statement')} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons name="receipt-outline" size={16} color={colors.flameDeep} />
           <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>Statement</TextMed>
@@ -243,7 +243,7 @@ export default function Wallet() {
         </Animated.View>
 
         <TextBody style={{ fontSize: 11, textAlign: 'center' }}>
-          Your PARAG wallet pays for every order and reflects instantly.
+          Your PYAAS wallet pays for every order and reflects instantly.
         </TextBody>
       </Animated.ScrollView>
     </View>

@@ -1,8 +1,8 @@
 /**
- * Admin gating for the PARAG consumer app. A tiny demo allowlist unlocks a
+ * Admin gating for the PYAAS consumer app. A tiny demo allowlist unlocks a
  * minimal Admin entry for the cooperative's owner / ops accounts. The full
  * operations surface (member district unions, batches, quality results, orders)
- * lives in the PARAG web admin console; this app only exposes an honest link
+ * lives in the PYAAS web admin console; this app only exposes an honest link
  * plus a couple of read-only diagnostics.
  *
  * Local-first: the allowlist ships in the bundle so gating works fully offline.
@@ -16,7 +16,7 @@
  * match. Keep this list short and honest (owner + ops only).
  */
 export const ADMIN_ALLOWLIST = {
-  emails: ['hello@paragdairy.app', 'admin@paragdairy.app'],
+  emails: ['care@pyaasdairy.in', 'admin@pyaasdairy.in'],
   phones: ['9000000001'],
 } as const;
 
@@ -32,5 +32,5 @@ export function isAdminUser(email?: string | null, phone?: string | null): boole
   return emailMatch || phoneMatch;
 }
 
-/** The hosted PARAG web admin console (placeholder until the real URL is live). */
-export const ADMIN_WEB_URL = 'https://www.paragdairy.com/admin';
+/** The hosted PYAAS web admin console (placeholder until the real URL is live). */
+export const ADMIN_WEB_URL = 'https://www.pyaasdairy.in/admin';

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Field, Tap, BackButton } from '../components/ui';
-import { SUPPORT, callCare } from '../lib/support';
+import { CARE_EMAIL, SITE_URL, SUPPORT, callCare } from '../lib/support';
 
 const TYPES = [
   { key: 'missing', label: 'Missing delivery', icon: 'bag-remove-outline' },
@@ -15,9 +15,9 @@ const TYPES = [
   { key: 'other', label: 'Something else', icon: 'help-circle-outline' },
 ];
 
-const SUPPORT_ADDRESS = 'hello@paragdairy.app';
-const SUPPORT_EMAIL = 'mailto:hello@paragdairy.app?subject=PYAAS%20support';
-const SUPPORT_SITE = 'https://www.paragdairy.com';
+const SUPPORT_ADDRESS = CARE_EMAIL;
+const SUPPORT_EMAIL = `mailto:${CARE_EMAIL}?subject=PYAAS%20support`;
+const SUPPORT_SITE = SITE_URL;
 
 export default function Support() {
   const insets = useSafeAreaInsets();
@@ -33,7 +33,7 @@ export default function Support() {
     setBusy(true); setErr('');
     try {
       // Placeholder: no support backend wired yet, so we acknowledge locally.
-      // When parag-api is live, POST this ticket (kind + detail) to a support
+      // When the backend (parag-api contract) is live, POST this ticket (kind + detail) to a support
       // endpoint instead.
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDone(true);
@@ -87,7 +87,7 @@ export default function Support() {
             <Ionicons name="globe-outline" size={20} color={colors.flameDeep} />
           </View>
           <View style={{ flex: 1 }}>
-            <TextSemi style={{ fontSize: 15 }}>Visit paragdairy.com</TextSemi>
+            <TextSemi style={{ fontSize: 15 }}>Visit pyaasdairy.in</TextSemi>
             <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>Help centre and order tracking</TextBody>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />

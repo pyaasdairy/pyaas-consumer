@@ -36,7 +36,7 @@ export default function InvoiceScreen() {
           buildInvoice(o, {
             type: 'tax',
             buyer: {
-              name: profile?.full_name || 'PARAG customer',
+              name: profile?.full_name || 'PYAAS customer',
               phone: profile?.phone ?? null,
               email: profile?.email ?? null,
               gstin: o.buyer_gstin ?? null,
@@ -110,7 +110,7 @@ export default function InvoiceScreen() {
           <TextBody color={colors.inkMute} style={{ fontSize: 11.5 }}>{s.address}</TextBody>
         </View>
 
-        {/* Goods manufactured by (PARAG) */}
+        {/* Goods manufactured by (manufacturer block) */}
         <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 3 }}>
           <TextBody color={colors.inkMute} style={{ fontSize: 11, letterSpacing: 0.5 }}>GOODS MANUFACTURED BY</TextBody>
           <TextSemi style={{ fontSize: 14 }}>{inv.manufacturer.name}</TextSemi>

@@ -12,7 +12,7 @@ import { isAdminUser, ADMIN_WEB_URL } from '../lib/admin';
  * Consumer-app Admin entry. Visible only to allow-listed admin accounts (see
  * lib/admin.ts). This screen stays deliberately minimal and honest: real ops
  * for the cooperative federation (member district unions, batches, quality
- * results, orders) live in the PARAG web admin console. Here we only offer a
+ * results, orders) live in the PYAAS web admin console. Here we only offer a
  * link out plus a couple of read-only build diagnostics.
  */
 export default function Admin() {
@@ -36,7 +36,7 @@ export default function Admin() {
             </View>
             <TextSemi style={{ fontSize: 16, marginTop: 10 }}>Not authorised</TextSemi>
             <TextBody color={colors.inkSoft} style={{ marginTop: 4 }}>
-              This area is for PARAG administrators only.
+              This area is for PYAAS administrators only.
             </TextBody>
           </View>
         ) : (
@@ -45,7 +45,7 @@ export default function Admin() {
               <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="shield-checkmark-outline" size={20} color={colors.flameDeep} />
               </View>
-              <TextSemi style={{ fontSize: 16, marginTop: 10 }}>PARAG admin console</TextSemi>
+              <TextSemi style={{ fontSize: 16, marginTop: 10 }}>PYAAS admin console</TextSemi>
               <TextBody color={colors.inkSoft} style={{ marginTop: 4 }}>
                 Full operations for the cooperative federation run in the web admin.
                 Manage member district unions, plants, batches, quality results and
@@ -65,7 +65,7 @@ export default function Admin() {
               <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
                 <StatusRow
                   label="Data source"
-                  value={backendLive ? 'PARAG API (live)' : 'On-device (demo)'}
+                  value={backendLive ? 'PYAAS API (live)' : 'On-device (demo)'}
                   ok={backendLive}
                 />
                 <StatusRow

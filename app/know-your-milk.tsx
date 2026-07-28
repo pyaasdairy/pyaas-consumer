@@ -125,7 +125,7 @@ function BatchPassport({ batch }: { batch: MilkBatch }) {
       <Animated.View entering={enterUp(40)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.cream, borderRadius: radius.lg, padding: spacing.md }}>
         <Ionicons name="people-circle-outline" size={22} color={colors.flameDeep} />
         <TextBody style={{ fontSize: 12.5, flex: 1 }}>
-          PARAG is the Pradeshik Cooperative Dairy Federation of Uttar Pradesh. Your pack was pooled from {batch.pouring_members.toLocaleString('en-IN')} pouring members across {batch.member_villages} member villages, then tested and packed at the union plant.
+          PYAAS milk comes from Uttar Pradesh's cooperative dairy network. Your pack was pooled from {batch.pouring_members.toLocaleString('en-IN')} pouring members across {batch.member_villages} member villages, then tested and packed at the union plant.
         </TextBody>
       </Animated.View>
 
@@ -209,7 +209,7 @@ function Landing({ history, onScan, onDemo }: { history: MilkScan[]; onScan: () 
           </View>
           <Serif color={colors.white} style={{ fontSize: 23 }}>Trace every pouch to its cooperative</Serif>
           <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 13.5 }}>
-            PARAG milk is pooled by member district dairy unions across Uttar Pradesh. Scan a pack to see which union and plant it came from, and the quality tests it passed.
+            PYAAS milk is pooled by member district dairy unions across Uttar Pradesh. Scan a pack to see which union and plant it came from, and the quality tests it passed.
           </TextBody>
           <Button title="Scan your pack" variant="ghost" onPress={onScan} style={{ backgroundColor: colors.white, alignSelf: 'flex-start', paddingHorizontal: spacing.lg }} />
         </View>

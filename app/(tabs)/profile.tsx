@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap } from '../../components/ui';
-import { SUPPORT, callCare } from '../../lib/support';
+import { CARE_EMAIL, SITE_URL, SUPPORT, callCare } from '../../lib/support';
 import { FloatingParticles, GlowPulse, ShineSweep, useCountUp } from '../../components/Fx';
 import { useHideTabBarOnScroll } from '../../lib/navVisibility';
 import { useAuth } from '../../lib/auth';
@@ -20,8 +20,8 @@ import { listSubscriptions } from '../../lib/subscriptions';
 import { getVip, vipActive, vipDaysLeft, type VipMembership } from '../../lib/vip';
 import { isAdminUser } from '../../lib/admin';
 
-const SUPPORT_EMAIL = 'hello@paragdairy.app';
-const SITE = 'https://www.paragdairy.com';
+const SUPPORT_EMAIL = CARE_EMAIL;
+const SITE = SITE_URL;
 
 export default function Profile() {
   const insets = useSafeAreaInsets();
@@ -101,7 +101,7 @@ export default function Profile() {
 
         {/* QUICK CARDS · Wallet + Orders (solid, animated) */}
         <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: spacing.lg, paddingTop: spacing.lg }}>
-          <QuickCard index={0} title="PARAG WALLET" sub={rupee(balance)} icon="wallet" bg={colors.flameDeep} accent={colors.white} onPress={() => router.push('/(tabs)/wallet')} />
+          <QuickCard index={0} title="PYAAS WALLET" sub={rupee(balance)} icon="wallet" bg={colors.flameDeep} accent={colors.white} onPress={() => router.push('/(tabs)/wallet')} />
           <QuickCard index={1} title="MY ORDERS" sub={orderCount ? `${orderCount} placed` : 'None yet'} icon="receipt" bg={colors.blue} accent={colors.white} onPress={() => router.push('/(tabs)/orders')} />
         </View>
 
@@ -116,8 +116,8 @@ export default function Profile() {
           <Row icon="swap-horizontal-outline" label="Transactions" onPress={() => router.push('/transactions')} last />
         </SectionGroup>
 
-        <SectionGroup delay={300} title="PARAG Plus & rewards">
-          <Row icon="diamond-outline" label={plusActive ? `PARAG Plus · ${plusDays} days left` : 'Join PARAG Plus'} onPress={() => router.push('/(tabs)/vip')} />
+        <SectionGroup delay={300} title="PYAAS Plus & rewards">
+          <Row icon="diamond-outline" label={plusActive ? `PYAAS Plus · ${plusDays} days left` : 'Join PYAAS Plus'} onPress={() => router.push('/(tabs)/vip')} />
           <Row icon="gift-outline" label="Refer & earn" onPress={() => router.push('/refer')} />
           <Row icon="pricetags-outline" label="Coupons & offers" onPress={() => router.push('/coupons')} last />
         </SectionGroup>
@@ -136,7 +136,7 @@ export default function Profile() {
           <Row icon="flash-outline" label="Smart Recharge autopay" onPress={() => router.push('/autopay')} last />
         </SectionGroup>
 
-        <SectionGroup delay={390} title="About PARAG">
+        <SectionGroup delay={390} title="About PYAAS">
           <Row icon="information-circle-outline" label="About us" onPress={() => router.push('/about-us')} />
           <Row icon="ribbon-outline" label="FSSAI & seller details" onPress={() => router.push('/fssai-details')} />
           <Row icon="briefcase-outline" label="Business, franchise & vendor" onPress={() => router.push('/business')} />
@@ -156,7 +156,7 @@ export default function Profile() {
           <Row icon="call-outline" label={`Call customer care · ${SUPPORT.careNumber}`} onPress={callCare} />
           <Row icon="chatbubbles-outline" label="Help & support" onPress={() => router.push('/support')} />
           <Row icon="help-circle-outline" label="FAQ" onPress={() => router.push('/faq')} />
-          <Row icon="globe-outline" label="Visit paragdairy.com" onPress={() => Linking.openURL(SITE)} last />
+          <Row icon="globe-outline" label="Visit pyaasdairy.in" onPress={() => Linking.openURL(SITE)} last />
         </SectionGroup>
 
         <SectionGroup delay={450} title="Policies">

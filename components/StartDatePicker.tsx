@@ -8,7 +8,7 @@ import { TextSemi, TextBody, Tap } from './ui';
 import { WEEK_HEADERS, monthGrid, monthLabel, isoOf, parseISO } from '../lib/dates';
 
 /**
- * PARAG start-date calendar. Parent mounts/unmounts it (so it reopens fresh).
+ * PYAAS start-date calendar. Parent mounts/unmounts it (so it reopens fresh).
  * Dates before `minISO` are disabled. Confirm fires onConfirm(selectedISO).
  */
 export function StartDatePicker({ value, minISO, onConfirm, onClose }: {

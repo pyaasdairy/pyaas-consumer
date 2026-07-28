@@ -138,7 +138,7 @@ export default function Payment() {
         <Ionicons name="checkmark-circle" size={72} color={colors.blue} />
         <Serif style={{ fontSize: 24, ...tabular }}>{rupee(credited)} added</Serif>
         <TextBody style={{ textAlign: 'center' }}>
-          {bonus ? `Includes ${rupee(bonus.bonus)} ${bonus.kind === 'cashback' ? 'cashback' : 'bonus'}. ` : ''}It is in your PARAG Wallet and logged in your transactions.
+          {bonus ? `Includes ${rupee(bonus.bonus)} ${bonus.kind === 'cashback' ? 'cashback' : 'bonus'}. ` : ''}It is in your PYAAS Wallet and logged in your transactions.
         </TextBody>
         <Button title="Back to wallet" onPress={() => router.back()} style={{ alignSelf: 'stretch', marginTop: 8 }} />
       </View>
@@ -222,7 +222,7 @@ export default function Payment() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 4, paddingHorizontal: spacing.md }}>
           <Ionicons name="lock-closed" size={14} color={colors.inkMute} />
           <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>
-            256-bit encrypted · your card details are never stored on PARAG.
+            256-bit encrypted · your card details are never stored on PYAAS.
           </TextBody>
         </View>
       </ScrollView>

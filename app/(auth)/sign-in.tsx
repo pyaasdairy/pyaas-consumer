@@ -49,7 +49,7 @@ export default function SignIn() {
 
           <Animated.View entering={enterUp()} style={{ flex: 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}>
             <Serif style={{ fontSize: 30 }}>Sign In</Serif>
-            <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Welcome back to PARAG.</TextBody>
+            <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Welcome back to PYAAS.</TextBody>
 
             <UnderlineField icon="at-outline" placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
             <UnderlineField

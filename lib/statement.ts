@@ -12,7 +12,7 @@ function fmtDate(iso: string): string {
 }
 
 /** Render a self-contained HTML wallet statement for expo-print -> PDF, modelled
- *  on lib/invoice.ts (same PARAG flame header + inline-CSS table). */
+ *  on lib/invoice.ts (same PYAAS header + inline-CSS table). */
 export function renderStatementHtml(
   rows: WalletLedgerRow[],
   opts: { generatedAt: string; balance?: number; name?: string; filterLabel?: string },
@@ -53,10 +53,10 @@ export function renderStatementHtml(
   </style></head><body>
   <div class="head">
     <div>
-      <h1>PARAG Wallet statement</h1>
-      <div class="muted">${esc(opts.name ?? 'PARAG member')} · Generated ${esc(opts.generatedAt)}${opts.filterLabel ? ' · ' + esc(opts.filterLabel) : ''}</div>
+      <h1>PYAAS Wallet statement</h1>
+      <div class="muted">${esc(opts.name ?? 'PYAAS member')} · Generated ${esc(opts.generatedAt)}${opts.filterLabel ? ' · ' + esc(opts.filterLabel) : ''}</div>
     </div>
-    <div style="color:#E8491D;font-weight:800;font-size:15px">PARAG</div>
+    <div style="color:#E8491D;font-weight:800;font-size:15px">PYAAS</div>
   </div>
   <div class="cards">
     <div class="card"><div class="k">Money in</div><div class="v" style="color:#2E5AAC">${esc(rupee(totalIn))}</div></div>
@@ -67,6 +67,6 @@ export function renderStatementHtml(
     <thead><tr><th>Date</th><th>Details</th><th class="r">Amount</th><th class="r">Balance</th></tr></thead>
     <tbody>${body}</tbody>
   </table>
-  <div class="foot">This is a computer-generated wallet statement from the PARAG app. Cash and reward (promo) balances are tracked separately. For queries, contact PARAG customer care.</div>
+  <div class="foot">This is a computer-generated wallet statement from the PYAAS app. Cash and reward (promo) balances are tracked separately. For queries, contact PYAAS customer care.</div>
   </body></html>`;
 }

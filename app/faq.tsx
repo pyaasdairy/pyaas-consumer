@@ -3,8 +3,8 @@ import { DocScreen, type DocSection } from '../components/DocScreen';
 
 const FAQS: { q: string; a: string }[] = [
   {
-    q: 'Where does PARAG milk come from?',
-    a: 'PARAG is a cooperative brand. Milk is pooled from a network of village societies and member dairies across Uttar Pradesh, then tested, chilled, processed and packed. It is not from a single farm.',
+    q: 'Where does PYAAS milk come from?',
+    a: 'PYAAS is a cooperative brand. Milk is pooled from a network of village societies and member dairies across Uttar Pradesh, then tested, chilled, processed and packed. It is not from a single farm.',
   },
   {
     q: 'Are the prices inclusive of GST?',
@@ -19,7 +19,7 @@ const FAQS: { q: string; a: string }[] = [
     a: 'Pick a product, a start date and a quantity, and it is delivered on your schedule. You can pause, skip a day, change quantity or cancel anytime from the Subscriptions screen before the daily cut-off.',
   },
   {
-    q: 'What is the PARAG wallet?',
+    q: 'What is the PYAAS wallet?',
     a: 'It is a prepaid balance used to pay for orders and subscriptions. Recharge it, and your daily deliveries draw from it automatically. Refunds for eligible issues are credited here so your next order is instant.',
   },
   {
@@ -52,7 +52,7 @@ export default function Faq() {
   return (
     <DocScreen
       title="Frequently Asked Questions"
-      intro="Quick answers to common questions about PARAG orders, subscriptions, payments and delivery. Still stuck? Reach us from Contact Us."
+      intro="Quick answers to common questions about PYAAS orders, subscriptions, payments and delivery. Still stuck? Reach us from Contact Us."
       sections={sections}
       footerNote="Answers are indicative for the current app build. Serviceable areas, cut-off times and thresholds are to be confirmed by the operator for each area."
     />

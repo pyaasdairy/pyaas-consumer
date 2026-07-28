@@ -1,5 +1,5 @@
 /**
- * PARAG pricing helpers - cart totals, wallet recharge bonus tiers and fair-use
+ * PYAAS pricing helpers - cart totals, wallet recharge bonus tiers and fair-use
  * order limits. Catalog prices themselves live in constants/products.ts (and,
  * once live, in the parag-api products table). No bundle or membership discounts
  * in this app: paragdairy.com shows MRP == offer price on every SKU, so the cart
@@ -17,7 +17,7 @@ export function cartTotals(lines: { id: string; price: number; qty: number }[]):
 }
 
 // ── WALLET RECHARGE TIERS ────────────────────────────────────────────────────
-// Instant bonus when the customer tops up their PARAG wallet. Kept in sync with
+// Instant bonus when the customer tops up their PYAAS wallet. Kept in sync with
 // the parag-api wallet recharge logic when the backend is live.
 export type RechargeTier = { amount: number; bonus: number; kind: 'instant' | 'cashback'; label: string };
 export const RECHARGE_TIERS: RechargeTier[] = [

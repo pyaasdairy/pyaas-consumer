@@ -58,7 +58,7 @@ export default function SignUp() {
 
           <Animated.View entering={enterUp()} style={{ flex: 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}>
             <Serif style={{ fontSize: 30 }}>Create Account</Serif>
-            <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Join PARAG for fresh daily delivery.</TextBody>
+            <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Join PYAAS for fresh daily delivery.</TextBody>
 
             <UnderlineField icon="person-outline" placeholder="Full name" value={name} onChangeText={setName} />
             <UnderlineField icon="call-outline" placeholder="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={10} />

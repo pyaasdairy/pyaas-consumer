@@ -3,30 +3,38 @@ import { getUserId } from './session';
 import { insertRow, newId } from './localStore';
 
 /**
- * PARAG consumer support contacts — single source of truth so the founder can
- * swap a number in ONE place and every screen (support, profile, the support
- * chat's "talk to a human" fallback) updates.
- *
- * "PARAG" here is PCDF (Pradeshik Cooperative Dairy Federation, Uttar Pradesh,
- * paragdairy.com) — NOT the unrelated private Parag Milk Foods (Gowardhan/Go).
+ * PYAAS consumer support contacts — single source of truth so the founder can
+ * swap a number in ONE place and every screen (support, profile, contact-us,
+ * FSSAI details, invoices, product compliance and the support chat's
+ * "talk to a human" fallback) updates.
  *
  * CONFIDENCE:
- *  - careNumber (1800 103 3611): official Parag Customer Care toll-free line.
- *  - office (0522 2286644) + email (lko@paragmilkup.in): HIGH confidence, from
- *    the official paragdairy.com/ContactUs page (HQ: 22 Jopling Road, Lucknow).
+ *  - CARE_PHONE: PLACEHOLDER until the founder supplies the real line.
  *  - helpline (1967): govt State Consumer Helpline escalation fallback.
  */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER — founder to supply the real PYAAS toll-free number.
+// The single source of truth for the customer-care line. Override per build
+// with EXPO_PUBLIC_CARE_PHONE (display format, e.g. "1800 120 7929").
+// ─────────────────────────────────────────────────────────────────────────────
+export const CARE_PHONE: string = process.env.EXPO_PUBLIC_CARE_PHONE || '1800 120 7929';
+/** Digits-only `tel:` variant — DERIVED from CARE_PHONE, never duplicated. */
+export const CARE_PHONE_TEL: string = CARE_PHONE.replace(/\D/g, '');
+
+// PLACEHOLDER — founder to confirm the real PYAAS support inbox and website.
+export const CARE_EMAIL = 'care@pyaasdairy.in';
+export const SITE_URL = 'https://www.pyaasdairy.in';
+
 export const SUPPORT = {
-  careNumber: '1800 103 3611',
-  careTel: '18001033611',
-  careNote: 'Parag Customer Care (toll-free)',
-  altNumber: '1800 103 3611',
-  altTel: '18001033611',
-  office: '0522 2286644',
-  officeTel: '05222286644',
-  email: 'lko@paragmilkup.in',
-  appEmail: 'hello@paragdairy.app',
-  site: 'https://www.paragdairy.com',
+  careNumber: CARE_PHONE,
+  careTel: CARE_PHONE_TEL,
+  careNote: 'PYAAS Customer Care (toll-free)',
+  altNumber: CARE_PHONE,
+  altTel: CARE_PHONE_TEL,
+  email: CARE_EMAIL,
+  appEmail: CARE_EMAIL,
+  site: SITE_URL,
   helpline: '1967',
 } as const;
 

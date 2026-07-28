@@ -164,7 +164,7 @@ export async function deleteVacation(id: string): Promise<void> {
 }
 
 // ── Wallet gating ────────────────────────────────────────────────────────────
-// Deliveries can be paid from the prepaid PARAG wallet, so the app enforces two
+// Deliveries can be paid from the prepaid PYAAS wallet, so the app enforces two
 // rules: you cannot start a subscription the wallet cannot cover, and an active
 // subscription auto-pauses when the wallet can no longer fund it.
 

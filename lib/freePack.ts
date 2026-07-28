@@ -1,15 +1,30 @@
 import * as SecureStore from 'expo-secure-store';
 import { getRows, insertRow, getSingle, putSingle, newId } from './localStore';
 import { requireUserId } from './session';
-import { addPromoCredit } from './walletApi';
+import { addPromoCredit, rechargeWallet } from './walletApi';
+import { WALLET_TEST_TOPUP, testTopup } from './razorpay';
+import { isBackendConfigured } from './apiClient';
+import { createSubscription, listSubscriptions } from './subscriptions';
+import { tomorrowISO } from './dates';
+import { getProduct } from '../constants/products';
 
 /**
- * "Free pack of milk on install" welcome offer, with anti-abuse safeguards.
+ * "Free 500 ml daily pack for 2 days" welcome funnel, with anti-abuse safeguards.
  *
- * The reward is granted as a promotional wallet credit worth one 500 ml milk
- * pack (applied to the customer's first order). It can be claimed exactly ONCE,
- * gated on THREE layers so no one can reinstall their way to infinite free milk:
- *   1. Per PHONE  - `addPromoCredit` is idempotent on ref_id `free_pack:<phone>`,
+ * Claiming does THREE things (the marketing gimmick is really a subscription
+ * funnel):
+ *   (a) credits the PROMO balance with TWO days of the 500 ml pack
+ *       (2 × ₹29 = ₹58), idempotent on ref `free_pack_2day:<phone>`;
+ *   (b) auto-creates a DAILY subscription for taaza-500ml starting tomorrow —
+ *       days 1–2 ride the promo credit, from day 3 the wallet pays and the
+ *       subscription CONTINUES until the member pauses/cancels;
+ *   (c) in test-top-up mode only (EXPO_PUBLIC_WALLET_TEST_TOPUP==='true'),
+ *       tops the wallet up ₹200 via the test path so the day-3 charge
+ *       demonstrably succeeds.
+ *
+ * It can be claimed exactly ONCE, gated on THREE layers so no one can
+ * reinstall their way to infinite free milk:
+ *   1. Per PHONE  - `addPromoCredit` is idempotent on ref_id `free_pack_2day:<phone>`,
  *      and the device-global claims table rejects a second claim by the same phone.
  *   2. Per DEVICE - a device-global claims table (shared across every account on
  *      the device) allows only ONE free pack per device, so switching numbers on
@@ -21,7 +36,14 @@ import { addPromoCredit } from './walletApi';
  *   TODO(api): POST /free-pack/claim { phone, device_id } -> server enforces uniqueness.
  */
 
-export const FREE_PACK_VALUE = 29; // one 500 ml Parag Taaza pack
+export const FREE_PACK_PRODUCT_ID = 'taaza-500ml';
+export const FREE_PACK_DAYS = 2;
+/** ₹/day of the funnel SKU (falls back to the launch price if the SKU moves). */
+export const FREE_PACK_DAILY_PRICE = getProduct(FREE_PACK_PRODUCT_ID)?.price ?? 29;
+/** Promo credit granted on claim: two days of the 500 ml pack (2 × ₹29 = ₹58). */
+export const FREE_PACK_VALUE = FREE_PACK_DAILY_PRICE * FREE_PACK_DAYS;
+/** Test-mode wallet top-up so the day-3 subscription charge demonstrably succeeds. */
+const TEST_TOPUP_AMOUNT = 200;
 const DEVICE_ID_KEY = 'parag_device_id';
 const CLAIMS_TABLE = 'free_pack_claims'; // device-global (ownerId = 'device')
 const DEVICE_OWNER = 'device';
@@ -62,8 +84,10 @@ export async function freePackEligible(phone: string): Promise<{ eligible: boole
   return { eligible: true };
 }
 
-/** Claim the free pack for the signed-in phone. Idempotent + guarded. */
-export async function claimFreePack(phone: string): Promise<{ ok: boolean; value: number; reason?: string }> {
+/** Claim the 2-day free pack for the signed-in phone. Idempotent + guarded.
+ *  Credits ₹58 promo, auto-starts the taaza-500ml DAILY subscription (from
+ *  tomorrow) and, in test mode, tops the wallet up so day 3 charges cleanly. */
+export async function claimFreePack(phone: string): Promise<{ ok: boolean; value: number; reason?: string; subscriptionId?: string }> {
   const uid = await requireUserId();
   const gate = await freePackEligible(phone);
   if (!gate.eligible) return { ok: false, value: 0, reason: gate.reason };
@@ -73,10 +97,47 @@ export async function claimFreePack(phone: string): Promise<{ ok: boolean; value
   await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
     phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
   });
-  // Grant the promo credit, idempotent on the phone so a race cannot double-credit.
-  await addPromoCredit(FREE_PACK_VALUE, { ref_id: `free_pack:${p}`, remark: 'Free welcome milk pack' });
+  // (a) Grant the 2-day promo credit, idempotent on the phone so a race cannot double-credit.
+  await addPromoCredit(FREE_PACK_VALUE, {
+    ref_id: `free_pack_2day:${p}`,
+    remark: `Free pack · ${FREE_PACK_DAYS} days of PYAAS Taaza 500 ml`,
+  });
+  // (b) Auto-start the daily subscription (first delivery tomorrow). Days 1–2
+  // are covered by the promo credit; from day 3 the wallet pays and it keeps
+  // running until paused/cancelled. Reuses an existing daily sub for the SKU
+  // instead of doubling the member's milk.
+  let subscriptionId: string | undefined;
+  try {
+    const existing = await listSubscriptions();
+    const dup = existing.find((s) => s.product_id === FREE_PACK_PRODUCT_ID && s.frequency === 'daily' && s.status !== 'cancelled');
+    if (dup) {
+      subscriptionId = dup.id;
+    } else {
+      const sku = getProduct(FREE_PACK_PRODUCT_ID);
+      subscriptionId = await createSubscription({
+        productId: FREE_PACK_PRODUCT_ID,
+        variant: sku?.variant ?? '500ml Pouch',
+        qty: 1,
+        unitPrice: FREE_PACK_DAILY_PRICE,
+        frequency: 'daily',
+        startDate: tomorrowISO(),
+      });
+    }
+  } catch { /* non-fatal — the promo credit stands; the member can subscribe manually */ }
+  // (c) TEST-ONLY top-up (₹200) so the day-3 wallet charge demonstrably succeeds.
+  if (WALLET_TEST_TOPUP) {
+    const topupRef = `free_pack_topup:${p}`;
+    try {
+      if (isBackendConfigured()) await testTopup(TEST_TOPUP_AMOUNT);
+      else await rechargeWallet(TEST_TOPUP_AMOUNT, 'test', topupRef);
+    } catch {
+      // Server path failed (offline / non-dev server): fall back to the local
+      // ledger so the demo still works; idempotent on the phone-scoped ref.
+      try { await rechargeWallet(TEST_TOPUP_AMOUNT, 'test', topupRef); } catch { /* non-fatal */ }
+    }
+  }
   await markSeen();
-  return { ok: true, value: FREE_PACK_VALUE };
+  return { ok: true, value: FREE_PACK_VALUE, subscriptionId };
 }
 
 type Snooze = { dismissals: number; snoozed_until: string };

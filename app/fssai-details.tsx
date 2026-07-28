@@ -3,9 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../lib/theme';
 import { DocScreen, DocCard, DocLinkRow } from '../components/DocScreen';
 import { SELLER } from '../lib/invoice';
-
-const EMAIL = 'hello@paragdairy.app';
-const PHONE = '18001033611'; // Parag Customer Care (toll-free)
+import { CARE_EMAIL, CARE_PHONE, CARE_PHONE_TEL } from '../lib/support';
 
 export default function FssaiDetails() {
   return (
@@ -16,7 +14,7 @@ export default function FssaiDetails() {
         {
           heading: 'Food safety',
           blocks: [
-            { kind: 'para', text: 'PARAG products are dairy foods manufactured and packed under the applicable food-safety standards. Please refrigerate on receipt and consume within the shelf life printed on each pack.' },
+            { kind: 'para', text: 'PYAAS products are dairy foods manufactured and packed under the applicable food-safety standards. Please refrigerate on receipt and consume within the shelf life printed on each pack.' },
           ],
         },
       ]}
@@ -50,14 +48,14 @@ export default function FssaiDetails() {
         <DocLinkRow
           icon={<Ionicons name="call-outline" size={20} color={colors.inkSoft} />}
           label="Customer care (placeholder)"
-          value="+91 80000 00000"
-          href={`tel:${PHONE}`}
+          value={CARE_PHONE}
+          href={`tel:${CARE_PHONE_TEL}`}
         />
         <DocLinkRow
           icon={<Ionicons name="mail-outline" size={20} color={colors.inkSoft} />}
           label="Customer care email"
-          value={EMAIL}
-          href={`mailto:${EMAIL}?subject=PYAAS%20FSSAI%20query`}
+          value={CARE_EMAIL}
+          href={`mailto:${CARE_EMAIL}?subject=PYAAS%20FSSAI%20query`}
           last
         />
       </DocCard>

@@ -73,7 +73,7 @@ export default function CompleteProfile() {
               <View style={{ height: 56, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
                 {saving ? <ActivityIndicator color={colors.white} /> : (
                   <>
-                    <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>Start with PARAG</TextSemi>
+                    <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>Start with PYAAS</TextSemi>
                     <Ionicons name="arrow-forward" size={18} color={colors.white} />
                   </>
                 )}

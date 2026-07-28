@@ -3,7 +3,7 @@ import { getRows, setRows } from './localStore';
 import { isBackendConfigured } from './apiClient';
 
 /**
- * PARAG quality data (local-first). PARAG is a multi-dairy cooperative
+ * PYAAS quality data (local-first). PYAAS sources from a multi-dairy cooperative
  * federation, so quality is honest and batch-level: every pack traces to a
  * member district dairy union + its plant and the lab tests that batch passed
  * (FAT, SNF, temperature and an adulteration screen for water/starch/detergent).
@@ -40,7 +40,7 @@ export type QualitySummary = {
 
 const TABLE = 'quality_tests';
 
-// PARAG cooperative federation members (real-sounding UP district unions) and
+// Cooperative federation member unions (real-sounding UP district unions) and
 // the plant that processes each. Kept generic and truthful, no invented people.
 const SEED: Array<Pick<QualityTest, 'batch_code' | 'union_name' | 'plant' | 'fat' | 'snf' | 'temperature_c' | 'adulteration_passed' | 'passed'> & { daysAgo: number }> = [
   { batch_code: 'PRG-LKO-4821', union_name: 'Lucknow Dugdh Utpadak Sangh', plant: 'Lucknow Dairy Plant', fat: 4.2, snf: 8.7, temperature_c: 3.4, adulteration_passed: true, passed: true, daysAgo: 0 },

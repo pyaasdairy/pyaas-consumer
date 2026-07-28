@@ -3,7 +3,7 @@ import { getRows, insertRow, newId } from './localStore';
 import { api, isBackendConfigured } from './apiClient';
 
 /**
- * Local-first partner lead capture for PARAG. A visitor can submit a bulk-order,
+ * Local-first partner lead capture for PYAAS. A visitor can submit a bulk-order,
  * franchise or vendor/distributor enquiry from the "Partner with us" screen; the
  * lead is stored on-device in the per-user `leads` table so the flow works fully
  * offline for the demo. Leads submitted while signed out are kept under an `anon`

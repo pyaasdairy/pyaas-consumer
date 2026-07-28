@@ -11,7 +11,7 @@ import {
 } from './autopay';
 
 /**
- * PARAG wallet — APPEND-ONLY LEDGER model.
+ * PYAAS wallet — APPEND-ONLY LEDGER model.
  *
  * Every money event is one immutable row in the on-device `wallet_ledger` table
  * (never mutated in place; corrections are new rows). The current balance is a

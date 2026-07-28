@@ -6,7 +6,7 @@ export default function PrivacyPolicy() {
     <DocScreen
       title="Privacy Policy"
       updated="1 July 2026"
-      intro="PARAG (operated by the Pradeshik Cooperative Dairy Federation, Uttar Pradesh) respects your privacy. This policy explains what we collect when you use the PYAAS app, why we collect it, and the choices you have. It is written to align with the Digital Personal Data Protection Act, 2023."
+      intro="PYAAS respects your privacy. This policy explains what we collect when you use the PYAAS app, why we collect it, and the choices you have. It is written to align with the Digital Personal Data Protection Act, 2023."
       sections={[
         {
           heading: 'Information we collect',
@@ -65,7 +65,7 @@ export default function PrivacyPolicy() {
         {
           heading: 'Contact',
           blocks: [
-            { kind: 'para', text: 'Grievance Officer, PARAG. Email hello@paragdairy.app. We aim to respond within a reasonable time as required by law.' },
+            { kind: 'para', text: 'Grievance Officer, PYAAS. Email care@pyaasdairy.in. We aim to respond within a reasonable time as required by law.' },
           ],
         },
       ]}

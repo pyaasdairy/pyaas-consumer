@@ -1,5 +1,5 @@
 /**
- * PARAG Plus - the app's loyalty membership. This is NOT a per-SKU discount tier
+ * PYAAS Plus - the app's loyalty membership. This is NOT a per-SKU discount tier
  * (paragdairy.com shows MRP == offer price on every product, so there are never
  * member prices or "X% off"). Plus is a paid membership whose value is service:
  * priority delivery slots, free delivery, member-only offers and early access,

@@ -34,7 +34,7 @@ export default function Farms() {
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: colors.blueSoft, borderRadius: radius.md, padding: 12 }}>
           <Ionicons name="business" size={18} color={colors.blue} style={{ marginTop: 1 }} />
           <TextBody style={{ flex: 1, fontSize: 12.5 }} color={colors.blue}>
-            PARAG is a cooperative federation. Your milk is pooled from village dairy societies, then chilled, tested and packed at the nearest member district milk union below.
+            PYAAS milk comes from a cooperative network. Your milk is pooled from village dairy societies, then chilled, tested and packed at the nearest member district milk union below.
           </TextBody>
         </View>
 

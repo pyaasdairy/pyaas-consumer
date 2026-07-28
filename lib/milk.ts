@@ -259,7 +259,7 @@ export async function downloadBatchPassportPdf(batch: MilkBatch): Promise<void> 
   if (!html) html = buildOfflineLabelHtml(batch);
   const { uri } = await Print.printToFileAsync({ html });
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'PARAG milk passport' });
+    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'PYAAS milk passport' });
   }
 }
 
@@ -275,11 +275,11 @@ function buildOfflineLabelHtml(b: MilkBatch): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="font-family:-apple-system,system-ui,sans-serif;padding:24px;background:#FFF6EC">
 <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:24px;border:1px solid #f0e2d0">
-<div style="font-weight:800;font-size:20px;color:#E8491D">PARAG</div>
+<div style="font-weight:800;font-size:20px;color:#E8491D">PYAAS</div>
 <div style="color:#666;font-size:12px">Milk Provenance Passport</div>
 <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:16px">${rows}</table>
 <h3 style="font-size:14px">Quality &amp; safety tests</h3><ul style="font-size:13px;color:#177245">${tests}</ul>
-<div style="font-size:11px;color:#666;margin-top:12px">Scan the pack QR with the PARAG app to verify provenance.</div>
+<div style="font-size:11px;color:#666;margin-top:12px">Scan the pack QR with the PYAAS app to verify provenance.</div>
 </div></body></html>`;
 }
 

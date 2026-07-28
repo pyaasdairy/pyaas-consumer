@@ -8,10 +8,10 @@ import { Serif, TextBody, TextSemi, Pill, BackButton } from '../components/ui';
 // Honest cooperative framing: no invented individual names or photos. Stories are
 // about the member dairy unions and village societies that make up the federation.
 const FEED = [
-  { tag: 'MEMBER SOCIETIES', icon: 'people-outline', title: 'From the village society to your home', body: 'PARAG milk is pooled from village dairy cooperative societies across Uttar Pradesh. Each morning milk is tested at the society, chilled, and moves to the district dairy union plant within hours.' },
-  { tag: 'DAIRY VISIT', icon: 'walk-outline', title: 'Dairy plant open day', body: 'See how your milk is tested and pasteurised, from the society can to the sealed PARAG pack, at a member dairy union plant. Limited slots each month.' },
-  { tag: 'PRODUCT UPDATE', icon: 'leaf-outline', title: 'Parag Desi Ghee back in stock', body: 'Agmark grade ghee produced at our cooperative dairies. Restocked across the catalogue this week.' },
-  { tag: 'PYAAS UPDATE', icon: 'megaphone-outline', title: 'Growing with UP dairy families', body: 'Thank you for choosing cooperative milk. Every PARAG pack supports farmer member families across Uttar Pradesh. Sehat ki Dhara.' },
+  { tag: 'MEMBER SOCIETIES', icon: 'people-outline', title: 'From the village society to your home', body: 'PYAAS milk is pooled from village dairy cooperative societies across Uttar Pradesh. Each morning milk is tested at the society, chilled, and moves to the district dairy union plant within hours.' },
+  { tag: 'DAIRY VISIT', icon: 'walk-outline', title: 'Dairy plant open day', body: 'See how your milk is tested and pasteurised, from the society can to the sealed PYAAS pack, at a member dairy union plant. Limited slots each month.' },
+  { tag: 'PRODUCT UPDATE', icon: 'leaf-outline', title: 'PYAAS Desi Ghee back in stock', body: 'Agmark grade ghee produced at our cooperative dairies. Restocked across the catalogue this week.' },
+  { tag: 'PYAAS UPDATE', icon: 'megaphone-outline', title: 'Growing with UP dairy families', body: 'Thank you for choosing cooperative milk. Every PYAAS pack supports farmer member families across Uttar Pradesh. Sehat ki Dhara.' },
 ];
 
 export default function Community() {

@@ -2,7 +2,7 @@
  * Fx · small motion primitives (shine sweep, floating sparks, glow pulse,
  * count-up). Built from Views + reanimated only. No gradients (the brand rule is
  * solid constant colours), and every effect is clipped inside its own element,
- * so nothing bleeds onto the page. Recoloured to PARAG's flame/gold identity.
+ * so nothing bleeds onto the page. Recoloured to the brand flame/gold identity.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, useWindowDimensions, type ViewStyle, type StyleProp } from 'react-native';

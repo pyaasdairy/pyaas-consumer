@@ -35,6 +35,28 @@ function formatWindowEnd(win: string): string | null {
   return `${hr}:${String(m || 0).padStart(2, '0')} ${ampm}`;
 }
 
+/** Local clock time ("6:32 PM") for an instant-lane ETA Date. */
+function formatClock(d: Date): string {
+  const h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}:${String(d.getMinutes()).padStart(2, '0')} ${ampm}`;
+}
+
+/** Instant-lane ETA: server-minted etaAt when it's on the wire (either casing),
+ *  else placed + 90 min. Null when nothing parses (hide the hero, never show
+ *  "Arriving by Invalid Date"). */
+function instantEtaOf(order: Order): Date | null {
+  const wire = order.etaAt ?? order.eta_at;
+  if (wire) {
+    const d = new Date(wire);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  const placed = new Date(order.placed_at);
+  if (Number.isNaN(placed.getTime())) return null;
+  return new Date(placed.getTime() + 90 * 60 * 1000);
+}
+
 export default function OrderTracking() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -204,9 +226,31 @@ export default function OrderTracking() {
           </TextBody>
         </View>
 
-        {/* ETA / delivery window — prominent while the order is on its way.
-            Hidden when the window can't be parsed (formatWindowEnd → null). */}
+        {/* ETA hero — instant-lane orders get a big "Arriving by HH:MM · ⚡
+            Instant" card (server etaAt when on the wire, else placed + 90 min);
+            morning orders keep the window strip. Hidden when nothing parses. */}
         {(() => {
+          const isInstantLane =
+            order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
+          if (isInstantLane && !delivered && !cancelled) {
+            const eta = instantEtaOf(order);
+            return eta ? (
+              <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.flameDeep, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 14, ...shadow.card }}>
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="flash" size={24} color={colors.flameDeep} />
+                </View>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Serif style={{ fontSize: 22, lineHeight: 26 }} color={colors.flameDeep}>Arriving by {formatClock(eta)}</Serif>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Pill label="⚡ INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
+                    <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>
+                      {order.payment_method === 'cod' ? 'Cash on delivery · keep the amount ready' : '~90 min express delivery'}
+                    </TextBody>
+                  </View>
+                </View>
+              </View>
+            ) : null;
+          }
           const eta =
             !delivered && !cancelled && order.delivery_window
               ? formatWindowEnd(order.delivery_window)
@@ -242,7 +286,7 @@ export default function OrderTracking() {
           ) : (
             <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: 12, ...shadow.soft }}>
               <TextSemi style={{ fontSize: 16 }}>Rate your order</TextSemi>
-              <TextBody style={{ fontSize: 13 }}>How was your PARAG delivery?</TextBody>
+              <TextBody style={{ fontSize: 13 }}>How was your PYAAS delivery?</TextBody>
               <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'center' }}>
                 {[1, 2, 3, 4, 5].map((n) => (
                   <Tap key={n} haptic={false} onPress={() => { haptics.press(); setReviewStars(n); }}>

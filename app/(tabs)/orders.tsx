@@ -8,6 +8,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../../lib/theme
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../components/ui';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL, statusColor } from '../../lib/orderStatus';
+import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
 
 function fmtDate(iso: string) {
   try {
@@ -48,6 +49,13 @@ export default function Orders() {
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
         <Serif style={{ fontSize: 30 }}>Your orders</Serif>
+      </View>
+
+      {/* Subscription live status pinned above the list, so "is my subscription
+          live or not" is answered before a single order row. The empty state
+          links back to the home claim flow. */}
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <SubscriptionStatusCard style={{ marginBottom: spacing.sm }} />
       </View>
 
       {loading ? (

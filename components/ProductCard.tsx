@@ -12,7 +12,7 @@ import { useFavorites } from '../store/favorites';
 import { captureRestockLead } from '../lib/leads';
 import { discountPct, type Product } from '../constants/products';
 
-export function ProductCard({ product, index = 0 }: { product: Product; index?: number }) {
+export function ProductCard({ product, index = 0, ctaLabel = 'ADD' }: { product: Product; index?: number; ctaLabel?: string }) {
   const router = useRouter();
   const pct = discountPct(product);
   const isFav = useFavorites((s) => s.ids.includes(product.id));
@@ -97,7 +97,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               scaleTo={0.95}
               style={{ marginTop: 10, alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: radius.pill, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flameDeep, ...shadow.soft }}
             >
-              <TextSemi color={colors.flameDeep} style={{ fontSize: 14, letterSpacing: 0.5 }}>ADD</TextSemi>
+              <TextSemi numberOfLines={1} color={colors.flameDeep} style={{ fontSize: 14, letterSpacing: 0.5 }}>{ctaLabel}</TextSemi>
             </Tap>
           )}
         </View>

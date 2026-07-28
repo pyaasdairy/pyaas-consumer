@@ -18,11 +18,13 @@ import { createSubscription, type Frequency } from '../../lib/subscriptions';
 import { placeOrder, listAddresses } from '../../lib/api';
 import { captureRestockLead } from '../../lib/leads';
 import { isBackendConfigured } from '../../lib/apiClient';
-import { tomorrowISO, formatShort } from '../../lib/dates';
+import { todayISO, tomorrowISO, addDaysISO, parseISO, formatShort } from '../../lib/dates';
+import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12, type DeliveryMode } from '../../lib/deliveryMode';
 import { useWallet } from '../../store/wallet';
 
 const GOLD = '#C9A24B';
 const GOLD_BRIGHT = '#F4D061';
+const WD_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const SUB_TYPES: { key: Frequency; label: string; sub: string }[] = [
   { key: 'daily', label: 'Daily', sub: 'Every morning' },
@@ -78,6 +80,12 @@ export default function ProductDetail() {
   // but never earlier than tomorrow.
   const [startDate, setStartDate] = useState(start && start > tomorrowISO() ? start : tomorrowISO());
   const [showCal, setShowCal] = useState(false);
+  // Delivery lane for ONE-TIME orders, seeded from the shared app-wide mode
+  // (home strip) — instant ~90 min · morning 5–7:30 AM slot · a picked date.
+  // Subscriptions always ride the morning route (no instant lane).
+  const sharedMode = useDeliveryMode();
+  const [deliverBy, setDeliverBy] = useState<DeliveryMode>(sharedMode);
+  const [pickedDate, setPickedDate] = useState(start && start >= tomorrowISO() ? start : tomorrowISO());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [shortfall, setShortfall] = useState(0);
@@ -114,6 +122,12 @@ export default function ProductDetail() {
   // COD is only ever offered on an INSTANT one-off delivery; a subscription is
   // always paid from the wallet. Keep the effective method consistent.
   const effectiveMethod: 'wallet' | 'cod' = isInstant ? payMethod : 'wallet';
+  // Effective delivery lane + landing date for a one-time order. Instant lands
+  // today (~90 min); the morning slot lands tomorrow 5–7:30 AM; a picked date
+  // lands that morning. Subscriptions ignore this and use startDate.
+  const laneSel: DeliveryMode = isInstant ? deliverBy : 'morning';
+  const oneTimeDate = laneSel === 'scheduled' ? pickedDate : laneSel === 'instant' ? todayISO() : tomorrowISO();
+  const instantEta = hhmmTo12(instantEtaHHMM()) ?? instantEtaHHMM();
   // GSTIN is optional; only attach it to the bill when it is a well-formed
   // 15-char GSTIN (2-digit state + 10-char PAN + entity + Z + check). A partial
   // or malformed entry is ignored rather than printed on the proforma.
@@ -186,6 +200,10 @@ export default function ProductDetail() {
             priority: 'normal',
             orderType: isInstant ? 'instant' : 'subscription',
             buyerGstin: gstinValid ? gstin : null,
+            // Delivery lane: instant is one-time-only (placeOrder re-guards);
+            // a picked date rides the morning slot on that date.
+            lane: laneSel === 'instant' ? 'instant' : 'morning',
+            deliveryDate: laneSel === 'scheduled' ? pickedDate : null,
           });
         } catch (e: any) {
           setErr(e?.message ?? 'Could not place your order. Please try again.');
@@ -193,17 +211,17 @@ export default function ProductDetail() {
         }
         // Order placed → record the subscription (non-fatal: the order stands
         // even if this local write hiccups).
-        await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate }).catch(() => { /* order already placed */ });
+        await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: isInstant ? oneTimeDate : startDate }).catch(() => { /* order already placed */ });
         router.replace(`/order/${orderId}`);
         return;
       }
 
       // Local mode (no backend): the subscription is the record of intent.
-      await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate });
+      await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: isInstant ? oneTimeDate : startDate });
       // The order-confirmed screen fires the strong confirmation haptic on mount.
       router.push({
         pathname: '/order-confirmed',
-        params: { id: product.id, qty: String(qty), freq, start: startDate, total: String(total), saved: String(savedPer * qty) },
+        params: { id: product.id, qty: String(qty), freq, start: isInstant ? oneTimeDate : startDate, total: String(total), saved: String(savedPer * qty) },
       });
     } catch (e: any) {
       setErr(e?.message ?? 'Could not set up your subscription. Please try again.');
@@ -294,20 +312,97 @@ export default function ProductDetail() {
             </Animated.View>
           )}
 
-          {/* Start / delivery date */}
-          <Animated.View entering={FadeInDown.duration(420).delay(120)} style={{ gap: 8 }}>
-            <TextSemi style={{ fontSize: 16 }}>{subscribable ? 'Start date' : 'Delivery date'}</TextSemi>
-            <Tap haptic={false} onPress={() => setShowCal(true)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: colors.flame, borderRadius: radius.md, paddingHorizontal: 16, height: 56, backgroundColor: colors.white, ...shadow.soft }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="calendar-outline" size={20} color={colors.flameDeep} />
-                <TextSemi style={{ fontSize: 16 }}>{formatShort(startDate)}</TextSemi>
+          {/* Delivery lane (one-time orders) / start date (subscriptions).
+              Instant is one-time-only — subscriptions always ride the morning route. */}
+          {isInstant ? (
+            <Animated.View entering={FadeInDown.duration(420).delay(120)} style={{ gap: 10 }}>
+              <TextSemi style={{ fontSize: 16 }}>Delivery</TextSemi>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {([
+                  { key: 'instant', label: 'Instant', sub: '~90 min ⚡' },
+                  { key: 'morning', label: 'Morning slot', sub: '5–7:30 AM' },
+                  { key: 'scheduled', label: 'Pick a date', sub: formatShort(pickedDate) },
+                ] as const).map((opt) => {
+                  const active = deliverBy === opt.key;
+                  return (
+                    <Tap
+                      key={opt.key}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setDeliverBy(opt.key);
+                        setDeliveryMode(opt.key); // keep the home strip in sync
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      <View style={{ borderRadius: radius.lg, borderWidth: 1.5, borderColor: active ? colors.flameDeep : colors.line, backgroundColor: active ? colors.flameSoft : colors.white, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', gap: 3 }}>
+                        <TextSemi style={{ fontSize: 13.5, textAlign: 'center' }} color={active ? colors.flameDeep : colors.ink}>{opt.label}</TextSemi>
+                        <TextBody style={{ fontSize: 10.5, textAlign: 'center' }}>{opt.sub}</TextBody>
+                      </View>
+                    </Tap>
+                  );
+                })}
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>Edit</TextMed>
-                <Ionicons name="pencil" size={14} color={colors.flameDeep} />
+
+              {deliverBy === 'scheduled' ? (
+                /* 7-day chip calendar (same language as the home delivery strip) */
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2, paddingRight: 6 }}>
+                  {Array.from({ length: 7 }, (_, i) => {
+                    const iso = addDaysISO(tomorrowISO(), i);
+                    const d = parseISO(iso);
+                    const selected = iso === pickedDate;
+                    return (
+                      <Tap
+                        key={iso}
+                        haptic={false}
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickedDate(iso); }}
+                        style={{
+                          width: 54,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingVertical: 9,
+                          borderRadius: radius.lg,
+                          backgroundColor: selected ? colors.flameDeep : colors.white,
+                          borderWidth: 1.5,
+                          borderColor: selected ? colors.flameDeep : colors.line,
+                          ...shadow.soft,
+                        }}
+                      >
+                        <TextBody style={{ fontSize: 10.5 }} color={selected ? 'rgba(255,255,255,0.92)' : colors.inkMute}>
+                          {i === 0 ? 'Tmrw' : WD_SHORT[d.getDay()]}
+                        </TextBody>
+                        <Serif style={{ fontSize: 19 }} color={selected ? colors.white : colors.ink}>{d.getDate()}</Serif>
+                      </Tap>
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: deliverBy === 'instant' ? colors.flameSoft : colors.blueSoft, borderRadius: radius.md, padding: 12 }}>
+                <Ionicons name={deliverBy === 'instant' ? 'flash' : 'sunny-outline'} size={18} color={deliverBy === 'instant' ? colors.flameDeep : colors.blue} />
+                <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.ink}>
+                  {deliverBy === 'instant'
+                    ? `Arriving by ${instantEta} · ⚡ Instant express from your nearest PYAAS store.`
+                    : deliverBy === 'scheduled'
+                      ? `Delivered ${formatShort(pickedDate)}, in the 5–7:30 AM morning slot.`
+                      : 'Delivered tomorrow morning, 5–7:30 AM. Fresh off the dawn route.'}
+                </TextMed>
               </View>
-            </Tap>
-          </Animated.View>
+            </Animated.View>
+          ) : (
+            <Animated.View entering={FadeInDown.duration(420).delay(120)} style={{ gap: 8 }}>
+              <TextSemi style={{ fontSize: 16 }}>Start date</TextSemi>
+              <Tap haptic={false} onPress={() => setShowCal(true)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: colors.flame, borderRadius: radius.md, paddingHorizontal: 16, height: 56, backgroundColor: colors.white, ...shadow.soft }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Ionicons name="calendar-outline" size={20} color={colors.flameDeep} />
+                  <TextSemi style={{ fontSize: 16 }}>{formatShort(startDate)}</TextSemi>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>Edit</TextMed>
+                  <Ionicons name="pencil" size={14} color={colors.flameDeep} />
+                </View>
+              </Tap>
+            </Animated.View>
+          )}
 
           <Divider />
 
@@ -317,7 +412,7 @@ export default function ProductDetail() {
             {isInstant ? (
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {([
-                  { key: 'wallet', label: 'PARAG Wallet', sub: 'Pay from balance' },
+                  { key: 'wallet', label: 'PYAAS Wallet', sub: 'Pay from balance' },
                   { key: 'cod', label: 'Cash on delivery', sub: 'Pay the rider' },
                 ] as const).map((m) => {
                   const active = payMethod === m.key;
@@ -335,7 +430,7 @@ export default function ProductDetail() {
               <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.cream, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Ionicons name="wallet-outline" size={18} color={colors.flameDeep} />
                 <TextBody style={{ fontSize: 13, flex: 1 }}>
-                  Subscriptions are paid from your PARAG Wallet. Cash on delivery is available on instant one-time orders.
+                  Subscriptions are paid from your PYAAS Wallet. Cash on delivery is available on instant one-time orders.
                 </TextBody>
               </View>
             )}

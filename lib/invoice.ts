@@ -1,8 +1,9 @@
 import type { Order, OrderItem } from './api';
 import { PRODUCTS, type Category } from '../constants/products';
+import { CARE_EMAIL, CARE_PHONE } from './support';
 
 /**
- * GST tax-invoice generator for PARAG consumer orders.
+ * GST tax-invoice generator for PYAAS consumer orders.
  *
  * This builds a compliant Indian retail/tax invoice from a local order: product
  * wise GST (CGST/SGST for an intra-state supply, IGST for inter-state), an FY
@@ -23,8 +24,8 @@ import { PRODUCTS, type Category } from '../constants/products';
  */
 
 // ── Biller identity ───────────────────────────────────────────────────────────
-// PYAAS bills the customer (the seller of record on the bill). PARAG is the
-// dairy that MANUFACTURES the goods and is shown separately below.
+// PYAAS bills the customer (the seller of record on the bill). The manufacturer
+// of the goods is shown separately below.
 // ALL registration numbers here are PLACEHOLDERS — replace the five values in
 // this block (and MANUFACTURER) with the registered ones; flip the
 // *_is_placeholder flags to false and the "(to be updated)" tag disappears.
@@ -41,22 +42,23 @@ export const SELLER = {
   address: 'PYAAS Dairy, Lucknow, Uttar Pradesh 226001',
   state: 'Uttar Pradesh',
   state_code: '09', // GST state code for the place of the seller (UP)
-  email: 'hello@paragdairy.app',
-  phone: '1800 103 3611', // Parag Customer Care
+  email: CARE_EMAIL,
+  phone: CARE_PHONE, // single source: lib/support.ts CARE_PHONE
   cin: 'PLACEHOLDER-CIN',
 } as const;
 
-// ── Manufacturer identity (PARAG) — the dairy that makes the goods ────────────
-// Shown on the bill as "Goods manufactured by" with PARAG's own GSTIN + FSSAI.
-// PLACEHOLDERS — replace with PARAG's registered numbers and flip the flags.
+// ── Manufacturer identity — the dairy that makes the goods ────────────────────
+// Shown on the bill as "Goods manufactured by" with its own GSTIN + FSSAI.
+// PLACEHOLDERS — founder to confirm the legal entity, its registered numbers
+// and address, then flip the flags.
 export const MANUFACTURER = {
-  name: 'Pradeshik Cooperative Dairy Federation Ltd (PARAG)',
-  brand: 'PARAG',
+  name: 'PYAAS Dairy Private Limited', // PLACEHOLDER — founder to confirm legal entity
+  brand: 'PYAAS',
   gstin: '09PPPPP0000P1Z5',
   gstin_is_placeholder: true,
   fssai: '10012345000000',
   fssai_is_placeholder: true,
-  address: 'PARAG Dairy, PCDF, Lucknow, Uttar Pradesh 226001',
+  address: 'PYAAS Dairy, Lucknow, Uttar Pradesh 226001', // PLACEHOLDER
 } as const;
 
 // ── Indicative GST rates + HSN by product category ───────────────────────────
@@ -124,7 +126,7 @@ export type InvoiceLine = {
 export type Invoice = {
   type: InvoiceType;
   title: string; // human label for the document type
-  invoice_no: string; // e.g. PARAG/2026-27/000123
+  invoice_no: string; // e.g. PYAAS/2026-27/000123
   order_id: string;
   date: string; // ISO
   fy: string; // e.g. 2026-27
@@ -181,7 +183,7 @@ function sequenceFromOrder(orderId: string): number {
   return (h % 900000) + 100000; // 100000..999999
 }
 
-/** Build an FY invoice number like PARAG/2026-27/000123. */
+/** Build an FY invoice number like PYAAS/2026-27/000123. */
 export function generateInvoiceNumber(date: Date, sequence: number, prefix = 'PYAAS'): string {
   return `${prefix}/${financialYear(date)}/${String(sequence).padStart(6, '0')}`;
 }

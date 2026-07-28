@@ -24,7 +24,7 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 
 export const STATUS_SUB: Record<OrderStatus, string> = {
   placed: 'Scheduled for delivery tomorrow morning.',
-  confirmed: 'Reserved from your nearest PARAG store.',
+  confirmed: 'Reserved from your nearest PYAAS store.',
   preparing: 'Being packed fresh for your morning route.',
   assigned: "Loaded on your rider's route. Live tracking is on.",
   out_for_delivery: 'Your rider is on the way. Track them live.',

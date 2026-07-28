@@ -1,17 +1,17 @@
 import { isBackendConfigured } from './apiClient';
 
 /**
- * PARAG member dairies (district cooperative dairy unions).
+ * PYAAS member dairies (district cooperative dairy unions).
  *
- * PARAG is the consumer brand of the Uttar Pradesh cooperative dairy structure
- * (Pradeshik Cooperative Dairy Federation, "PCDF"). It is NOT a single farm: the
+ * PYAAS milk comes from the Uttar Pradesh cooperative dairy structure. It is
+ * NOT a single farm: the
  * milk in every pack is pooled from village dairy cooperative societies, chilled
  * and processed at a member DISTRICT MILK UNION, and quality tested at that
  * union's plant. This module powers a "member dairies" locator that shows the
  * nearest processing union to the signed-in user.
  *
  * Data is seeded locally so the screen is fully alive offline (demo). When the
- * PARAG backend is wired in, the same shape can be served from the API:
+ * PYAAS backend is wired in, the same shape can be served from the API:
  *   // TODO(api): GET /member-dairies  -> MemberDairy[]  (public, no auth needed)
  * and an optional nearest lookup can move server-side. Until then everything
  * runs on the seeded list below with an on-device haversine distance.
@@ -57,7 +57,7 @@ const SEED: MemberDairy[] = [
     societies: 1180,
     capacityLLPD: 4.5,
     established: 1938,
-    blurb: 'The flagship PARAG union. Milk pooled from village societies across the Lucknow region is chilled, standardised and tested here before packing.',
+    blurb: 'The flagship PYAAS partner union. Milk pooled from village societies across the Lucknow region is chilled, standardised and tested here before packing.',
   },
   {
     id: 'union_kanpur',
@@ -70,7 +70,7 @@ const SEED: MemberDairy[] = [
     societies: 940,
     capacityLLPD: 3.0,
     established: 1964,
-    blurb: 'Serves the industrial Kanpur belt. Every batch clears FAT and SNF checks at the union lab before it reaches a PARAG parlour.',
+    blurb: 'Serves the industrial Kanpur belt. Every batch clears FAT and SNF checks at the union lab before it reaches a PYAAS store.',
   },
   {
     id: 'union_varanasi',
@@ -109,7 +109,7 @@ const SEED: MemberDairy[] = [
     societies: 830,
     capacityLLPD: 2.2,
     established: 1972,
-    blurb: 'Anchors PARAG supply across the Braj districts, with cold-chain tankering from society chilling points into the Agra plant.',
+    blurb: 'Anchors PYAAS supply across the Braj districts, with cold-chain tankering from society chilling points into the Agra plant.',
   },
   {
     id: 'union_meerut',
@@ -135,7 +135,7 @@ const SEED: MemberDairy[] = [
     societies: 680,
     capacityLLPD: 1.6,
     established: 1974,
-    blurb: 'Pools milk from the Prayagraj and adjoining districts and supplies fresh milk, curd and ghee under the PARAG mark.',
+    blurb: 'Pools milk from the Prayagraj and adjoining districts and supplies fresh milk, curd and ghee under the PYAAS mark.',
   },
   {
     id: 'union_gorakhpur',
@@ -148,7 +148,7 @@ const SEED: MemberDairy[] = [
     societies: 560,
     capacityLLPD: 1.1,
     established: 1979,
-    blurb: 'The eastern-most PARAG union. Chilling centres across the region feed the Gorakhpur plant that serves the districts around it.',
+    blurb: 'The eastern-most PYAAS partner union. Chilling centres across the region feed the Gorakhpur plant that serves the districts around it.',
   },
 ];
 

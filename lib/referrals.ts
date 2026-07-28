@@ -2,11 +2,11 @@ import { requireUserId, getUserId } from './session';
 import { getRows, insertRow, setRows, getSingle, putSingle, newId } from './localStore';
 
 /**
- * PARAG referrals — a shareable per-user code plus a local reward ledger. Runs
+ * PYAAS referrals — a shareable per-user code plus a local reward ledger. Runs
  * against the on-device store so it works fully offline for the demo; when the
  * parag-api is live these map to GET /referrals (the ledger) and GET
  * /referrals/code (the server-issued code). Each customer who signs up with your
- * code puts a fixed reward into your PARAG Wallet, so the code below is honest
+ * code puts a fixed reward into your PYAAS Wallet, so the code below is honest
  * cooperative-member growth, no fabricated savings tied to any single farm.
  */
 

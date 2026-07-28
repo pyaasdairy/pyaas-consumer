@@ -4,12 +4,12 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
+import { colors, radius, spacing, shadow, fonts, rupee } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import { getDeviceCoords, setAddressCoords } from '../lib/location';
 import { addAddress } from '../lib/api';
-import { claimFreePack, shouldShowFreePack, snoozeFreePack } from '../lib/freePack';
+import { claimFreePack, shouldShowFreePack, snoozeFreePack, FREE_PACK_DAILY_PRICE, FREE_PACK_DAYS } from '../lib/freePack';
 import { formatDeliveryWindow } from '../lib/dates';
 import { useAuth } from '../lib/auth';
 import { useWallet } from '../store/wallet';
@@ -20,11 +20,15 @@ const DELIVERY_WINDOW = '06:00-07:00'; // matches placeOrder's stamped window
 type Step = 'intro' | 'address' | 'confirm' | 'done';
 
 /**
- * "Claim my pack" onboarding: a free Parag Taaza Toned Milk pack. Walks the user
- * from an intro card -> delivery address (typed or from GPS) -> a confirmation
- * box -> a delivery-window promise. Fires on first launch (ClaimPackGate) and
- * when a member starts their PARAG Plus trial. The pack is funded by the legit
- * free-pack promo credit (lib/freePack), so no real money moves.
+ * "Claim my pack" onboarding — the subscription funnel. Claiming now grants
+ * FREE 500 ml daily milk for 2 days (a ₹58 promo credit) AND auto-starts a
+ * daily taaza-500ml subscription from tomorrow: days 1–2 ride the promo
+ * credit, from day 3 the wallet pays ₹29/day and the subscription CONTINUES
+ * until paused/cancelled. The sheet copy says exactly that — no surprise
+ * charges. Walks the user from an intro card -> delivery address (typed or
+ * from GPS) -> a confirmation box -> a delivery-window promise. Fires on first
+ * launch (ClaimPackGate), from the home claim card and when a member starts
+ * their PYAAS Plus trial. All money movement is in lib/freePack (idempotent).
  */
 export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: { visible: boolean; onClose: () => void; onClaimed?: () => void; onStartShopping?: () => void }) {
   const { profile } = useAuth();
@@ -37,6 +41,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   const [locBusy, setLocBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [subStarted, setSubStarted] = useState(false);
 
   // Reset to a clean intro each time it opens (so a VIP re-open never prefills
   // the previous address).
@@ -48,6 +53,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
       setCity('');
       setPincode('');
       setCoords(null);
+      setSubStarted(false);
     }
   }, [visible]);
 
@@ -69,7 +75,14 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
       const addr = await addAddress({ label: 'Home', line1: line1.trim(), line2: null, city: city.trim() || 'Lucknow', pincode: pincode.trim().replace(/\D/g, ''), is_default: true });
       if (coords) { try { await setAddressCoords(addr.id, coords); } catch { /* non-fatal */ } }
       const phone = profile?.phone ?? '';
-      if (phone) { try { await claimFreePack(phone); await refreshWallet(); } catch { /* already claimed / non-fatal */ } }
+      // Claim = promo credit + auto-started daily subscription (+ test top-up).
+      if (phone) {
+        try {
+          const r = await claimFreePack(phone);
+          setSubStarted(r.ok && !!r.subscriptionId);
+          await refreshWallet();
+        } catch { /* already claimed / non-fatal */ }
+      }
       haptics.confirm();
       setStep('done');
       onClaimed?.();
@@ -92,10 +105,10 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             </View>
             <Image source={TAAZA} style={{ width: 120, height: 120 }} contentFit="contain" />
             <Serif color={colors.white} style={{ fontSize: 22, textAlign: 'center', marginTop: 4 }}>
-              {step === 'done' ? 'All set, see you at dawn' : 'Your free Toned Milk pack'}
+              {step === 'done' ? 'All set, see you at dawn' : `${FREE_PACK_DAYS} mornings of free milk`}
             </Serif>
             <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
-              Parag Taaza · 500 ml · on us
+              PYAAS Taaza · 500 ml daily · first {FREE_PACK_DAYS} days on us
             </TextBody>
           </View>
 
@@ -103,9 +116,15 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             {step === 'intro' ? (
               <Animated.View entering={FadeIn.duration(240)} style={{ gap: spacing.md }}>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Welcome to PARAG. Claim a free 500 ml pack of Parag Taaza toned milk, delivered fresh to your door tomorrow morning.
+                  Welcome to PYAAS. FREE 500 ml daily pack for {FREE_PACK_DAYS} days, fresh at your door every morning.
                 </TextBody>
-                <PrimaryButton title="Claim my pack" onPress={() => { haptics.press(); setStep('address'); }} />
+                {/* The honest funnel explainer — exactly what claiming does. */}
+                <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 8 }}>
+                  <IntroLine icon="gift" text={`FREE 500 ml daily pack for ${FREE_PACK_DAYS} days`} />
+                  <IntroLine icon="infinite" text={`From day 3 your subscription continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet`} />
+                  <IntroLine icon="pause-circle" text="Pause anytime" />
+                </View>
+                <PrimaryButton title={`Claim my ${FREE_PACK_DAYS} free days`} onPress={() => { haptics.press(); setStep('address'); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Maybe later</TextMed>
                 </Tap>
@@ -134,12 +153,13 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
               <Animated.View entering={FadeInDown.duration(260)} style={{ gap: spacing.md }}>
                 <TextSemi style={{ fontSize: 16 }}>Confirm your free pack</TextSemi>
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
-                  <Row icon="cube" label="Parag Taaza Toned Milk" value="500 ml pack · Free" />
+                  <Row icon="cube" label="PYAAS Taaza Toned Milk" value={`500 ml daily · first ${FREE_PACK_DAYS} days FREE`} />
                   <Row icon="location" label="Delivering to" value={`${line1.trim()}${city ? ', ' + city.trim() : ''}${pincode ? ' - ' + pincode.trim().replace(/\D/g, '') : ''}`} />
-                  <Row icon="time" label="Arrives tomorrow" value={formatDeliveryWindow(DELIVERY_WINDOW)} highlight />
+                  <Row icon="time" label="First pack arrives tomorrow" value={formatDeliveryWindow(DELIVERY_WINDOW)} highlight />
+                  <Row icon="wallet" label="From day 3" value={`Subscription continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet · pause anytime`} />
                 </View>
                 {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
-                <PrimaryButton title={busy ? 'Confirming…' : 'Confirm my pack'} loading={busy} onPress={confirm} />
+                <PrimaryButton title={busy ? 'Confirming…' : 'Confirm my free pack'} loading={busy} onPress={confirm} />
                 <Tap haptic={false} onPress={() => setStep('address')} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Change address</TextMed>
                 </Tap>
@@ -152,7 +172,10 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="checkmark" size={34} color={colors.blue} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Your free Parag Taaza pack is on its way. It will be delivered {formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow. We will notify you when the rider sets off.
+                  Your first free PYAAS Taaza pack arrives {formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow.
+                  {subStarted
+                    ? ` Your daily subscription is LIVE — the first ${FREE_PACK_DAYS} mornings are free, then ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet. Pause anytime from Subscriptions.`
+                    : ' We will notify you when the rider sets off.'}
                 </TextBody>
                 <PrimaryButton title="Start shopping" onPress={onStartShopping ?? onClose} />
               </Animated.View>
@@ -210,6 +233,15 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, maxLengt
         maxLength={maxLength}
         style={{ backgroundColor: colors.milk, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, paddingVertical: 12, fontFamily: fonts.sans, fontSize: 15, color: colors.ink }}
       />
+    </View>
+  );
+}
+
+function IntroLine({ icon, text }: { icon: any; text: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <Ionicons name={icon} size={16} color={colors.flameDeep} />
+      <TextMed style={{ flex: 1, fontSize: 13, lineHeight: 18 }} color={colors.ink}>{text}</TextMed>
     </View>
   );
 }

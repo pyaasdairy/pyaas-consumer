@@ -89,6 +89,6 @@ export async function pickAndUploadAvatar(): Promise<string | null> {
 }
 
 export async function getReferralStats(): Promise<{ count: number; earned: number }> {
-  // Referral programme is not part of the PARAG consumer app.
+  // Referral programme is not part of the PYAAS consumer app.
   return { count: 0, earned: 0 };
 }

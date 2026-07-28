@@ -22,7 +22,7 @@ export type Coupon = {
 // Demo coupons so the checkout coupon field works offline. Replace with the
 // parag-api coupons table once the backend is deployed.
 const DEMO_COUPONS: Coupon[] = [
-  { code: 'PARAG50', title: '₹50 off', description: 'Flat ₹50 off orders over ₹299', kind: 'flat', value: 50, applies_to: 'all', min_items: 0, min_amount: 299, max_discount: null },
+  { code: 'PYAAS50', title: '₹50 off', description: 'Flat ₹50 off orders over ₹299', kind: 'flat', value: 50, applies_to: 'all', min_items: 0, min_amount: 299, max_discount: null },
   { code: 'MILK10', title: '10% off milk', description: '10% off all milk (max ₹40)', kind: 'percent', value: 10, applies_to: 'milk', min_items: 0, min_amount: 0, max_discount: 40 },
 ];
 

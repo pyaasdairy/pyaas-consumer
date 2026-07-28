@@ -9,7 +9,7 @@ import { ShineSweep, useCountUp } from '../components/Fx';
 import { getQualitySummary, type QualitySummary, type QualityTest } from '../lib/quality';
 
 /**
- * PARAG quality dashboard. PARAG is a cooperative federation, so this is an
+ * PYAAS quality dashboard. PYAAS sources from a cooperative network, so this is an
  * honest, batch-level view: the pass rate and averages roll up the recent lab
  * tests each member district dairy union logged, and every card is backed by a
  * real batch record below. Solid colours only, effects clipped inside the hero.

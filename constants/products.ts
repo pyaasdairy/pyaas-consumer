@@ -1,3 +1,5 @@
+import { CARE_PHONE } from '../lib/support';
+
 import type { ImageSourcePropType } from 'react-native';
 
 export type Category =
@@ -37,9 +39,9 @@ export type Product = {
   /** Not currently orderable: card + detail render an "OUT OF STOCK" state and the
    *  SKU is excluded from every order/subscription flow until the flag drops. */
   outOfStock?: boolean;
-  /** Per-SKU manufacturer overrides (e.g. PYAAS partner SKUs sold on PARAG).
+  /** Per-SKU manufacturer overrides (e.g. partner SKUs sold on PYAAS).
    *  Override all three together so a partner SKU never shows its own
-   *  manufacturer name above PARAG's address / FSSAI licence. */
+   *  manufacturer name above PYAAS's address / FSSAI licence. */
   manufacturer?: string;
   manufacturerAddress?: string;
   fssaiLicense?: string;
@@ -49,7 +51,7 @@ export type Product = {
   hsn?: string;
   gstRate?: number;         // product-wise GST %
   netQuantity?: string;     // e.g. "1 L", "500 g"
-  veg?: boolean;            // green-dot veg mark (all PARAG dairy is veg)
+  veg?: boolean;            // green-dot veg mark (all PYAAS dairy is veg)
   ingredients?: string;
   nutrition?: string;       // per 100 g / 100 ml summary
   allergens?: string;
@@ -59,18 +61,18 @@ export type Product = {
 };
 
 /**
- * Shared FSSAI / Legal Metrology / seller block for every PARAG SKU. These are
+ * Shared FSSAI / Legal Metrology / seller block for every PYAAS SKU. These are
  * PLACEHOLDERS the founder confirms before launch. Shown on product listings
  * and on every tax invoice (Legal Metrology + FSSAI + GST require them).
  */
 export const COMPLIANCE = {
   brand: 'PYAAS',
-  manufacturer: 'Pradeshik Cooperative Dairy Federation Ltd. (PARAG)',
-  manufacturerAddress: 'PCDF Bhawan, Nishatganj, Lucknow, Uttar Pradesh 226007',
+  manufacturer: 'PYAAS Dairy Private Limited', // PLACEHOLDER — founder to confirm legal entity
+  manufacturerAddress: 'PYAAS Dairy, Lucknow, Uttar Pradesh', // PLACEHOLDER — founder to confirm
   fssaiLicense: '10012345000000',   // PLACEHOLDER - confirm the real FSSAI licence number
-  gstin: '09AAAAA0000A1Z5',          // PLACEHOLDER - confirm the real GSTIN
-  customerCare: '1800 103 3611',     // PLACEHOLDER
-  customerCareEmail: 'hello@paragdairy.app',
+  gstin: '09AAAAA0000A1Z5',         // PLACEHOLDER - confirm the real GSTIN
+  customerCare: CARE_PHONE,         // single source: lib/support.ts (PLACEHOLDER until founder confirms)
+  customerCareEmail: 'care@pyaasdairy.in', // PLACEHOLDER — founder to confirm
   countryOfOrigin: 'India',
 } as const;
 
@@ -138,7 +140,7 @@ export function complianceFor(p: Product) {
   };
 }
 
-// Real PARAG pack shots bundled with the app. One reference photo covers all
+// Real pack shots bundled with the app (original Parag brand assets). One reference photo covers all
 // pack sizes of a line (e.g. the same Taaza pouch art for 500ml / 1L / 5L).
 const IMG = {
   taaza: require('../assets/products/taaza.png'),
@@ -176,7 +178,7 @@ const IMG = {
 };
 
 /**
- * PARAG product catalog, extracted from the live paragdairy.com storefront
+ * PYAAS product catalog, extracted from the live paragdairy.com storefront
  * (Pradeshik Cooperative Dairy Federation, UP). MRP equals offer price on
  * every SKU there, so no strikethrough pricing is shown anywhere.
  */
@@ -184,95 +186,95 @@ export const PRODUCTS: Product[] = [
   // ── Milk ──────────────────────────────────────────────────────────────────
   {
     id: 'taaza-500ml',
-    name: 'Toned Milk - Parag Taaza',
+    name: 'Toned Milk - PYAAS Taaza',
     variant: '500ml Pouch',
     category: 'milk',
     price: 29,
     unit: '500 ml',
     tag: '3% Fat · Toned',
     description:
-      'Pasteurised toned milk from the Parag cooperative network, fortified with vitamins A and D. A light, dependable everyday milk for chai, coffee and the whole family.',
+      'Pasteurised toned milk from the PYAAS cooperative network, fortified with vitamins A and D. A light, dependable everyday milk for chai, coffee and the whole family.',
     image: IMG.taaza,
     subscribable: true,
   },
   {
     id: 'taaza-1l',
-    name: 'Toned Milk - Parag Taaza',
+    name: 'Toned Milk - PYAAS Taaza',
     variant: '1L Pouch',
     category: 'milk',
     price: 57,
     unit: '1 L',
     tag: '3% Fat · Toned',
     description:
-      'The family-size pouch of Parag Taaza pasteurised toned milk. Fortified with vitamins A and D, delivered fresh for your daily glass, chai and cooking.',
+      'The family-size pouch of PYAAS Taaza pasteurised toned milk. Fortified with vitamins A and D, delivered fresh for your daily glass, chai and cooking.',
     image: IMG.taaza,
     subscribable: true,
   },
   {
     id: 'taaza-5l',
-    name: 'Toned Milk - Parag Taaza',
+    name: 'Toned Milk - PYAAS Taaza',
     variant: '5L Bulk Pack',
     category: 'milk',
     price: 285,
     unit: '5 L',
     tag: '3% Fat · Toned · Bulk pack',
     description:
-      'A 5 litre bulk pack of Parag Taaza toned milk for large households, tea stalls and kitchens that go through milk fast.',
+      'A 5 litre bulk pack of PYAAS Taaza toned milk for large households, tea stalls and kitchens that go through milk fast.',
     image: IMG.taaza,
     subscribable: true,
   },
   {
     id: 'gold-500ml',
-    name: 'Full Cream Milk - Parag Gold',
+    name: 'Full Cream Milk - PYAAS Gold',
     variant: '500ml Pouch',
     category: 'milk',
     price: 35,
     unit: '500 ml',
     tag: 'Full Cream',
     description:
-      'Parag Gold pasteurised full cream milk, rich and creamy with a minimum of 6% fat. The indulgent choice for kheer, malai and a proper morning glass.',
+      'PYAAS Gold pasteurised full cream milk, rich and creamy with a minimum of 6% fat. The indulgent choice for kheer, malai and a proper morning glass.',
     image: IMG.gold,
     subscribable: true,
   },
   {
     id: 'gold-1l',
-    name: 'Full Cream Milk - Parag Gold',
+    name: 'Full Cream Milk - PYAAS Gold',
     variant: '1L Pouch',
     category: 'milk',
     price: 69,
     unit: '1 L',
     tag: 'Full Cream',
     description:
-      'The 1 litre pouch of Parag Gold full cream milk. Rich, creamy and satisfying, ideal for families that like their milk thick and their chai strong.',
+      'The 1 litre pouch of PYAAS Gold full cream milk. Rich, creamy and satisfying, ideal for families that like their milk thick and their chai strong.',
     image: IMG.gold,
     subscribable: true,
   },
-  // Parag Shakti · standardised milk (4.5% fat), between Taaza toned and Gold full
+  // PYAAS Shakti · standardised milk (4.5% fat), between Taaza toned and Gold full
   // cream. Specs read off the pack; price indicative (founder to confirm).
   {
     id: 'shakti-500ml',
-    name: 'Standardised Milk - Parag Shakti',
+    name: 'Standardised Milk - PYAAS Shakti',
     variant: '500ml Pouch',
     category: 'milk',
     price: 32,
     unit: '500 ml',
     tag: '4.5% Fat · Standardised',
     description:
-      'Parag Shakti pasteurised standardised milk, with a minimum 4.5% fat and 8.5% SNF. A richer everyday glass than toned milk, without the full weight of full cream.',
+      'PYAAS Shakti pasteurised standardised milk, with a minimum 4.5% fat and 8.5% SNF. A richer everyday glass than toned milk, without the full weight of full cream.',
     image: IMG.shakti,
     subscribable: true,
     nutrition: 'Fat min 4.5%, SNF min 8.5% (per pack).',
   },
   {
     id: 'shakti-1l',
-    name: 'Standardised Milk - Parag Shakti',
+    name: 'Standardised Milk - PYAAS Shakti',
     variant: '1L Pouch',
     category: 'milk',
     price: 62,
     unit: '1 L',
     tag: '4.5% Fat · Standardised',
     description:
-      'The 1 litre pouch of Parag Shakti standardised milk (min 4.5% fat, 8.5% SNF). A balanced, wholesome everyday milk for the whole family.',
+      'The 1 litre pouch of PYAAS Shakti standardised milk (min 4.5% fat, 8.5% SNF). A balanced, wholesome everyday milk for the whole family.',
     image: IMG.shakti,
     subscribable: true,
     nutrition: 'Fat min 4.5%, SNF min 8.5% (per pack).',
@@ -281,14 +283,14 @@ export const PRODUCTS: Product[] = [
   // ── Super Tea · milk made for chai ────────────────────────────────────────
   {
     id: 'chai-special-500ml',
-    name: 'Chai Special - Parag',
+    name: 'Chai Special - PYAAS',
     variant: '500ml Pouch',
     category: 'super_tea',
     price: 32,
     unit: '500 ml',
     tag: 'For tea · Standardised',
     description:
-      'Parag Chai Special, a pasteurised homogenised standardised milk (min 4.5% fat, 8.6% SNF) made for tea. Homogenised so it will not split and gives your chai a full, creamy body.',
+      'PYAAS Chai Special, a pasteurised homogenised standardised milk (min 4.5% fat, 8.6% SNF) made for tea. Homogenised so it will not split and gives your chai a full, creamy body.',
     image: IMG.chaiSpecial,
     subscribable: true,
     nutrition: 'Fat min 4.5%, SNF min 8.6% (per pack).',
@@ -410,7 +412,7 @@ export const PRODUCTS: Product[] = [
     unit: '1 kg',
     tag: '',
     description:
-      'A full kilo of fresh Parag paneer, soft with a clean milky taste. For the big family dinners, party trays and serious paneer lovers.',
+      'A full kilo of fresh PYAAS paneer, soft with a clean milky taste. For the big family dinners, party trays and serious paneer lovers.',
     image: IMG.paneer,
     subscribable: false,
   },
@@ -436,7 +438,7 @@ export const PRODUCTS: Product[] = [
     unit: '200 g',
     tag: 'Vacuum Pack',
     description:
-      'The 200g vacuum pack of fresh Parag paneer. Enough for a family-size matar paneer, sealed to stay soft till you cook.',
+      'The 200g vacuum pack of fresh PYAAS paneer. Enough for a family-size matar paneer, sealed to stay soft till you cook.',
     image: IMG.paneer,
     subscribable: false,
   },
@@ -451,7 +453,7 @@ export const PRODUCTS: Product[] = [
     unit: '200 ml',
     tag: 'Poly Pack',
     description:
-      'Agmark-grade Parag ghee in a handy 200ml poly pack. Aromatic and granular, made from cooperative dairy cream.',
+      'Agmark-grade PYAAS ghee in a handy 200ml poly pack. Aromatic and granular, made from cooperative dairy cream.',
     image: IMG.ghee,
     subscribable: false,
   },
@@ -464,7 +466,7 @@ export const PRODUCTS: Product[] = [
     unit: '500 ml',
     tag: 'Poly Pack',
     description:
-      'The 500ml poly pack of Agmark-grade Parag ghee. A kitchen staple for tadka, parathas and everything in between.',
+      'The 500ml poly pack of Agmark-grade PYAAS ghee. A kitchen staple for tadka, parathas and everything in between.',
     image: IMG.ghee,
     subscribable: false,
   },
@@ -477,7 +479,7 @@ export const PRODUCTS: Product[] = [
     unit: '1000 ml',
     tag: 'Poly Pack',
     description:
-      'A full litre of Agmark-grade Parag ghee in a poly pack. The family-size pack for kitchens where ghee never sits idle.',
+      'A full litre of Agmark-grade PYAAS ghee in a poly pack. The family-size pack for kitchens where ghee never sits idle.',
     image: IMG.ghee,
     subscribable: false,
   },
@@ -490,7 +492,7 @@ export const PRODUCTS: Product[] = [
     unit: '500 ml',
     tag: 'Sika Pack',
     description:
-      'Parag ghee in the 500ml Sika pack. The same Agmark-grade ghee in a sturdier pack that stores and pours neatly.',
+      'PYAAS ghee in the 500ml Sika pack. The same Agmark-grade ghee in a sturdier pack that stores and pours neatly.',
     image: IMG.ghee, // only one ghee reference photo available (poly pack art)
     subscribable: false,
   },
@@ -503,7 +505,7 @@ export const PRODUCTS: Product[] = [
     unit: '1000 ml',
     tag: 'Sika Pack',
     description:
-      'The 1 litre Sika pack of Agmark-grade Parag ghee, for households that buy ghee the sensible way, in bulk.',
+      'The 1 litre Sika pack of Agmark-grade PYAAS ghee, for households that buy ghee the sensible way, in bulk.',
     image: IMG.ghee, // only one ghee reference photo available (poly pack art)
     subscribable: false,
   },
@@ -518,7 +520,7 @@ export const PRODUCTS: Product[] = [
     unit: '100 g',
     tag: '',
     description:
-      'Parag Makkhan, pasteurised table butter made from fresh cream. For toast, parathas and pav that deserve better.',
+      'PYAAS Makkhan, pasteurised table butter made from fresh cream. For toast, parathas and pav that deserve better.',
     image: IMG.butter,
     subscribable: false,
   },
@@ -531,7 +533,7 @@ export const PRODUCTS: Product[] = [
     unit: '500 g',
     tag: '',
     description:
-      'The 500g family block of Parag pasteurised table butter. Keeps the whole house buttered through the week.',
+      'The 500g family block of PYAAS pasteurised table butter. Keeps the whole house buttered through the week.',
     image: IMG.butter,
     subscribable: false,
   },
@@ -589,7 +591,7 @@ export const PRODUCTS: Product[] = [
     unit: '200 ml',
     tag: 'Spiced',
     description:
-      'Parag Masala Mattha, spiced buttermilk churned from fresh dahi with roasted cumin, coriander and a hint of green chilli. Cooling, tangy and perfect after a heavy meal.',
+      'PYAAS Masala Mattha, spiced buttermilk churned from fresh dahi with roasted cumin, coriander and a hint of green chilli. Cooling, tangy and perfect after a heavy meal.',
     image: IMG.masalaMattha,
     subscribable: false,
   },
@@ -604,7 +606,7 @@ export const PRODUCTS: Product[] = [
     unit: '250 g',
     tag: 'Mawa',
     description:
-      'Parag Khoya (mawa), thickened milk solids made by slowly reducing pure milk. The base for pedas, gulab jamun, barfi and rich gravies. Price indicative, founder to confirm.',
+      'PYAAS Khoya (mawa), thickened milk solids made by slowly reducing pure milk. The base for pedas, gulab jamun, barfi and rich gravies. Price indicative, founder to confirm.',
     image: IMG.khoya,
     subscribable: false,
   },
@@ -617,7 +619,7 @@ export const PRODUCTS: Product[] = [
     unit: '500 g',
     tag: 'Mawa',
     description:
-      'The 500g box of Parag Khoya (mawa), slow-reduced milk solids for festive sweets and cooking. Price indicative, founder to confirm.',
+      'The 500g box of PYAAS Khoya (mawa), slow-reduced milk solids for festive sweets and cooking. Price indicative, founder to confirm.',
     image: IMG.khoya,
     subscribable: false,
   },
@@ -630,7 +632,7 @@ export const PRODUCTS: Product[] = [
     unit: '1 kg',
     tag: 'Mawa · Bulk',
     description:
-      'A 1kg box of Parag Khoya (mawa) for halwais and large festive batches. Price indicative, founder to confirm.',
+      'A 1kg box of PYAAS Khoya (mawa) for halwais and large festive batches. Price indicative, founder to confirm.',
     image: IMG.khoya,
     subscribable: false,
   },
@@ -658,7 +660,7 @@ export const PRODUCTS: Product[] = [
     unit: '160 ml',
     tag: 'Single serve',
     description:
-      'A handy 160ml single-serve cup of Parag sweet lassi, churned from fresh dahi. Chill and enjoy on the go.',
+      'A handy 160ml single-serve cup of PYAAS sweet lassi, churned from fresh dahi. Chill and enjoy on the go.',
     image: IMG.lassiCup,
     subscribable: false,
   },
@@ -900,7 +902,7 @@ export function discountPct(p: Product): number | null {
 }
 
 // ── Seeded social proof: ratings, "most ordered" flags, bulk pack markers ────
-// PARAG has no reviews backend yet, so these are author-seeded demo values.
+// PYAAS has no reviews backend yet, so these are author-seeded demo values.
 // Swap for real aggregates once the backend serves them. Every field is
 // optional, so an un-seeded SKU simply renders nothing.
 type ProductMeta = { rating: number; ratingCount: number; mostOrdered?: boolean; packCount?: number };

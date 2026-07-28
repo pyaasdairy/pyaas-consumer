@@ -24,7 +24,7 @@ const ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typ
 const MARGIN = 14;
 const HL = 46;
 
-export function ParagTabBar({ state, navigation }: TabBarProps) {
+export function PyaasTabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const routes = state.routes.filter((r: any) => ICONS[r.name]);
@@ -124,7 +124,7 @@ function TabIcon({ active, name, color }: { active: boolean; name: keyof typeof 
   );
 }
 
-// Raised center button -> PARAG Plus (membership). The PARAG sun logo on a white
+// Raised center button -> PYAAS Plus (membership). The sun logo (parag-logo.png asset) on a white
 // disc with a flame ring, so the colourful mark reads clearly.
 function VipButton({ active, onPress }: { active: boolean; onPress: () => void }) {
   const s = useSharedValue(1);

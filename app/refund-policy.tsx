@@ -6,7 +6,7 @@ export default function RefundPolicy() {
     <DocScreen
       title="Refund Policy"
       updated="1 July 2026"
-      intro="We want every PARAG delivery to be right. Because milk and dairy are perishable food items, we handle returns and refunds a little differently from ordinary goods. This policy explains when and how you get a refund."
+      intro="We want every PYAAS delivery to be right. Because milk and dairy are perishable food items, we handle returns and refunds a little differently from ordinary goods. This policy explains when and how you get a refund."
       sections={[
         {
           heading: 'When you can raise a refund',
@@ -32,7 +32,7 @@ export default function RefundPolicy() {
         {
           heading: 'How to report',
           blocks: [
-            { kind: 'para', text: 'Open the order, use Help and support, choose the issue type, and describe what happened. You can also email hello@paragdairy.app. Reporting on the day of delivery helps us resolve it fastest.' },
+            { kind: 'para', text: 'Open the order, use Help and support, choose the issue type, and describe what happened. You can also email care@pyaasdairy.in. Reporting on the day of delivery helps us resolve it fastest.' },
           ],
         },
         {

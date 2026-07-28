@@ -26,7 +26,7 @@ export default function Refer() {
   async function share() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await Share.share({
-      message: `Join me on PARAG, Uttar Pradesh's own dairy cooperative. Use my code ${code} when you sign up. Sehat ki Dhara! https://www.paragdairy.com`,
+      message: `Join me on PYAAS, fresh cooperative dairy delivered to your door. Use my code ${code} when you sign up. Sehat ki Dhara!`,
     });
   }
 
@@ -48,7 +48,7 @@ export default function Refer() {
             Gift {rupee(REFERRAL_REWARD)},{'\n'}get {rupee(REFERRAL_REWARD)}.
           </Serif>
           <TextBody color="rgba(255,255,255,0.95)" style={{ fontSize: 13.5 }}>
-            For every family that joins the cooperative with your code, {rupee(REFERRAL_REWARD)} lands in your PARAG Wallet.
+            For every family that joins the cooperative with your code, {rupee(REFERRAL_REWARD)} lands in your PYAAS Wallet.
           </TextBody>
         </View>
 

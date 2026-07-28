@@ -7,7 +7,7 @@ import { getSingle, putSingle, newId } from './localStore';
 const DEMO_WALLET_SEED = 0;
 
 /**
- * Session + profile for the PARAG consumer app.
+ * Session + profile for the PYAAS consumer app.
  *
  * In this build the phone-OTP flow runs against the on-device store (demo /
  * offline mode): any 10-digit number plus the demo code signs in and gets a

@@ -4,6 +4,7 @@ import { requireUserId, getProfile } from './session';
 import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 import { debitWallet, autoSettleTopUp } from './walletApi';
 import { api, isBackendConfigured, HttpError } from './apiClient';
+import { instantEtaHHMM, INSTANT_ETA_MINUTES, MORNING_WINDOW } from './deliveryMode';
 
 /**
  * Consumer data layer: addresses + orders. Runs against the on-device store so
@@ -66,6 +67,14 @@ export type Order = {
   placed_at: string;
   priority?: string | null;
   delivery_window?: string | null;
+  // Delivery lane: 'instant' = ~90 min express, 'morning' = the 5–7:30 AM slot
+  // (also used for a picked date). Backend stores it and mints etaAt on the task.
+  lane?: 'instant' | 'morning' | null;
+  // Server-minted instant ETA (ISO). Snake_case tolerated on the wire.
+  etaAt?: string | null;
+  eta_at?: string | null;
+  // Picked delivery date (ISO YYYY-MM-DD) for a scheduled morning order.
+  delivery_date?: string | null;
   proof_photo_url?: string | null;
   order_items?: OrderItem[];
   riders?: Rider | null;
@@ -147,6 +156,11 @@ export async function placeOrder(params: {
   priority?: 'vip' | 'normal';
   orderType?: 'instant' | 'subscription';
   buyerGstin?: string | null;
+  /** Delivery lane. 'instant' = express ~90 min (one-time orders only);
+   *  'morning' (default) = the 5–7:30 AM slot. */
+  lane?: 'instant' | 'morning';
+  /** Picked delivery date (ISO YYYY-MM-DD) → delivered in that day's morning slot. */
+  deliveryDate?: string | null;
 }): Promise<string> {
   const { lines, address, paymentMethod } = params;
   const couponDiscount = params.couponDiscount ?? 0;
@@ -158,6 +172,15 @@ export async function placeOrder(params: {
   const address_text = [address.line1, address.line2, address.city, address.pincode]
     .filter(Boolean)
     .join(', ');
+
+  // Delivery lane. Instant is a one-time-order express lane only — a
+  // subscription always rides the morning route, whatever the caller passed.
+  const lane: 'instant' | 'morning' =
+    params.lane === 'instant' && (params.orderType ?? 'instant') !== 'subscription' ? 'instant' : 'morning';
+  const placedAt = new Date();
+  // instant → 'by HH:MM' (now + 90 min, local); morning / picked date → the
+  // 5–7:30 AM slot (a picked date also carries delivery_date below).
+  const delivery_window = lane === 'instant' ? `by ${instantEtaHHMM(placedAt)}` : MORNING_WINDOW;
 
   const orderId = newId('ord');
   const order: Order = {
@@ -171,9 +194,14 @@ export async function placeOrder(params: {
     address_label: address.label,
     address_text,
     rider_id: null,
-    placed_at: new Date().toISOString(),
-    priority: params.priority ?? 'normal',
-    delivery_window: '06:00-07:00',
+    placed_at: placedAt.toISOString(),
+    // Instant rides the express lane at high priority; the backend stores lane
+    // and mints etaAt = placed + 90 min on the delivery task.
+    priority: lane === 'instant' ? 'high' : params.priority ?? 'normal',
+    delivery_window,
+    lane,
+    delivery_date: lane === 'instant' ? null : params.deliveryDate ?? null,
+    etaAt: lane === 'instant' ? new Date(placedAt.getTime() + INSTANT_ETA_MINUTES * 60 * 1000).toISOString() : null,
     order_type: params.orderType ?? 'instant',
     buyer_gstin: params.buyerGstin?.trim() || null,
     order_items: lines.map((l) => ({

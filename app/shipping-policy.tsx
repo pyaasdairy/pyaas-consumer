@@ -6,7 +6,7 @@ export default function ShippingPolicy() {
     <DocScreen
       title="Shipping & Delivery"
       updated="1 July 2026"
-      intro="PARAG delivers fresh milk and dairy to your door. We plan routes so your order arrives fresh on the delivery day or slot you choose. We focus on freshness and reliability rather than rushing."
+      intro="PYAAS delivers fresh milk and dairy to your door. We plan routes so your order arrives fresh on the delivery day or slot you choose. We focus on freshness and reliability rather than rushing."
       sections={[
         {
           heading: 'How delivery works',

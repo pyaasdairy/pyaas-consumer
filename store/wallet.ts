@@ -3,7 +3,7 @@ import { getUserId } from '../lib/session';
 import { getBalances } from '../lib/walletApi';
 
 /**
- * PARAG wallet balance store. Reads the DERIVED balances off the append-only
+ * PYAAS wallet balance store. Reads the DERIVED balances off the append-only
  * ledger (lib/walletApi.getBalances). `balance` stays the settled available
  * balance so every existing call site keeps working; cash / promo / pending /
  * locked and the low-balance flag are exposed for the wallet dashboard. Fails

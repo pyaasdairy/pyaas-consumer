@@ -21,7 +21,7 @@ const BENEFITS = [
 ];
 
 /**
- * PARAG MONEY - UPI AutoPay (Smart Recharge) setup and manage screen. Wires to
+ * PYAAS MONEY - UPI AutoPay (Smart Recharge) setup and manage screen. Wires to
  * lib/walletApi (getAutopay / setupAutopay / approveAutopay / cancelAutopay).
  * With the shared backend configured this is a REAL Paytm UPI AutoPay mandate
  * (NPCI lifecycle: pending approval in Paytm → active with a UMN → pause /
@@ -74,7 +74,7 @@ export default function Autopay() {
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <BackButton />
-        <Serif style={{ fontSize: 24 }}>PARAG MONEY</Serif>
+        <Serif style={{ fontSize: 24 }}>PYAAS MONEY</Serif>
       </View>
 
       {loading ? (

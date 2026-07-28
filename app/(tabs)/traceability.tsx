@@ -124,7 +124,7 @@ export default function Traceability() {
             <Ionicons name="scan-outline" size={18} color={colors.flameSoft} />
             <TextSemi color={colors.white} style={{ fontSize: 19 }}>Know your milk</TextSemi>
           </View>
-          <TextBody color="rgba(255,255,255,0.82)" style={{ fontSize: 13, textAlign: 'center', marginTop: 4 }}>Point at the barcode or QR on your Parag pack</TextBody>
+          <TextBody color="rgba(255,255,255,0.82)" style={{ fontSize: 13, textAlign: 'center', marginTop: 4 }}>Point at the barcode or QR on your PYAAS pack</TextBody>
         </View>
 
         {/* Frame row */}

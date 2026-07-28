@@ -10,7 +10,7 @@ export const colors = {
   milk: '#FFFFFF',        // app background, pure white (Blinkit-style)
   cream: '#FFF1F8',       // pale warm-cream surface (section headers, soft chips)
   wash: '#FBF0F6',        // warm-cream fill for image tiles / steppers on white cards
-  // PARAG flame orange-red (#E8491D) and its tints
+  // Legacy flame orange-red (#E8491D) and its tints (pre-PYAAS brand accents)
   flameSoft: '#FBC9E6',
   flame: '#F491CC',
   flameDeep: '#F36CB5',

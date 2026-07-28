@@ -59,7 +59,7 @@ export function FreePackGate() {
               <Ionicons name={claimed ? 'checkmark' : 'gift'} size={34} color={colors.white} />
             </View>
             <Serif color={colors.white} style={{ fontSize: 24, textAlign: 'center' }}>
-              {claimed ? 'Your milk is on us' : 'Welcome to PARAG'}
+              {claimed ? 'Your milk is on us' : 'Welcome to PYAAS'}
             </Serif>
           </View>
 
@@ -67,7 +67,7 @@ export function FreePackGate() {
             {claimed ? (
               <>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  We have added a {rupee(FREE_PACK_VALUE)} welcome credit, worth one 500 ml pack of Parag Taaza milk, to your wallet. It applies to your first order.
+                  We have added a {rupee(FREE_PACK_VALUE)} welcome credit, worth one 500 ml pack of PYAAS Taaza milk, to your wallet. It applies to your first order.
                 </TextBody>
                 <Button title="Start shopping" onPress={close} style={{ alignSelf: 'stretch' }} />
               </>
@@ -75,7 +75,7 @@ export function FreePackGate() {
               <>
                 <TextSemi style={{ fontSize: 17, textAlign: 'center' }}>Your first pack of milk is free.</TextSemi>
                 <TextBody style={{ fontSize: 14, textAlign: 'center', lineHeight: 21 }}>
-                  A free 500 ml pack of Parag Taaza on us. We add a {rupee(FREE_PACK_VALUE)} welcome credit to your wallet that covers it on your first order.
+                  A free 500 ml pack of PYAAS Taaza on us. We add a {rupee(FREE_PACK_VALUE)} welcome credit to your wallet that covers it on your first order.
                 </TextBody>
                 <Button title="Claim my free pack" onPress={claim} loading={busy} style={{ alignSelf: 'stretch' }} />
                 <Tap haptic={false} onPress={close} style={{ paddingVertical: 4 }}>

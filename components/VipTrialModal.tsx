@@ -35,7 +35,7 @@ export function VipTrialModal({ visible, onAccept, onDeny }: { visible: boolean;
               <Text style={{ fontSize: 52, fontFamily: fonts.serifBlack, ...tabular, color: GOLD, letterSpacing: -2 }}>{PLUS_TRIAL_DAYS}</Text>
               <Text style={{ fontSize: 16, fontFamily: fonts.sansBold, color: colors.white, letterSpacing: 1, marginBottom: 10, marginLeft: 6 }}>DAYS FREE</Text>
             </View>
-            <Serif color={colors.white} style={{ fontSize: 20, textAlign: 'center' }}>of PARAG Plus</Serif>
+            <Serif color={colors.white} style={{ fontSize: 20, textAlign: 'center' }}>of PYAAS Plus</Serif>
             <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 13, textAlign: 'center' }}>On us. No card needed. Cancel anytime.</TextBody>
             <ShineSweep dur={3200} travel={360} bandWidth={90} delay={500} />
           </View>

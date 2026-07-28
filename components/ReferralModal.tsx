@@ -35,7 +35,7 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
           <View style={{ alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line }} />
           <Serif style={{ fontSize: 22, textAlign: 'center' }}>Have a referral code?</Serif>
           <TextBody style={{ fontSize: 13.5, textAlign: 'center' }}>
-            Add a friend's code and they earn {rupeeShort(REFERRAL_REWARD)} in their PARAG Wallet.
+            Add a friend's code and they earn {rupeeShort(REFERRAL_REWARD)} in their PYAAS Wallet.
           </TextBody>
 
           <View style={{ borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 14, height: 52, justifyContent: 'center' }}>

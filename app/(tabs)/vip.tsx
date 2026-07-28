@@ -1,5 +1,5 @@
 /**
- * PARAG Plus - the loyalty membership tab. Plus is a paid membership whose value
+ * PYAAS Plus - the loyalty membership tab. Plus is a paid membership whose value
  * is service (priority slots, free delivery, member offers, priority support),
  * NOT a per-SKU discount, so this screen never shows member prices, a savings
  * table or an "X% off" claim. Membership state lives per-user in localStore via
@@ -173,7 +173,7 @@ function HoloCard({ scrollY, num, lineOne, lineTwo, memberLine }: { scrollY: Sha
               <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9, fontFamily: fonts.sansBold, letterSpacing: 2 }}>MEMBER</Text>
               <Text style={{ color: colors.white, fontSize: 13, fontFamily: fonts.sansBold, letterSpacing: 1.5 }}>{memberLine}</Text>
             </View>
-            <Text style={{ color: GOLD, fontSize: 12, fontFamily: fonts.serif, letterSpacing: 1.5 }}>PARAG PLUS</Text>
+            <Text style={{ color: GOLD, fontSize: 12, fontFamily: fonts.serif, letterSpacing: 1.5 }}>PYAAS PLUS</Text>
           </View>
         </View>
       </View>
@@ -274,7 +274,7 @@ export default function Vip() {
   // What the card shows adapts to membership state.
   const cardNum = active ? days : PLUS_TRIAL_DAYS;
   const cardL2 = active ? 'LEFT' : 'FREE';
-  const upperName = (name ?? 'PARAG FAMILY').toUpperCase();
+  const upperName = (name ?? 'PYAAS FAMILY').toUpperCase();
   const memberLine = active ? (onTrial ? 'TRIAL ACTIVE' : upperName) : upperName;
 
   return (
@@ -290,14 +290,14 @@ export default function Vip() {
         <Animated.View style={[{ height: 360, alignItems: 'center', justifyContent: 'center' }, heroStyle]}>
           {focused ? <FloatingParticles count={14} height={360} /> : null}
           <Animated.View entering={enterUp(60)} style={{ alignItems: 'center', marginBottom: 14 }}>
-            <Text style={{ color: GOLD_DEEP, fontSize: 11, fontFamily: fonts.sansBold, letterSpacing: 4 }}>PARAG PLUS MEMBERSHIP</Text>
+            <Text style={{ color: GOLD_DEEP, fontSize: 11, fontFamily: fonts.sansBold, letterSpacing: 4 }}>PYAAS PLUS MEMBERSHIP</Text>
           </Animated.View>
           <HoloCard scrollY={scrollY} num={cardNum} lineOne="DAYS" lineTwo={cardL2} memberLine={memberLine} />
           <Animated.View entering={enterUp(140)} style={{ marginTop: 22, alignItems: 'center' }}>
             <TextSemi style={{ fontSize: 15, textAlign: 'center' }} color={INK}>
               {active
                 ? (onTrial ? `Your free trial is live, ${days} day${days === 1 ? '' : 's'} of Plus left.` : `You're a Plus member, renews in ${days} days.`)
-                : 'Join PARAG Plus'}
+                : 'Join PYAAS Plus'}
             </TextSemi>
             {!active ? (
               <TextBody style={{ fontSize: 13, textAlign: 'center', marginTop: 2 }}>

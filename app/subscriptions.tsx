@@ -153,7 +153,11 @@ export default function Subscriptions() {
         ) : subs.length === 0 && !adding ? (
           <View style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: 8 }}>
             <Ionicons name="infinite-outline" size={40} color={colors.inkMute} />
-            <TextBody>No subscriptions yet.</TextBody>
+            <TextBody>No active subscription.</TextBody>
+            <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkMute}>
+              Claim your free pack on the home screen — 2 mornings of milk on us, then it continues daily from your wallet.
+            </TextBody>
+            <Button title="Claim your free pack" small style={{ marginTop: 4, paddingHorizontal: 24 }} onPress={() => router.replace('/(tabs)')} />
           </View>
         ) : (
           (() => {

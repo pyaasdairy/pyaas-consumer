@@ -9,8 +9,8 @@ import { submitLead, type LeadKind } from '../lib/leads';
 
 const KINDS: { key: LeadKind; label: string; icon: any; blurb: string }[] = [
   { key: 'bulk_order', label: 'Bulk order', icon: 'cube-outline', blurb: 'Daily milk, curd and paneer for offices, cafes, sweet shops and events.' },
-  { key: 'franchise', label: 'Franchise', icon: 'storefront-outline', blurb: 'Run a PARAG parlour or franchise outlet in your neighbourhood.' },
-  { key: 'vendor', label: 'Distributor', icon: 'people-outline', blurb: 'Distribute PARAG products across your area, or join a member dairy union.' },
+  { key: 'franchise', label: 'Franchise', icon: 'storefront-outline', blurb: 'Run a PYAAS parlour or franchise outlet in your neighbourhood.' },
+  { key: 'vendor', label: 'Distributor', icon: 'people-outline', blurb: 'Distribute PYAAS products across your area, or join a member dairy union.' },
 ];
 
 export default function Business() {

@@ -4,13 +4,13 @@ import { DocScreen } from '../components/DocScreen';
 export default function AboutUs() {
   return (
     <DocScreen
-      title="About PARAG"
-      intro="PARAG is the consumer brand of the Pradeshik Cooperative Dairy Federation, Uttar Pradesh, a cooperative that brings together many member dairies and thousands of farmer families across the state."
+      title="About PYAAS"
+      intro="PYAAS brings fresh cooperative milk and dairy from Uttar Pradesh to your door, working with many member dairies and thousands of farmer families across the state."
       sections={[
         {
           heading: 'A cooperative, not a single farm',
           blocks: [
-            { kind: 'para', text: 'PARAG milk and dairy come from a network of cooperative dairies, not one farm. Milk is pooled from village-level societies, tested, chilled, processed and packed under the PARAG brand, so quality stays consistent while farmer members earn a fair share.' },
+            { kind: 'para', text: 'PYAAS milk and dairy come from a network of cooperative dairies, not one farm. Milk is pooled from village-level societies, tested, chilled, processed and packed, so quality stays consistent while farmer members earn a fair share.' },
           ],
         },
         {
