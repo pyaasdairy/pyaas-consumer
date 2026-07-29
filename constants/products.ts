@@ -17,9 +17,13 @@ export type Category =
   | 'sweets';
 
 export type Product = {
-  id: string;
+  id: string; // the SKU / variantId — cart lines key by this (500 ml and 1 L are separate lines)
   name: string;
   variant: string; // e.g. "1L Pouch"
+  /** Groups sibling SKUs (500 ml / 1 L …) under one storefront card. Defaults to
+   *  `name` when omitted — set explicitly only when two lines share a name but
+   *  should NOT collapse into one card (or vice-versa). */
+  baseId?: string;
   category: Category;
   price: number;
   mrp?: number; // on paragdairy.com MRP == offer price on every SKU, so mrp is omitted (no invented discounts)

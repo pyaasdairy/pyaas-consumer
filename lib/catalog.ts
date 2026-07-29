@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useSyncExternalStore } from 'react';
 import { api, isBackendConfigured } from './apiClient';
 import { PRODUCTS, type Category, type Product } from '../constants/products';
@@ -188,4 +188,75 @@ export function useCatalog(): Product[] {
     return () => clearInterval(t);
   }, []);
   return products;
+}
+
+// ── Variant grouping (one storefront card per base, many size variants) ───────
+/**
+ * A base product and its ordered size variants (500 ml · 1 L · 5 L …). Each
+ * `variant` is a full merged Product, so per-variant overrides (price / out of
+ * stock / hidden) are ALREADY applied — hidden variants never appear, and a
+ * variant flipped out of stock keeps its own flag. `base` is the representative
+ * shown first (the first in-catalog variant of the group).
+ */
+export type GroupedProduct = { base: Product; variants: Product[] };
+
+/** Grouping key: an explicit `baseId` when set, else the shared display name. */
+function groupKey(p: Product): string {
+  return p.baseId ?? p.name;
+}
+
+/**
+ * Collapse a flat (already-merged) product list into base + variants groups.
+ * First appearance defines a group's order and its `base`; variants keep their
+ * in-list order (500 ml before 1 L before 5 L, as authored). Pure — safe to
+ * memoise over the reactive catalog.
+ */
+export function groupProducts(list: Product[]): GroupedProduct[] {
+  const groups: GroupedProduct[] = [];
+  const byKey = new Map<string, GroupedProduct>();
+  for (const p of list) {
+    const key = groupKey(p);
+    const g = byKey.get(key);
+    if (g) { g.variants.push(p); continue; }
+    const created: GroupedProduct = { base: p, variants: [p] };
+    byKey.set(key, created);
+    groups.push(created);
+  }
+  return groups;
+}
+
+/** Imperative grouped snapshot (overrides + additions applied), for flat-free callers. */
+export function getGroupedProducts(): GroupedProduct[] {
+  return groupProducts(getMergedProducts());
+}
+
+/** Reactive grouped catalog — the live 60s source, collapsed to one card per base. */
+export function useGroupedCatalog(): GroupedProduct[] {
+  const products = useCatalog();
+  return useMemo(() => groupProducts(products), [products]);
+}
+
+/** The variant a card/detail should open on: the first in-stock one, else the first. */
+export function defaultVariant(variants: Product[]): Product {
+  return variants.find((v) => !v.outOfStock) ?? variants[0];
+}
+
+/** Short chip label for a variant selector — the pack size ("500 ml", "1 L"). */
+export function variantLabel(p: Product): string {
+  return p.unit || p.variant;
+}
+
+/**
+ * Physical attributes row for the detail page. Reads the pack measure off
+ * `netQuantity`/`unit` and labels it Volume (ml / L) or Weight (g / kg).
+ * Returns [] when there is no measure to show (renders nothing, gracefully).
+ */
+export function physicalAttributes(p: Product): { label: string; value: string }[] {
+  const value = (p.netQuantity ?? p.unit ?? '').trim();
+  if (!value) return [];
+  const lower = value.toLowerCase();
+  const isWeight = /(^|\s|\d)(kg|g)\b/.test(lower);
+  const isVolume = /(^|\s|\d)(ml|l|litre|liter)\b/.test(lower);
+  const label = isWeight ? 'Weight' : isVolume ? 'Volume' : 'Net quantity';
+  return [{ label, value }];
 }

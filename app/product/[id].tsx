@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, ScrollView, Text, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -14,7 +14,8 @@ import { StackedProductImage } from '../../components/StackedProductImage';
 import { ShineSweep, GlowPulse } from '../../components/Fx';
 import { StartDatePicker } from '../../components/StartDatePicker';
 import { discountPct, complianceFor, getReviews } from '../../constants/products';
-import { useCatalog } from '../../lib/catalog';
+import { useCatalog, groupProducts, physicalAttributes } from '../../lib/catalog';
+import { VariantSelector } from '../../components/VariantSelector';
 import { createSubscription, type Frequency } from '../../lib/subscriptions';
 import { placeOrder, listAddresses } from '../../lib/api';
 import { captureRestockLead } from '../../lib/leads';
@@ -74,7 +75,17 @@ export default function ProductDetail() {
   // Read the live merged catalog so a store-manager price/stock change is
   // reflected here too (the 60s refetch flips OUT OF STOCK / new price live).
   const products = useCatalog();
-  const product = products.find((p) => p.id === String(id));
+  // The route id seeds the selection; picking another size swaps the SELECTED
+  // variant in place (no navigation, no reload) and re-drives the whole page.
+  const [selectedId, setSelectedId] = useState<string>(String(id));
+  useEffect(() => { setSelectedId(String(id)); }, [id]);
+  const product = products.find((p) => p.id === selectedId);
+  // Sibling sizes of this base (500 ml · 1 L …), in catalog order, for the selector.
+  const variants = useMemo(() => {
+    if (!product) return [];
+    const group = groupProducts(products).find((g) => g.variants.some((v) => v.id === product.id));
+    return group?.variants ?? [product];
+  }, [products, product]);
 
   const [qty, setQty] = useState(1);
   // Milk defaults to a Daily subscription; non-subscribable items (ghee) are a
@@ -101,8 +112,8 @@ export default function ProductDetail() {
   const [gstin, setGstin] = useState('');
   const refreshWallet = useWallet((s) => s.refresh);
 
-  // Changing qty/frequency changes the cost, so re-arm the wallet gate.
-  useEffect(() => { setShortfall(0); setErr(''); }, [qty, freq]);
+  // Changing qty/frequency/variant changes the cost, so re-arm the wallet gate.
+  useEffect(() => { setShortfall(0); setErr(''); }, [qty, freq, selectedId]);
 
   if (!product) {
     return (
@@ -271,6 +282,26 @@ export default function ProductDetail() {
 
             <Serif style={{ fontSize: 28, lineHeight: 32 }}>{product.name}</Serif>
             <TextMed color={colors.inkSoft} style={{ fontSize: 14.5 }}>{product.variant} · {product.unit}</TextMed>
+
+            {/* Size selector — picking a size re-drives price / image / stock / CTA
+                for this same screen, no reload. Hidden for single-variant bases. */}
+            {variants.length > 1 ? (
+              <View style={{ marginTop: 4 }}>
+                <VariantSelector variants={variants} selectedId={selectedId} onSelect={setSelectedId} />
+              </View>
+            ) : null}
+
+            {/* Physical attributes (Volume / Weight), driven by the selected variant. */}
+            {physicalAttributes(product).length ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
+                {physicalAttributes(product).map((a) => (
+                  <View key={a.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.wash, borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 6 }}>
+                    <TextBody style={{ fontSize: 12 }} color={colors.inkMute}>{a.label}</TextBody>
+                    <TextSemi style={{ fontSize: 12.5 }} color={colors.ink}>{a.value}</TextSemi>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
             {product.rating ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>

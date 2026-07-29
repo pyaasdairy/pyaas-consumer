@@ -18,7 +18,7 @@ import { BottomBar, useBottomBarClearance } from '../../components/BottomBar';
 import { DeliveryStrip } from '../../components/DeliveryStrip';
 import { HeroSlideshow } from '../../components/HeroSlideshow';
 import { CATEGORIES, type Category } from '../../constants/products';
-import { useCatalog, getMergedProducts, refreshCatalog } from '../../lib/catalog';
+import { useCatalog, getMergedProducts, refreshCatalog, groupProducts } from '../../lib/catalog';
 import { PromoGate } from '../../components/PromoGate';
 import { ComingSoon } from '../../components/ComingSoon';
 import { useServiceability } from '../../lib/serviceability';
@@ -184,7 +184,11 @@ export default function Shop() {
     return () => { active = false; };
   }, [refreshWallet, refreshFavs, svcCheck]);
 
-  const data = useMemo(() => (cat === 'all' ? products : products.filter((p) => p.category === cat)), [cat, products]);
+  // One card per base: the grid is grouped (500 ml · 1 L collapse into a single
+  // card with a size selector). The Most-ordered / favourites shelves below stay
+  // per-variant (curated single SKUs).
+  const groups = useMemo(() => groupProducts(products), [products]);
+  const data = useMemo(() => (cat === 'all' ? groups : groups.filter((g) => g.base.category === cat)), [cat, groups]);
   const popular = useMemo(() => products.filter((p) => p.mostOrdered), [products]);
   const favorites = useMemo(() => favIds.map((id) => products.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds, products]);
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
@@ -200,7 +204,7 @@ export default function Shop() {
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <Animated.FlatList
         data={data}
-        keyExtractor={(p) => p.id}
+        keyExtractor={(g) => g.base.id}
         numColumns={2}
         onScroll={onScroll}
         scrollEventThrottle={16}
@@ -400,7 +404,7 @@ export default function Shop() {
         }
         renderItem={({ item, index }) => (
           <View style={{ flex: 1, maxWidth: '50%' }}>
-            <ProductCard product={item} index={index} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />
+            <ProductCard product={item.base} variants={item.variants} index={index} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />
           </View>
         )}
         ListFooterComponent={
@@ -408,7 +412,7 @@ export default function Shop() {
              the visible grid (all/milk) - under any other filter the caption
              would misattribute the manufacturer's products. Deliberately understated:
              tiny wordmark at low opacity + one muted caption line. */
-          data.some((p) => p.manufacturer) ? (
+          data.some((g) => g.variants.some((v) => v.manufacturer)) ? (
             <View style={{ alignItems: 'center', paddingTop: spacing.lg, gap: 7 }}>
               <Image source={require('../../assets/pyaas-logo.png')} style={{ width: 62, height: 17, opacity: 0.35 }} contentFit="contain" />
               <TextBody color={colors.inkMute} style={{ fontSize: 10.5, letterSpacing: 0.4 }}>PYAAS range · marketed & manufactured by PYAAS</TextBody>
