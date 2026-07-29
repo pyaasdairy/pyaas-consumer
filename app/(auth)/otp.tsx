@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Keyboard } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,23 +32,37 @@ export default function OtpLogin() {
   // Test OTP echoed by the backend in dev (OTP_DEV_MODE) so we can sign in
   // without SMS. Shown below the code input; the real SMS API lands later.
   const [devOtp, setDevOtp] = useState('');
-  // Native phone-hint should fire at most once per screen visit (on first focus).
-  const hintTried = useRef(false);
+  // In-flight guard so a burst of focus events doesn't launch the hint twice.
+  const hintBusy = useRef(false);
+
+  // The keyboard hides the input + button on a tall header; collapse the logo
+  // while the keyboard is open so the field and CTA stay above it.
+  const [kbUp, setKbUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbUp(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbUp(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   const digits = () => phone.replace(/\D/g, '').slice(-10);
 
   /**
-   * On focusing the phone field, trigger Android's Play-Services phone-number
-   * hint (one-tap SIM number). No-ops gracefully when the native module is
-   * absent (JS-only build) — the field's autoComplete="tel" still offers OS
-   * autofill. Only prefill if the user hasn't already typed something.
+   * Trigger Android's Play-Services phone-number hint (one-tap SIM number) when
+   * the user TAPS the phone field — NOT on app launch (the field no longer
+   * autofocuses). Fires whenever the field is still empty; no-ops gracefully when
+   * the native module is absent (the field's autoComplete="tel" then offers OS
+   * autofill). The in-flight guard prevents a double-launch from rapid focus.
    */
   async function onPhoneFocus() {
-    if (hintTried.current) return;
-    hintTried.current = true;
-    await ensurePhoneNumberPermission(); // shows the system permission prompt on first tap
-    const hinted = await requestPhoneHint();
-    if (hinted && digits().length < 10) setPhone(hinted);
+    if (hintBusy.current || digits().length >= 10) return;
+    hintBusy.current = true;
+    try {
+      await ensurePhoneNumberPermission(); // system permission prompt (first time only)
+      const hinted = await requestPhoneHint();
+      if (hinted && digits().length < 10) setPhone(hinted);
+    } finally {
+      hintBusy.current = false;
+    }
   }
 
   /**
@@ -109,21 +123,28 @@ export default function OtpLogin() {
             <Tap haptic={false} onPress={() => (step === 'code' ? setStep('phone') : router.back())} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="chevron-back" size={20} color={colors.white} />
             </Tap>
-            <View style={{ alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.xxl, gap: 12 }}>
-              <Image source={require('../../assets/parag-logo.png')} style={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: colors.white }} resizeMode="contain" />
-              <TextMed color="rgba(255,255,255,0.92)" style={{ fontSize: 14 }}>Pure, natural, good health.</TextMed>
-            </View>
-            <ShineSweep dur={3600} travel={420} bandWidth={120} delay={600} />
+            {kbUp ? (
+              // Keyboard open: collapse the logo so the input + button clear it.
+              <View style={{ height: spacing.sm }} />
+            ) : (
+              <>
+                <View style={{ alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.xxl, gap: 12 }}>
+                  <Image source={require('../../assets/parag-logo.png')} style={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: colors.white }} resizeMode="contain" />
+                  <TextMed color="rgba(255,255,255,0.92)" style={{ fontSize: 14 }}>Pure, natural, good health.</TextMed>
+                </View>
+                <ShineSweep dur={3600} travel={420} bandWidth={120} delay={600} />
+              </>
+            )}
           </View>
 
-          <Animated.View entering={enterUp()} style={{ flex: 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}>
+          <Animated.View entering={enterUp()} style={{ flex: kbUp ? undefined : 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: kbUp ? spacing.lg : spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}>
             {step === 'phone' ? (
               <>
                 <Serif style={{ fontSize: 30 }}>Log in / Sign up</Serif>
                 <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Enter your mobile to get a one-time code. We will also text your order and delivery updates here.</TextBody>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1.5, borderBottomColor: colors.line, paddingVertical: 12 }}>
                   <TextMed style={{ fontSize: 15.5 }}>+91</TextMed>
-                  <TextInput value={phone} onChangeText={setPhone} onFocus={onPhoneFocus} keyboardType="phone-pad" placeholder="10-digit mobile" placeholderTextColor={colors.inkMute} maxLength={10} autoFocus returnKeyType="done" onSubmitEditing={sendCode} autoComplete="tel" textContentType="telephoneNumber" importantForAutofill="yes" style={{ flex: 1, fontFamily: fonts.sans, fontSize: 16, color: colors.ink }} />
+                  <TextInput value={phone} onChangeText={setPhone} onFocus={onPhoneFocus} keyboardType="phone-pad" placeholder="10-digit mobile" placeholderTextColor={colors.inkMute} maxLength={10} returnKeyType="done" onSubmitEditing={sendCode} autoComplete="tel" textContentType="telephoneNumber" importantForAutofill="yes" style={{ flex: 1, fontFamily: fonts.sans, fontSize: 16, color: colors.ink }} />
                 </View>
                 {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
                 <SolidBtn label="Send code" loading={loading} onPress={sendCode} />
