@@ -173,7 +173,7 @@ export async function getTrial(): Promise<Trial> {
   if (!uid) return NO_TRIAL;
   if (isBackendConfigured()) {
     try {
-      const raw = await api.get<RawTrial>('/consumer/trial/me');
+      const raw = await api.get<RawTrial>('/trial/me');
       return normalizeRemote(raw);
     } catch {
       // Endpoint not deployed yet / transient — fall through to the local anchor

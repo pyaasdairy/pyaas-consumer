@@ -71,7 +71,7 @@ export async function getServiceability(point: CheckPoint): Promise<Serviceabili
   if (point.lng != null) q.set('lng', String(point.lng));
   if (point.pincode) q.set('pincode', point.pincode);
   const qs = q.toString();
-  const res = await api.get<RawServiceability>(`/consumer/serviceability${qs ? `?${qs}` : ''}`);
+  const res = await api.get<RawServiceability>(`/serviceability${qs ? `?${qs}` : ''}`);
   return normalize(res);
 }
 
@@ -82,7 +82,7 @@ export async function getServiceability(point: CheckPoint): Promise<Serviceabili
  */
 export async function joinWaitlist(input: { phone: string | null; lat: number | null; lng: number | null; pincode: string | null }): Promise<void> {
   if (!isBackendConfigured()) return;
-  await api.post('/consumer/waitlist', {
+  await api.post('/waitlist', {
     phone: input.phone ?? undefined,
     lat: input.lat ?? undefined,
     lng: input.lng ?? undefined,

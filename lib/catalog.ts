@@ -273,7 +273,7 @@ export function refreshCatalog(): Promise<void> {
   inFlight = (async () => {
     if (!isBackendConfigured()) { setMerged(PRODUCTS); return; }
     try {
-      const res = await api.get<CatalogResponse>('/consumer/catalog');
+      const res = await api.get<CatalogResponse>('/catalog');
       setMerged(applyOverlay(PRODUCTS, res));
     } catch {
       // offline / server blip — keep the last-known snapshot (bundled on cold start)

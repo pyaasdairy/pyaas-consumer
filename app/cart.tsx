@@ -104,8 +104,12 @@ export default function Cart() {
       // drop, an item at the moment of payment.
       await refreshCatalog();
       revalidateStock(getMergedProducts());
-      const freshOrderable = useCart.getState().lines.filter((l) => !l.outOfStock);
-      if (freshOrderable.length < orderable.length) {
+      // Set-membership guard (NOT a count): abort if ANY line we're about to pay
+      // for just went out of stock — even if a different line restocked to keep
+      // the orderable count equal. Paying `orderable` is then provably safe (every
+      // one of its lines is still in stock) and stays consistent with `total`.
+      const freshIds = new Set(useCart.getState().lines.filter((l) => !l.outOfStock).map((l) => l.id));
+      if (orderable.some((l) => !freshIds.has(l.id))) {
         setErr('Some items just went out of stock and were removed. Please review your cart.');
         setPlacing(false);
         return;

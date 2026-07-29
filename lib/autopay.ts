@@ -109,7 +109,7 @@ function boundedAmounts(maxAmount: number): { amount: number; max_amount: number
 export async function listMandates(): Promise<UpiMandate[]> {
   if (!isBackendConfigured()) return [];
   await requireUserId(); // must be signed in; the mandate is scoped server-side by JWT
-  const list = await api.get<BackendMandate[]>('/consumer/mandate/me');
+  const list = await api.get<BackendMandate[]>('/mandate/me');
   return Array.isArray(list) ? list.map(toUpiMandate) : [];
 }
 
@@ -124,7 +124,7 @@ export async function createMandate(params: { maxAmount: number; upiId?: string 
   const { amount, max_amount } = boundedAmounts(params.maxAmount);
   // Returns the registration token (mandateOrderView {id, token, keyId, status}).
   const order = await api.post<{ id: string; token?: string; keyId?: string; status?: string }>(
-    '/consumer/mandate/create',
+    '/mandate/create',
     { plan: 'daily', amount, max_amount }
   );
   return toUpiMandate({ id: order.id, status: order.status ?? 'pending', amount, max_amount, token: order.token });
@@ -137,7 +137,7 @@ export async function createMandate(params: { maxAmount: number; upiId?: string 
  * testable end-to-end.
  */
 export async function approveMandate(id: string, checkout?: { paymentId: string; signature: string; token?: string }): Promise<UpiMandate> {
-  const m = await api.post<BackendMandate>('/consumer/mandate/verify', {
+  const m = await api.post<BackendMandate>('/mandate/verify', {
     mandate_id: id,
     razorpay_payment_id: checkout?.paymentId ?? `demo_${id}`,
     razorpay_signature: checkout?.signature ?? 'demo',
@@ -147,15 +147,15 @@ export async function approveMandate(id: string, checkout?: { paymentId: string;
 }
 
 export async function pauseMandate(id: string): Promise<UpiMandate> {
-  return toUpiMandate(await api.post<BackendMandate>(`/consumer/mandate/${id}/pause`));
+  return toUpiMandate(await api.post<BackendMandate>(`/mandate/${id}/pause`));
 }
 
 export async function resumeMandate(id: string): Promise<UpiMandate> {
-  return toUpiMandate(await api.post<BackendMandate>(`/consumer/mandate/${id}/resume`));
+  return toUpiMandate(await api.post<BackendMandate>(`/mandate/${id}/resume`));
 }
 
 export async function cancelMandate(id: string): Promise<UpiMandate> {
-  return toUpiMandate(await api.post<BackendMandate>(`/consumer/mandate/${id}/cancel`));
+  return toUpiMandate(await api.post<BackendMandate>(`/mandate/${id}/cancel`));
 }
 
 /**
@@ -165,6 +165,6 @@ export async function cancelMandate(id: string): Promise<UpiMandate> {
  * a minimal execution record for the UI's optimistic history.
  */
 export async function executeMandate(id: string, amount: number, ref: string, purpose = 'wallet_topup'): Promise<MandateExecution> {
-  await api.post(`/consumer/mandate/${id}/execute`, { amount, ref, purpose });
+  await api.post(`/mandate/${id}/execute`, { amount, ref, purpose });
   return { id: ref, ref, amount, purpose, pre_debit_notice_at: '', executed_at: '', rrn: '', status: 'SUCCESS' };
 }

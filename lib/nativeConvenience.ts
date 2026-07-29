@@ -26,17 +26,26 @@ import { Platform, NativeModules } from 'react-native';
  *                 named `RNPhoneNumberHint` and no-ops if absent.
  *   SMS retriever: `react-native-otp-verify` (wraps SMS Retriever API). Add the
  *                 dep, register the config-plugin stub in `plugins/`, and this
- *                 file will pick it up via `requireOptional('react-native-otp-verify')`.
+ *                 file will pick it up via `requireOtpVerify()`.
  *
  * None of the above is required for the app to build or run.
  */
 
-/** Safely require an optional native package without a hard dependency. */
-function requireOptional<T = any>(name: string): T | null {
+/**
+ * Safely require the optional OTP-retriever native module (react-native-otp-verify),
+ * which is absent in Expo Go and before a dev build adds it.
+ *
+ * The require MUST use a STRING LITERAL (not a variable): Metro's production
+ * transform rejects `require(variable)` outright ("Invalid call … require(name)"),
+ * which fails the release bundle. A literal require inside try/catch, combined with
+ * `allowOptionalDependencies: true` (metro.config.js), lets a MISSING module become
+ * a caught runtime throw instead of a build failure — the same pattern lib/razorpay.ts
+ * uses for react-native-razorpay.
+ */
+function requireOtpVerify<T = any>(): T | null {
   try {
-    // Indirected so Metro does not hard-fail on a missing optional module.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require(name) as T;
+    return require('react-native-otp-verify') as T;
   } catch {
     return null;
   }
@@ -46,7 +55,7 @@ function requireOptional<T = any>(name: string): T | null {
 export function hasNativeConvenience(): boolean {
   return (
     Platform.OS === 'android' &&
-    (!!NativeModules?.RNPhoneNumberHint || !!requireOptional('react-native-otp-verify'))
+    (!!NativeModules?.RNPhoneNumberHint || !!requireOtpVerify())
   );
 }
 
@@ -103,7 +112,7 @@ export function startSmsRetriever(onCode: (code: string) => void): SmsRetrieverS
   if (Platform.OS !== 'android') return noop;
 
   // react-native-otp-verify shape: { getHash, getOtp, startOtpListener?, addListener, removeListener }
-  const otp = requireOptional<any>('react-native-otp-verify');
+  const otp = requireOtpVerify<any>();
   if (!otp) {
     // TODO(dev-build): add `react-native-otp-verify` (SMS Retriever API) + the
     // config-plugin stub in plugins/, then this lights up automatically.
@@ -157,7 +166,7 @@ function extractOtp(message: string | undefined): string | null {
  */
 export async function getSmsAppHash(): Promise<string | null> {
   if (Platform.OS !== 'android') return null;
-  const otp = requireOptional<any>('react-native-otp-verify');
+  const otp = requireOtpVerify<any>();
   try {
     if (otp?.getHash) {
       const hashes: string[] = await otp.getHash();
