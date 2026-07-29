@@ -63,7 +63,7 @@ export default function Wallet() {
   function doRecharge(value: number) {
     if (value <= 0) return;
     setAmount('');
-    router.push(`/payment?amount=${value}`);
+    router.push(`/recharge?amount=${value}`);
   }
 
   async function saveTopup() {

@@ -70,7 +70,7 @@ export function PromoGate() {
         title="Your wallet is running low"
         body={`Balance ${rupee(balance)}. Recharge now so tomorrow's morning delivery isn't paused.`}
         cta="Recharge wallet"
-        onAccept={() => { setDismissedLow(true); router.push('/(tabs)/wallet'); }}
+        onAccept={() => { setDismissedLow(true); router.push('/recharge'); }}
       />
       <PromoModal
         visible={showVip}

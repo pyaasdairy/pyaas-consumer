@@ -9,6 +9,7 @@ import { Stars } from './Stars';
 import { StackedProductImage } from './StackedProductImage';
 import { haptics } from '../lib/haptics';
 import { useFavorites } from '../store/favorites';
+import { useCart } from '../store/cart';
 import { captureRestockLead } from '../lib/leads';
 import { discountPct, type Product } from '../constants/products';
 
@@ -17,9 +18,17 @@ export function ProductCard({ product, index = 0, ctaLabel = 'ADD' }: { product:
   const pct = discountPct(product);
   const isFav = useFavorites((s) => s.ids.includes(product.id));
   const toggleFav = useFavorites((s) => s.toggle);
-  // "Add" no longer drops to a cart · it opens the product's subscription screen
-  // (Daily / Alternate / One-Time + start date).
+  const addToCart = useCart((s) => s.add);
+  const inCart = useCart((s) => s.lines.find((l) => l.id === product.id)?.qty ?? 0);
+  // Tapping the card opens the product's subscription screen (Daily / Alternate /
+  // One-Time). The bag button below drops a one-time item straight into the
+  // wallet-first cart for a quick Country-Delight-style checkout.
   const open = () => router.push(`/product/${product.id}`);
+  const drop = () => {
+    if (product.outOfStock) return;
+    haptics.press();
+    addToCart(product, 1);
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -68,6 +77,19 @@ export function ProductCard({ product, index = 0, ctaLabel = 'ADD' }: { product:
           >
             <Ionicons name={isFav ? 'heart' : 'heart-outline'} size={17} color={isFav ? colors.flameDeep : colors.inkMute} />
           </Tap>
+
+          {/* Quick add-to-cart bag (one-time item) → wallet-first checkout. */}
+          {!product.outOfStock ? (
+            <Tap
+              haptic={false}
+              onPress={drop}
+              scaleTo={0.88}
+              style={{ position: 'absolute', bottom: 6, right: 6, minWidth: 32, height: 32, paddingHorizontal: 8, borderRadius: 16, backgroundColor: inCart > 0 ? colors.flameDeep : 'rgba(255,255,255,0.94)', borderWidth: inCart > 0 ? 0 : 1, borderColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 3, ...shadow.soft }}
+            >
+              <Ionicons name="bag-add" size={16} color={inCart > 0 ? colors.white : colors.flameDeep} />
+              {inCart > 0 ? <TextSemi color={colors.white} style={{ fontSize: 12, ...tabular }}>{inCart}</TextSemi> : null}
+            </Tap>
+          ) : null}
         </View>
 
         <View style={{ paddingHorizontal: 4, paddingTop: 10 }}>

@@ -8,7 +8,7 @@
  * shared, gradient-free components/Fx primitives.
  */
 import React, { useCallback, useState } from 'react';
-import { View, Image, Text } from 'react-native';
+import { View, Image, Text, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,6 +36,8 @@ import { ClaimPackFlow } from '../../components/ClaimPackFlow';
 import {
   getVip,
   startTrial,
+  purchaseMembership,
+  InsufficientWalletError,
   vipActive,
   vipDaysLeft,
   vipOnTrial,
@@ -43,6 +45,7 @@ import {
   PLUS_PRICE_MONTH,
   type VipMembership,
 } from '../../lib/vip';
+import { useWallet } from '../../store/wallet';
 
 // Membership accent colours. Gold is the foil/badge only; the card sits on the
 // warm-ink surface so the gold reads as a real foil rather than a colour wash.
@@ -220,6 +223,12 @@ export default function Vip() {
   const [showClaim, setShowClaim] = useState(false);
   const [msg, setMsg] = useState('');
   const [focused, setFocused] = useState(true);
+  // Paid (wallet-deduct) join flow.
+  const [showBuy, setShowBuy] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [buyErr, setBuyErr] = useState('');
+  const walletBalance = useWallet((s) => s.balance);
+  const refreshWallet = useWallet((s) => s.refresh);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => {
@@ -237,12 +246,13 @@ export default function Vip() {
       setFocused(true);
       getVip().then(setM);
       getProfile().then((p) => setName(p?.full_name ?? null));
+      void refreshWallet();
       bob.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.ease) }), -1, false);
       return () => {
         setFocused(false);
         cancelAnimation(bob);
       };
-    }, [bob])
+    }, [bob, refreshWallet])
   );
 
   const active = vipActive(m);
@@ -268,6 +278,42 @@ export default function Vip() {
       setTimeout(() => setShowClaim(true), 350);
     } catch {
       setMsg('Could not start your trial just now. Please try again.');
+    }
+  }
+
+  // Paid join: a Confirm dialog, then a wallet deduct (same path as an order).
+  function openBuy() {
+    haptics.press();
+    setBuyErr('');
+    setShowBuy(true);
+  }
+  async function confirmBuy() {
+    setBuying(true);
+    setBuyErr('');
+    try {
+      const next = await purchaseMembership();
+      await refreshWallet();
+      setM(next);
+      setShowBuy(false);
+      haptics.success();
+      setMsg(`You're a PYAAS Plus member. ${rupee(PLUS_PRICE_MONTH)} was deducted from your wallet.`);
+    } catch (e) {
+      if (e instanceof InsufficientWalletError) {
+        // Wallet-first shortfall → recharge, then land back on this tab.
+        setShowBuy(false);
+        const snap = Math.max(100, Math.ceil(e.shortfall / 50) * 50);
+        const qs = new URLSearchParams({
+          min: String(Math.ceil(e.shortfall)),
+          amount: String(snap),
+          returnTo: '/(tabs)/vip',
+          reason: 'to join Plus',
+        }).toString();
+        router.push(`/recharge?${qs}`);
+      } else {
+        setBuyErr('Could not complete the purchase. Please try again.');
+      }
+    } finally {
+      setBuying(false);
     }
   }
 
@@ -309,8 +355,14 @@ export default function Vip() {
 
         {/* TOP CTA - start the free trial, above the fold (non-members only) */}
         {!active ? (
-          <Animated.View entering={enterUp(50)} style={{ gap: 8, marginTop: -8 }}>
+          <Animated.View entering={enterUp(50)} style={{ gap: 10, marginTop: -8 }}>
             <ShineButton title={`Start my ${PLUS_TRIAL_DAYS}-day free trial`} onPress={openTrial} />
+            {/* Paid join — deducts ₹99 straight from the wallet (skip the trial). */}
+            <Tap onPress={openBuy} weight="medium">
+              <View style={{ height: 50, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flameDeep }}>
+                <Text style={{ color: colors.flameDeep, fontSize: 15, fontFamily: fonts.sansBold }}>Join now · {rupee(PLUS_PRICE_MONTH)}/mo from wallet</Text>
+              </View>
+            </Tap>
             <TextBody style={{ fontSize: 12, textAlign: 'center' }}>
               No card needed. Cancel anytime.
             </TextBody>
@@ -404,6 +456,39 @@ export default function Vip() {
           )}
         </Animated.View>
       </Animated.ScrollView>
+
+      {/* Confirm wallet deduct for a paid month. */}
+      <Modal visible={showBuy} transparent statusBarTranslucent animationType="fade" onRequestClose={() => !buying && setShowBuy(false)}>
+        <View style={{ flex: 1, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center', padding: spacing.lg }}>
+          <View style={{ width: '100%', maxWidth: 360, backgroundColor: colors.white, borderRadius: radius.xl, overflow: 'hidden', ...shadow.card }}>
+            <View style={{ backgroundColor: colors.flameDeep, padding: spacing.lg, alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.6)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="wallet" size={24} color={colors.white} />
+              </View>
+              <Text style={{ color: colors.white, fontSize: 20, fontFamily: fonts.serif }}>Confirm purchase</Text>
+            </View>
+            <View style={{ padding: spacing.lg, gap: 14 }}>
+              <Text style={{ fontSize: 15, lineHeight: 22, textAlign: 'center', fontFamily: fonts.sansMed, color: colors.ink }}>
+                {rupee(PLUS_PRICE_MONTH)} will be deducted from your wallet for one month of PYAAS Plus.
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: colors.cream, borderRadius: radius.md, padding: spacing.md }}>
+                <TextBody style={{ fontSize: 13 }}>Wallet balance</TextBody>
+                <TextSemi style={{ fontSize: 14, ...tabular }} color={walletBalance >= PLUS_PRICE_MONTH ? colors.blue : colors.danger}>{rupee(walletBalance)}</TextSemi>
+              </View>
+              {buyErr ? <TextBody color={colors.danger} style={{ fontSize: 12.5, textAlign: 'center' }}>{buyErr}</TextBody> : null}
+              <Tap onPress={buying ? undefined : confirmBuy} weight="medium">
+                <View style={{ height: 52, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: buying ? 0.85 : 1, ...shadow.soft }}>
+                  {buying ? <ActivityIndicator color={colors.white} /> : null}
+                  <Text style={{ color: colors.white, fontSize: 16, fontFamily: fonts.sansBold }}>{buying ? 'Deducting…' : `Pay ${rupee(PLUS_PRICE_MONTH)} from wallet`}</Text>
+                </View>
+              </Tap>
+              <Tap haptic={false} onPress={() => !buying && setShowBuy(false)} style={{ alignItems: 'center', paddingVertical: 2 }}>
+                <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Cancel</TextMed>
+              </Tap>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <VipTrialModal visible={showModal} onAccept={acceptTrial} onDeny={() => setShowModal(false)} />
       <ClaimPackFlow

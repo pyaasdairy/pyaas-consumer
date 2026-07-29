@@ -5,9 +5,11 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, FadeIn } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../lib/theme';
 import { Serif, TextBody, Tap } from './ui';
 import { navHidden } from '../lib/navVisibility';
+import { useCart } from '../store/cart';
 
 /** Time-of-day greeting (incl. a playful late-night line). */
 function greetingFor(name: string): string {
@@ -28,6 +30,7 @@ export function HomeHeader({ firstName }: { firstName: string }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const initial = (firstName?.trim()?.[0] ?? 'P').toUpperCase();
+  const cartCount = useCart((s) => s.lines.reduce((n, l) => n + l.qty, 0));
   const hideStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -navHidden.value * (insets.top + 96) }],
     opacity: 1 - navHidden.value,
@@ -48,9 +51,20 @@ export function HomeHeader({ firstName }: { firstName: string }) {
             <Serif style={{ fontSize: 21, lineHeight: 26, letterSpacing: -0.3 }} numberOfLines={1}>{greetingFor(firstName)}</Serif>
           </View>
         </View>
-        <Tap onPress={() => router.push('/(tabs)/profile')} scaleTo={0.92} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, borderWidth: 1.5, borderColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontFamily: fonts.sansBold, fontSize: 16, color: colors.flameDeep }}>{initial}</Text>
-        </Tap>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {/* Cart → wallet-first checkout. Badge shows the live item count. */}
+          <Tap onPress={() => router.push('/cart')} scaleTo={0.92} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, borderWidth: 1.5, borderColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="bag-handle-outline" size={20} color={colors.flameDeep} />
+            {cartCount > 0 ? (
+              <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: colors.flameDeep, borderWidth: 1.5, borderColor: colors.milk, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontFamily: fonts.sansBold, fontSize: 10, color: colors.white }}>{cartCount}</Text>
+              </View>
+            ) : null}
+          </Tap>
+          <Tap onPress={() => router.push('/(tabs)/profile')} scaleTo={0.92} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, borderWidth: 1.5, borderColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: fonts.sansBold, fontSize: 16, color: colors.flameDeep }}>{initial}</Text>
+          </Tap>
+        </View>
       </Animated.View>
     </Animated.View>
   );
