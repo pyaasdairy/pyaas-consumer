@@ -12,6 +12,7 @@ import { haptics } from '../lib/haptics';
 import { useCart } from '../store/cart';
 import { useWallet } from '../store/wallet';
 import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER } from '../lib/api';
+import { refreshCatalog, getMergedProducts } from '../lib/catalog';
 import { useServiceability, joinWaitlist } from '../lib/serviceability';
 import { useAuth } from '../lib/auth';
 
@@ -34,12 +35,12 @@ export default function Cart() {
   const setQty = useCart((s) => s.setQty);
   const remove = useCart((s) => s.remove);
   const clear = useCart((s) => s.clear);
+  const revalidateStock = useCart((s) => s.revalidateStock);
 
   const balance = useWallet((s) => s.balance);
   const refreshWallet = useWallet((s) => s.refresh);
 
   const serviceable = useServiceability((s) => s.serviceable);
-  const storeName = useServiceability((s) => s.storeName);
   const checkSvc = useServiceability((s) => s.check);
 
   const [placing, setPlacing] = useState(false);
@@ -50,7 +51,10 @@ export default function Cart() {
     useCallback(() => {
       void refreshWallet();
       void checkSvc();
-    }, [refreshWallet, checkSvc])
+      // Re-check live stock so a line that went OOS since the cart was opened is
+      // flagged (and dropped from the bill) before the user can pay for it.
+      void refreshCatalog().then(() => revalidateStock(getMergedProducts()));
+    }, [refreshWallet, checkSvc, revalidateStock])
   );
 
   const hasOutOfStock = lines.some((l) => l.outOfStock);
@@ -94,6 +98,19 @@ export default function Cart() {
     setPlacing(true);
     setErr('');
     try {
+      // LIVE-STOCK RECHECK: the 60s poll may have flipped a line OOS since the
+      // cart was opened. Re-pull the catalog and re-flag lines; if the orderable
+      // set shrank, stop and let the user review — never charge for, or silently
+      // drop, an item at the moment of payment.
+      await refreshCatalog();
+      revalidateStock(getMergedProducts());
+      const freshOrderable = useCart.getState().lines.filter((l) => !l.outOfStock);
+      if (freshOrderable.length < orderable.length) {
+        setErr('Some items just went out of stock and were removed. Please review your cart.');
+        setPlacing(false);
+        return;
+      }
+
       // WALLET-FIRST: make sure the wallet covers the total before placing.
       await refreshWallet();
       if (useWallet.getState().balance < total) { setPlacing(false); goRecharge(); return; }
@@ -222,7 +239,7 @@ export default function Cart() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 2 }}>
           <Ionicons name="shield-checkmark" size={14} color={colors.inkMute} />
           <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>
-            {storeName ? `Served by ${storeName}. ` : ''}Paid securely from your PYAAS Wallet.
+            Paid securely from your PYAAS Wallet.
           </TextBody>
         </View>
       </ScrollView>

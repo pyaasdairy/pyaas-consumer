@@ -79,11 +79,21 @@ function computeTrial(startDate: string): Trial {
   };
 }
 
-// The backend contract is intentionally forgiving: it may hand back a computed
-// phase + current day, or just the anchor date, or both.
+// The backend contract is intentionally forgiving. Three shapes are accepted:
+//   1. The live backend (trial.go trialView): DELIVERED-day counts + a phase —
+//      { phase, deliveredPaid, deliveredFree, paidRemaining, freeRemaining, freeActive }.
+//   2. A legacy computed shape: { phase, current_day/day, paid_days/free_days }.
+//   3. A bare local anchor: { start_date } → derive the phase from the calendar.
 type RawTrial = {
-  active?: boolean;
+  // (1) backend "3+3" ledger shape — camelCase, delivered-day counts.
   phase?: string;
+  deliveredPaid?: number;
+  deliveredFree?: number;
+  paidRemaining?: number;
+  freeRemaining?: number;
+  freeActive?: boolean;
+  // (2)/(3) legacy + anchor shapes.
+  active?: boolean;
   start_date?: string | null;
   current_day?: number;
   day?: number;
@@ -91,14 +101,53 @@ type RawTrial = {
   free_days?: number;
 };
 
+/** Map the backend phase (paid|free|done) onto the UI phase (…|completed). */
+function mapBackendPhase(raw: string | undefined, deliveredPaid: number, deliveredFree: number, paidDays: number, totalDays: number): TrialPhase {
+  if (raw === 'done' || raw === 'completed') return 'completed';
+  if (raw === 'paid' || raw === 'free' || raw === 'none') return raw as TrialPhase;
+  if (deliveredPaid < paidDays) return 'paid';
+  if (deliveredPaid + deliveredFree < totalDays) return 'free';
+  return 'completed';
+}
+
 function normalizeRemote(r: RawTrial): Trial {
-  const paidDays = r.paid_days ?? TRIAL_PAID_DAYS;
-  const freeDays = r.free_days ?? TRIAL_FREE_DAYS;
-  const totalDays = paidDays + freeDays;
-  // If the server only gave us the anchor, derive everything from it.
+  // (1) Backend "3+3" ledger: delivered-day counts drive the day number so the
+  // chip advances with real deliveries ("Day 2 of 3 · paid" / "Day 5 of 6 · FREE").
+  const hasLedger =
+    r.deliveredPaid != null || r.deliveredFree != null ||
+    r.paidRemaining != null || r.freeRemaining != null;
+  if (hasLedger) {
+    const deliveredPaid = r.deliveredPaid ?? 0;
+    const deliveredFree = r.deliveredFree ?? 0;
+    const paidDays = deliveredPaid + (r.paidRemaining ?? Math.max(0, TRIAL_PAID_DAYS - deliveredPaid));
+    const freeDays = deliveredFree + (r.freeRemaining ?? Math.max(0, TRIAL_FREE_DAYS - deliveredFree));
+    const totalDays = paidDays + freeDays;
+    const phase = mapBackendPhase(r.phase, deliveredPaid, deliveredFree, paidDays, totalDays);
+    // The day you're currently ON: within the paid window, deliveredPaid+1; within
+    // the free window, past all paid days + deliveredFree+1; else 0 (done/none).
+    let overallDay = 0;
+    if (phase === 'paid') overallDay = deliveredPaid + 1;
+    else if (phase === 'free') overallDay = paidDays + deliveredFree + 1;
+    return {
+      active: phase === 'paid' || phase === 'free',
+      phase,
+      overallDay,
+      paidDays,
+      freeDays,
+      totalDays,
+      startDate: r.start_date ?? null,
+    };
+  }
+
+  // (3) Bare anchor: derive everything from the day-1 date.
   if (r.start_date && r.current_day == null && r.day == null && !r.phase) {
     return computeTrial(r.start_date);
   }
+
+  // (2) Legacy computed shape: an explicit current_day/day + optional phase.
+  const paidDays = r.paid_days ?? TRIAL_PAID_DAYS;
+  const freeDays = r.free_days ?? TRIAL_FREE_DAYS;
+  const totalDays = paidDays + freeDays;
   const overallDay = r.current_day ?? r.day ?? 0;
   const phase = (['paid', 'free', 'completed', 'none'].includes(String(r.phase))
     ? (r.phase as TrialPhase)

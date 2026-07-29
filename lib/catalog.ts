@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useSyncExternalStore } from 'react';
 import { api, isBackendConfigured } from './apiClient';
 import { PRODUCTS, type Category, type Product } from '../constants/products';
+import { useCart } from '../store/cart';
 
 /**
  * CATALOG OVERLAY CLIENT
@@ -39,6 +40,7 @@ export type CatalogPatch = {
   hidden?: boolean;
   outOfStock?: boolean;
   // Addition-only fields (ignored for overrides except where noted):
+  baseId?: string;
   name?: string;
   variant?: string;
   category?: Category;
@@ -51,7 +53,108 @@ export type CatalogPatch = {
   imageUrl?: string;
 };
 
-export type CatalogResponse = { products?: CatalogPatch[] };
+/**
+ * The REAL backend envelope of GET /consumer/catalog (backend catalog.go):
+ *   overrides  — per-baseline-SKU overlay, keyed by sku id ({price,in_stock,hidden})
+ *   additions  — store-added base products, each with its own variants[]/physical{}
+ *   version    — a monotonically-increasing overlay version (ms)
+ * Field casing matches the backend exactly: overrides + additions use snake
+ * `in_stock`/`photo_url`, while variants/physical use camelCase.
+ */
+type OverrideView = { price?: number; in_stock?: boolean; hidden?: boolean };
+type BackendVariant = {
+  variantId?: string;
+  label?: string;
+  price?: number;
+  imageUrl?: string;
+  outOfStock?: boolean;
+  volumeMl?: number;
+  unit?: string;
+  attributes?: Record<string, string>;
+};
+type AdditionView = {
+  id: string;
+  baseId?: string;
+  name: string;
+  category: string;
+  variant?: string;
+  description?: string;
+  subscribable?: boolean;
+  price: number;
+  photo_url?: string;
+  in_stock?: boolean;
+  variants?: BackendVariant[];
+  physical?: { volumeMl?: number; weightG?: number; dimensions?: string };
+};
+export type CatalogResponse = {
+  overrides?: Record<string, OverrideView>;
+  additions?: AdditionView[];
+  version?: number;
+};
+
+/**
+ * Flatten the backend overlay envelope into the flat CatalogPatch[] applyOverlay
+ * consumes. Overrides key onto a baseline SKU; additions become new SKUs, with a
+ * multi-variant addition EXPANDED into one patch per variant (sharing `baseId` so
+ * the app's variant grouping re-collapses them into a single card).
+ */
+export function overlayToPatches(res: CatalogResponse | null | undefined): CatalogPatch[] {
+  if (!res) return [];
+  const patches: CatalogPatch[] = [];
+
+  // 1) Baseline-SKU overrides: {price, in_stock, hidden} keyed by sku id.
+  if (res.overrides && typeof res.overrides === 'object') {
+    for (const [id, ov] of Object.entries(res.overrides)) {
+      if (!id || !ov) continue;
+      const patch: CatalogPatch = { id };
+      if (typeof ov.price === 'number') patch.price = ov.price;
+      if (typeof ov.hidden === 'boolean') patch.hidden = ov.hidden;
+      if (typeof ov.in_stock === 'boolean') patch.outOfStock = !ov.in_stock; // in_stock → outOfStock
+      patches.push(patch);
+    }
+  }
+
+  // 2) Store additions. A base with variants[] expands to one SKU per variant.
+  if (Array.isArray(res.additions)) {
+    for (const a of res.additions) {
+      if (!a || typeof a.id !== 'string') continue;
+      const baseOOS = a.in_stock === false;
+      if (Array.isArray(a.variants) && a.variants.length > 0) {
+        for (const v of a.variants) {
+          if (!v || typeof v.variantId !== 'string') continue;
+          patches.push({
+            id: v.variantId,
+            baseId: a.id,
+            name: a.name,
+            category: a.category as Category,
+            variant: v.label ?? a.variant,
+            unit: v.unit ?? v.label,
+            price: typeof v.price === 'number' ? v.price : a.price,
+            description: a.description,
+            subscribable: a.subscribable,
+            imageUrl: v.imageUrl ?? a.photo_url,
+            outOfStock: v.outOfStock ?? baseOOS,
+          });
+        }
+      } else {
+        patches.push({
+          id: a.id,
+          baseId: a.baseId || undefined,
+          name: a.name,
+          category: a.category as Category,
+          variant: a.variant,
+          price: a.price,
+          description: a.description,
+          subscribable: a.subscribable,
+          imageUrl: a.photo_url,
+          outOfStock: baseOOS,
+        });
+      }
+    }
+  }
+
+  return patches;
+}
 
 const DAIRY_CATEGORIES = new Set<Category>([
   'milk', 'dahi', 'paneer', 'ghee', 'butter', 'chaach',
@@ -75,6 +178,7 @@ function toAddition(patch: CatalogPatch): Product | null {
   if (!patch.name) return null;
   return {
     id: patch.id,
+    baseId: patch.baseId,
     name: patch.name,
     variant: patch.variant ?? '',
     category: patch.category,
@@ -96,8 +200,8 @@ function toAddition(patch: CatalogPatch): Product | null {
  * is nothing to apply (so React can skip a re-render).
  */
 export function applyOverlay(base: Product[], res: CatalogResponse | null | undefined): Product[] {
-  const patches = res?.products;
-  if (!Array.isArray(patches) || patches.length === 0) return base;
+  const patches = overlayToPatches(res);
+  if (patches.length === 0) return base;
 
   const patchById = new Map<string, CatalogPatch>();
   for (const p of patches) {
@@ -144,6 +248,10 @@ function setMerged(next: Product[]): void {
   if (next === merged) return;
   merged = next;
   emit();
+  // Re-flag any cart line whose SKU just went out of stock / hidden. Runs on
+  // every refresh (mount, 60s poll, focus) so the cart tracks live stock even on
+  // screens that don't themselves mount useCatalog (e.g. the cart screen).
+  try { useCart.getState().revalidateStock(next); } catch { /* store not ready */ }
 }
 
 /** Current merged catalog snapshot (bundled fallback until the first fetch). */
