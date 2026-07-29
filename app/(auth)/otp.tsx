@@ -10,7 +10,7 @@ import { ShineSweep } from '../../components/Fx';
 import { enterUp } from '../../lib/motion';
 import { signInWithPhone, DEMO_OTP } from '../../lib/session';
 import { api, isBackendConfigured, setTokens } from '../../lib/apiClient';
-import { requestPhoneHint, startSmsRetriever } from '../../lib/nativeConvenience';
+import { requestPhoneHint, startSmsRetriever, ensurePhoneNumberPermission } from '../../lib/nativeConvenience';
 
 /**
  * Phone OTP sign-in. In this build the code is verified on-device (demo /
@@ -46,6 +46,7 @@ export default function OtpLogin() {
   async function onPhoneFocus() {
     if (hintTried.current) return;
     hintTried.current = true;
+    await ensurePhoneNumberPermission(); // shows the system permission prompt on first tap
     const hinted = await requestPhoneHint();
     if (hinted && digits().length < 10) setPhone(hinted);
   }

@@ -27,10 +27,11 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 12,
+      "versionCode": 13,
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "READ_PHONE_NUMBERS"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
