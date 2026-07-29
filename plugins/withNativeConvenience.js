@@ -1,51 +1,99 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
-const { AndroidConfig, withAndroidManifest } = require('@expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
+const {
+  withAppBuildGradle,
+  withMainApplication,
+  withDangerousMod,
+} = require('@expo/config-plugins');
 
 /**
- * Config plugin for the native "hyper-convenience" onboarding seams.
+ * Config plugin for the native "hyper-convenience" login seam (phone-number
+ * hint + SMS-retriever OTP). Makes the native module survive `expo prebuild`:
+ * on every prebuild it re-injects, into the regenerated android/ project,
  *
- * It adds the Android permissions that the phone-hint + SMS-retriever features
- * need — but ONLY when the build opts in via `EXPO_PUBLIC_NATIVE_CONVENIENCE=1`.
- * By default it is a NO-OP, so the current JS-only build ships with no extra
- * permissions and nothing to justify in the Play Console.
+ *   1. the Kotlin sources (plugins/native-convenience-src/*.kt) →
+ *      app/src/main/java/<package>/nativeconvenience/,
+ *   2. the Play Services deps (Identity phone-hint + SMS-retriever) in
+ *      app/build.gradle,
+ *   3. the READ_PHONE_NUMBERS permission in the manifest,
+ *   4. the PyaasConveniencePackage registration in MainApplication.kt.
  *
- * ── Permissions this can add (kept behind the env flag on purpose) ───────────
- *   READ_PHONE_NUMBERS  — lets the Play-Services Phone Number Hint chooser show
- *                         the SIM's own number for one-tap entry. Not required
- *                         if you only use getPhoneNumberHint (it works without
- *                         this permission on most devices); declared here for
- *                         the fallback path some OEMs take.
- *   RECEIVE_SMS         — required by the SMS Retriever API's underlying
- *                         broadcast on some OEM builds. NOTE: the SMS Retriever
- *                         API itself does NOT need READ_SMS and does not trigger
- *                         Play's restricted-SMS-permissions review. Only enable
- *                         RECEIVE_SMS if your OTP-verify library actually needs
- *                         it; prefer the hashed-SMS Retriever flow (no perms).
- *
- * ── How to turn it on for a dev/prod build ───────────────────────────────────
- *   1. Set EXPO_PUBLIC_NATIVE_CONVENIENCE=1 in .env
- *   2. Add the native deps (react-native-otp-verify and/or a phone-hint module)
- *   3. npx expo prebuild --clean && npx expo run:android
- * See docs/native-convenience.md for the full checklist.
+ * Without this, the hand-added android/ files are dropped by a clean prebuild.
+ * The JS side (lib/nativeConvenience.ts) looks the module up on
+ * NativeModules.RNPhoneNumberHint.
  */
 
-// Toggle: only inject permissions when the app explicitly opts in.
-const ENABLED = process.env.EXPO_PUBLIC_NATIVE_CONVENIENCE === '1';
+const SRC_DIR = path.join(__dirname, 'native-convenience-src');
+const KOTLIN_FILES = ['PhoneNumberHintModule.kt', 'AppSignatureHelper.kt', 'PyaasConveniencePackage.kt'];
 
-// Permissions the convenience features may need. Commented inline above.
-const CONVENIENCE_PERMISSIONS = [
-  'android.permission.READ_PHONE_NUMBERS', // phone-number hint (one-tap SIM number)
-  'android.permission.RECEIVE_SMS', // SMS Retriever fallback on some OEMs
+const GRADLE_DEPS = [
+  'implementation("com.google.android.gms:play-services-auth:21.3.0")',
+  'implementation("com.google.android.gms:play-services-auth-api-phone:18.2.0")',
 ];
 
-module.exports = function withNativeConvenience(config) {
-  if (!ENABLED) return config; // JS-only build: add nothing.
+const REGISTER_LINE =
+  '          add(`in`.pyaasdairy.app.nativeconvenience.PyaasConveniencePackage())';
 
-  return withAndroidManifest(config, (cfg) => {
-    cfg.modResults = AndroidConfig.Permissions.ensurePermissions(
-      cfg.modResults,
-      CONVENIENCE_PERMISSIONS,
-    );
+// READ_PHONE_NUMBERS is declared in app.json's android.permissions (Expo adds it);
+// SMS Retriever needs no permission — so this plugin only injects the native code.
+
+// Play Services deps in app/build.gradle (idempotent).
+function withGradleDeps(config) {
+  return withAppBuildGradle(config, (cfg) => {
+    let src = cfg.modResults.contents;
+    if (!src.includes('play-services-auth-api-phone')) {
+      const inject =
+        '\n    // Native phone-hint + SMS-retriever (withNativeConvenience plugin)\n    ' +
+        GRADLE_DEPS.join('\n    ') +
+        '\n';
+      src = src.replace(/dependencies\s*\{/, (m) => m + inject);
+      cfg.modResults.contents = src;
+    }
     return cfg;
   });
+}
+
+// 3) Register the ReactPackage in MainApplication.kt (idempotent).
+function withPackageRegistration(config) {
+  return withMainApplication(config, (cfg) => {
+    let src = cfg.modResults.contents;
+    if (!src.includes('PyaasConveniencePackage')) {
+      src = src.replace(
+        /PackageList\(this\)\.packages\.apply\s*\{/,
+        (m) => m + '\n' + REGISTER_LINE,
+      );
+      cfg.modResults.contents = src;
+    }
+    return cfg;
+  });
+}
+
+// 4) Copy the Kotlin sources into the regenerated android project.
+function withKotlinSources(config) {
+  return withDangerousMod(config, [
+    'android',
+    (cfg) => {
+      const pkg = (cfg.android && cfg.android.package) || 'in.pyaasdairy.app';
+      const pkgPath = pkg.replace(/\./g, '/');
+      const destDir = path.join(
+        cfg.modRequest.platformProjectRoot,
+        'app/src/main/java',
+        pkgPath,
+        'nativeconvenience',
+      );
+      fs.mkdirSync(destDir, { recursive: true });
+      for (const f of KOTLIN_FILES) {
+        fs.copyFileSync(path.join(SRC_DIR, f), path.join(destDir, f));
+      }
+      return cfg;
+    },
+  ]);
+}
+
+module.exports = function withNativeConvenience(config) {
+  config = withGradleDeps(config);
+  config = withPackageRegistration(config);
+  config = withKotlinSources(config);
+  return config;
 };
