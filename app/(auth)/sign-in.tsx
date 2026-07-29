@@ -51,7 +51,7 @@ export default function SignIn() {
             <Serif style={{ fontSize: 30 }}>Sign In</Serif>
             <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Welcome back to PYAAS.</TextBody>
 
-            <UnderlineField icon="at-outline" placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+            <UnderlineField icon="at-outline" placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" textContentType="emailAddress" importantForAutofill="yes" />
             <UnderlineField
               icon="lock-closed-outline"
               placeholder="Password"
@@ -59,6 +59,8 @@ export default function SignIn() {
               onChangeText={setPassword}
               secureTextEntry={!show}
               autoComplete="password"
+              textContentType="password"
+              importantForAutofill="yes"
               returnKeyType="done"
               onSubmitEditing={submit}
               right={

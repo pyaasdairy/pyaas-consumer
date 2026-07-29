@@ -13,7 +13,8 @@ import { Stars } from '../../components/Stars';
 import { StackedProductImage } from '../../components/StackedProductImage';
 import { ShineSweep, GlowPulse } from '../../components/Fx';
 import { StartDatePicker } from '../../components/StartDatePicker';
-import { getProduct, discountPct, complianceFor, getReviews } from '../../constants/products';
+import { discountPct, complianceFor, getReviews } from '../../constants/products';
+import { useCatalog } from '../../lib/catalog';
 import { createSubscription, type Frequency } from '../../lib/subscriptions';
 import { placeOrder, listAddresses } from '../../lib/api';
 import { captureRestockLead } from '../../lib/leads';
@@ -70,7 +71,10 @@ export default function ProductDetail() {
   const { id, start } = useLocalSearchParams<{ id: string; start?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const product = getProduct(String(id));
+  // Read the live merged catalog so a store-manager price/stock change is
+  // reflected here too (the 60s refetch flips OUT OF STOCK / new price live).
+  const products = useCatalog();
+  const product = products.find((p) => p.id === String(id));
 
   const [qty, setQty] = useState(1);
   // Milk defaults to a Daily subscription; non-subscribable items (ghee) are a

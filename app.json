@@ -67,7 +67,8 @@
           "locationWhenInUsePermission": "PYAAS uses your location to set your delivery address and show your rider on the way."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "./plugins/withNativeConvenience"
     ]
   }
 }

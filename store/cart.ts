@@ -11,6 +11,9 @@ export type CartLine = {
   price: number;
   image: Product['image'];
   qty: number;
+  /** Set by revalidateStock() when the live catalog reports this SKU as no longer
+   *  orderable (went out of stock, or was hidden/removed) — the UI flags it. */
+  outOfStock?: boolean;
 };
 
 type CartState = {
@@ -22,6 +25,9 @@ type CartState = {
   clear: () => void;
   count: () => number;
   subtotal: () => number;
+  /** Cross-check cart lines against the live merged catalog and flag any line
+   *  that just went out of stock (or was hidden/removed). Called on Home focus. */
+  revalidateStock: (products: Product[]) => void;
 };
 
 const totalUnits = (lines: CartLine[]) => lines.reduce((n, l) => n + l.qty, 0);
@@ -66,6 +72,21 @@ export const useCart = create<CartState>()(
       clear: () => set({ lines: [] }),
       count: () => totalUnits(get().lines),
       subtotal: () => get().lines.reduce((s, l) => s + l.price * l.qty, 0),
+      revalidateStock: (products) =>
+        set((s) => {
+          const byId = new Map(products.map((p) => [p.id, p]));
+          let changed = false;
+          const lines = s.lines.map((l) => {
+            const p = byId.get(l.id);
+            // Unavailable when the SKU is gone from the live catalog (hidden/
+            // removed) or the catalog flags it out of stock.
+            const oos = !p || !!p.outOfStock;
+            if (oos === !!l.outOfStock) return l;
+            changed = true;
+            return { ...l, outOfStock: oos };
+          });
+          return changed ? { lines } : s;
+        }),
     }),
     {
       name: 'parag_cart_v1',

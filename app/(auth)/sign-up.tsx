@@ -60,9 +60,9 @@ export default function SignUp() {
             <Serif style={{ fontSize: 30 }}>Create Account</Serif>
             <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Join PYAAS for fresh daily delivery.</TextBody>
 
-            <UnderlineField icon="person-outline" placeholder="Full name" value={name} onChangeText={setName} />
-            <UnderlineField icon="call-outline" placeholder="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={10} />
-            <UnderlineField icon="at-outline" placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+            <UnderlineField icon="person-outline" placeholder="Full name" value={name} onChangeText={setName} autoComplete="name" textContentType="name" />
+            <UnderlineField icon="call-outline" placeholder="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={10} autoComplete="tel" textContentType="telephoneNumber" />
+            <UnderlineField icon="at-outline" placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" textContentType="emailAddress" />
             <UnderlineField
               icon="lock-closed-outline"
               placeholder="Password (min 6 characters)"

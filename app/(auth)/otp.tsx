@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { ShineSweep } from '../../components/Fx';
 import { enterUp } from '../../lib/motion';
 import { signInWithPhone, DEMO_OTP } from '../../lib/session';
 import { api, isBackendConfigured, setTokens } from '../../lib/apiClient';
+import { requestPhoneHint, startSmsRetriever } from '../../lib/nativeConvenience';
 
 /**
  * Phone OTP sign-in. In this build the code is verified on-device (demo /
@@ -31,8 +32,38 @@ export default function OtpLogin() {
   // Test OTP echoed by the backend in dev (OTP_DEV_MODE) so we can sign in
   // without SMS. Shown below the code input; the real SMS API lands later.
   const [devOtp, setDevOtp] = useState('');
+  // Native phone-hint should fire at most once per screen visit (on first focus).
+  const hintTried = useRef(false);
 
   const digits = () => phone.replace(/\D/g, '').slice(-10);
+
+  /**
+   * On focusing the phone field, trigger Android's Play-Services phone-number
+   * hint (one-tap SIM number). No-ops gracefully when the native module is
+   * absent (JS-only build) — the field's autoComplete="tel" still offers OS
+   * autofill. Only prefill if the user hasn't already typed something.
+   */
+  async function onPhoneFocus() {
+    if (hintTried.current) return;
+    hintTried.current = true;
+    const hinted = await requestPhoneHint();
+    if (hinted && digits().length < 10) setPhone(hinted);
+  }
+
+  /**
+   * SMS Retriever: while on the code step, auto-read the incoming OTP SMS and
+   * verify. No-ops when the native module is absent — the code input's
+   * autoComplete="sms-otp" still surfaces the code via the keyboard.
+   */
+  useEffect(() => {
+    if (step !== 'code') return;
+    const stop = startSmsRetriever((c) => {
+      setCode(c);
+      if (c.length >= 6 && !loading) verify(c);
+    });
+    return stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   async function sendCode() {
     if (digits().length < 10) { setError('Enter a valid 10-digit mobile number.'); return; }
@@ -91,7 +122,7 @@ export default function OtpLogin() {
                 <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Enter your mobile to get a one-time code. We will also text your order and delivery updates here.</TextBody>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1.5, borderBottomColor: colors.line, paddingVertical: 12 }}>
                   <TextMed style={{ fontSize: 15.5 }}>+91</TextMed>
-                  <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10-digit mobile" placeholderTextColor={colors.inkMute} maxLength={10} autoFocus returnKeyType="done" onSubmitEditing={sendCode} style={{ flex: 1, fontFamily: fonts.sans, fontSize: 16, color: colors.ink }} />
+                  <TextInput value={phone} onChangeText={setPhone} onFocus={onPhoneFocus} keyboardType="phone-pad" placeholder="10-digit mobile" placeholderTextColor={colors.inkMute} maxLength={10} autoFocus returnKeyType="done" onSubmitEditing={sendCode} autoComplete="tel" textContentType="telephoneNumber" importantForAutofill="yes" style={{ flex: 1, fontFamily: fonts.sans, fontSize: 16, color: colors.ink }} />
                 </View>
                 {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
                 <SolidBtn label="Send code" loading={loading} onPress={sendCode} />
@@ -102,7 +133,7 @@ export default function OtpLogin() {
                 <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Sent to +91 {digits()}. <TextMed color={colors.flameDeep} onPress={() => setStep('phone')}>Change</TextMed></TextBody>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1.5, borderBottomColor: colors.line, paddingVertical: 12 }}>
                   <Ionicons name="keypad-outline" size={20} color={colors.flameDeep} />
-                  <TextInput value={code} onChangeText={(t) => { setCode(t); if (t.replace(/\D/g, '').length === 6 && !loading) verify(t); }} keyboardType="number-pad" placeholder="6-digit code" placeholderTextColor={colors.inkMute} maxLength={6} autoFocus returnKeyType="done" onSubmitEditing={() => verify()} style={{ flex: 1, fontFamily: fonts.sans, fontSize: 18, letterSpacing: 4, color: colors.ink }} />
+                  <TextInput value={code} onChangeText={(t) => { setCode(t); if (t.replace(/\D/g, '').length === 6 && !loading) verify(t); }} keyboardType="number-pad" placeholder="6-digit code" placeholderTextColor={colors.inkMute} maxLength={6} autoFocus returnKeyType="done" onSubmitEditing={() => verify()} autoComplete="sms-otp" textContentType="oneTimeCode" importantForAutofill="yes" style={{ flex: 1, fontFamily: fonts.sans, fontSize: 18, letterSpacing: 4, color: colors.ink }} />
                 </View>
                 {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
                 {devOtp ? (

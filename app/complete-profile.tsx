@@ -64,8 +64,8 @@ export default function CompleteProfile() {
             entering={enterUp()}
             style={{ flex: 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}
           >
-            <Field label="Full name" value={name} onChangeText={setName} placeholder="Your name" autoFocus />
-            <Field label="Mobile number (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10-digit mobile" />
+            <Field label="Full name" value={name} onChangeText={setName} placeholder="Your name" autoFocus autoComplete="name" textContentType="name" />
+            <Field label="Mobile number (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10-digit mobile" autoComplete="tel" textContentType="telephoneNumber" />
 
             {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 10 }}>{error}</TextBody> : null}
 

@@ -17,7 +17,10 @@ import { HomeHeader, useHomeHeaderHeight } from '../../components/HomeHeader';
 import { BottomBar, useBottomBarClearance } from '../../components/BottomBar';
 import { DeliveryStrip } from '../../components/DeliveryStrip';
 import { HeroSlideshow } from '../../components/HeroSlideshow';
-import { PRODUCTS, CATEGORIES, mostOrderedProducts, getProduct, type Category } from '../../constants/products';
+import { CATEGORIES, type Category } from '../../constants/products';
+import { useCatalog, getMergedProducts, refreshCatalog } from '../../lib/catalog';
+import { PromoGate } from '../../components/PromoGate';
+import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
@@ -72,6 +75,9 @@ export default function Shop() {
   const favIds = useFavorites((s) => s.ids);
   const headerH = useHomeHeaderHeight();
   const bottomClearance = useBottomBarClearance();
+  // Live merged catalog (bundled list + store-manager overlay): refetches on
+  // mount and every 60s, so a price/stock change shows without a reload.
+  const products = useCatalog();
   const [cat, setCat] = useState<Category | 'all'>('all');
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -132,6 +138,17 @@ export default function Shop() {
       return () => { on = false; off(); };
     }, [recheckClaim, refreshWallet])
   );
+  // On every Home focus, re-pull the live catalog and flag any cart line that
+  // just went out of stock (or was hidden) so a stale cart can't be checked out.
+  useFocusEffect(
+    useCallback(() => {
+      let on = true;
+      void refreshCatalog().then(() => { if (on) useCart.getState().revalidateStock(getMergedProducts()); });
+      useCart.getState().revalidateStock(getMergedProducts()); // flag against the current snapshot immediately
+      return () => { on = false; };
+    }, [])
+  );
+
   const onScroll = useHideTabBarOnScroll(); // hides the header + bottom bar + tab bar on scroll-down
 
   // Pull-to-refresh: re-pull dynamic data when the feed is dragged past the top.
@@ -149,9 +166,9 @@ export default function Shop() {
     return () => { active = false; };
   }, [refreshWallet, refreshFavs]);
 
-  const data = useMemo(() => (cat === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === cat)), [cat]);
-  const popular = useMemo(() => mostOrderedProducts(), []);
-  const favorites = useMemo(() => favIds.map((id) => getProduct(id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds]);
+  const data = useMemo(() => (cat === 'all' ? products : products.filter((p) => p.category === cat)), [cat, products]);
+  const popular = useMemo(() => products.filter((p) => p.mostOrdered), [products]);
+  const favorites = useMemo(() => favIds.map((id) => products.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds, products]);
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
 
   if (!ready) return <ShopSkeleton />;
@@ -379,6 +396,10 @@ export default function Shop() {
 
       <HomeHeader firstName={firstName} />
       <BottomBar />
+
+      {/* Persistent promo loop · re-evaluates low-wallet / Become-VIP on every
+          Home focus (dismissals reset so a banner re-shows next Home visit). */}
+      <PromoGate />
 
       {/* Free-pack funnel sheet, opened from the claim card / status card */}
       <ClaimPackFlow
