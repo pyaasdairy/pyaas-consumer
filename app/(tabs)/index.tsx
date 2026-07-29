@@ -20,6 +20,8 @@ import { HeroSlideshow } from '../../components/HeroSlideshow';
 import { CATEGORIES, type Category } from '../../constants/products';
 import { useCatalog, getMergedProducts, refreshCatalog } from '../../lib/catalog';
 import { PromoGate } from '../../components/PromoGate';
+import { ComingSoon } from '../../components/ComingSoon';
+import { useServiceability } from '../../lib/serviceability';
 import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
@@ -86,6 +88,16 @@ export default function Shop() {
   // product page honours it too). 'scheduled' (set elsewhere) renders as Morning.
   const mode = useDeliveryMode();
   const instant = mode === 'instant';
+  // Serviceability gate. `serviceable === null` = still resolving (show the normal
+  // skeleton); `false` = out of zone (show Coming Soon); `true` = shop as usual.
+  const svcServiceable = useServiceability((s) => s.serviceable);
+  const instantServed = useServiceability((s) => s.instant);
+  const svcCheck = useServiceability((s) => s.check);
+  // If the serving store doesn't run the ⚡ instant lane here, never leave the
+  // member stranded on the (now disabled) Instant tab — fall back to Morning.
+  useEffect(() => {
+    if (instantServed === false && mode === 'instant') setDeliveryMode('morning');
+  }, [instantServed, mode]);
   // Lane split for the Track strip: truly-instant = lane says instant AND the
   // 'by HH:MM' window shape (legacy rows carried a lane default and must stay
   // in the Morning world).
@@ -122,6 +134,10 @@ export default function Shop() {
           })
           .catch(() => { /* signed out / offline — show nothing */ });
       loadOrders();
+      // Re-evaluate serviceability on every Home focus — if the member switched
+      // their default address, the point (and its cache signature) changed, so
+      // the gate + instant availability refresh. Cached/no-op for the same point.
+      void svcCheck();
       // SUBSCRIPTION SWEEP: turn today's due subscriptions into real morning
       // orders (idempotent per sub+day). Runs on launch + every home focus,
       // non-blocking and error-soft; when it places anything, re-pull the
@@ -136,7 +152,7 @@ export default function Shop() {
       // subscribe so the claim card hides the moment ANY path claims the pack.
       const off = onFreePackChanged(recheckClaim);
       return () => { on = false; off(); };
-    }, [recheckClaim, refreshWallet])
+    }, [recheckClaim, refreshWallet, svcCheck])
   );
   // On every Home focus, re-pull the live catalog and flag any cart line that
   // just went out of stock (or was hidden) so a stale cart can't be checked out.
@@ -162,14 +178,21 @@ export default function Shop() {
   useEffect(() => {
     let active = true;
     refreshFavs();
+    // Resolve serviceability for the member's delivery point (cached + fail-open).
+    void svcCheck();
     refreshWallet().finally(() => active && setReady(true));
     return () => { active = false; };
-  }, [refreshWallet, refreshFavs]);
+  }, [refreshWallet, refreshFavs, svcCheck]);
 
   const data = useMemo(() => (cat === 'all' ? products : products.filter((p) => p.category === cat)), [cat, products]);
   const popular = useMemo(() => products.filter((p) => p.mostOrdered), [products]);
   const favorites = useMemo(() => favIds.map((id) => products.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds, products]);
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
+
+  // Out-of-zone gate — a resolved `serviceable === false` swaps the whole shop for
+  // the friendly Coming Soon screen. `null` (still resolving) falls through to the
+  // normal skeleton below, so a slow check never flashes the gate.
+  if (svcServiceable === false) return <ComingSoon />;
 
   if (!ready) return <ShopSkeleton />;
 
@@ -191,7 +214,7 @@ export default function Shop() {
           <View>
             {/* MORNING | INSTANT mode toggle · the very top of the feed */}
             <Animated.View entering={FadeInDown.duration(400)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-              <DeliveryModeToggle instant={instant} />
+              <DeliveryModeToggle instant={instant} instantServed={instantServed !== false} />
             </Animated.View>
 
             {/* Low-wallet nudge · only when balance is low */}
@@ -418,38 +441,49 @@ export default function Shop() {
  * carries a ⚡ 20-minute mini-badge. Writes the shared delivery-mode store so
  * the product page and checkout honour the same mode.
  */
-function DeliveryModeToggle({ instant }: { instant: boolean }) {
+function DeliveryModeToggle({ instant, instantServed }: { instant: boolean; instantServed: boolean }) {
+  // When instant isn't served at this address, the Instant segment is disabled
+  // with a soft note. Morning always stays available.
   return (
-    <View style={{ flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, padding: 4, gap: 4, ...shadow.soft }}>
-      <ModeSegment
-        active={!instant}
-        onPress={() => setDeliveryMode('morning')}
-        icon="sunny"
-        label="Morning"
-        sub="5–7:30 AM"
-        a11yLabel="Morning delivery, 5 to 7:30 AM slot"
-      />
-      <ModeSegment
-        active={instant}
-        onPress={() => setDeliveryMode('instant')}
-        icon="flash"
-        label="Instant"
-        badge="⚡ 20 मिनट/20 min"
-        a11yLabel="Instant delivery, 20 minutes"
-      />
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, padding: 4, gap: 4, ...shadow.soft }}>
+        <ModeSegment
+          active={!instant}
+          onPress={() => setDeliveryMode('morning')}
+          icon="sunny"
+          label="Morning"
+          sub="5–7:30 AM"
+          a11yLabel="Morning delivery, 5 to 7:30 AM slot"
+        />
+        <ModeSegment
+          active={instant && instantServed}
+          disabled={!instantServed}
+          onPress={() => setDeliveryMode('instant')}
+          icon="flash"
+          label="Instant"
+          badge="⚡ 20 मिनट/20 min"
+          a11yLabel={instantServed ? 'Instant delivery, 20 minutes' : 'Instant delivery not available at your address yet'}
+        />
+      </View>
+      {!instantServed ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 }}>
+          <Ionicons name="information-circle-outline" size={13} color={colors.inkMute} />
+          <TextMed style={{ fontSize: 11, flex: 1 }} color={colors.inkMute}>Instant not available at your address yet</TextMed>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function ModeSegment({ active, onPress, icon, label, sub, badge, a11yLabel }: { active: boolean; onPress: () => void; icon: any; label: string; sub?: string; badge?: string; a11yLabel?: string }) {
+function ModeSegment({ active, onPress, icon, label, sub, badge, a11yLabel, disabled }: { active: boolean; onPress: () => void; icon: any; label: string; sub?: string; badge?: string; a11yLabel?: string; disabled?: boolean }) {
   return (
     <Tap
-      haptic
-      onPress={onPress}
+      haptic={!disabled}
+      onPress={disabled ? undefined : onPress}
       accessibilityRole="button"
-      accessibilityState={{ selected: active }}
+      accessibilityState={{ selected: active, disabled: !!disabled }}
       accessibilityLabel={a11yLabel ?? label}
-      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, backgroundColor: active ? colors.action : 'transparent' }}
+      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, backgroundColor: active ? colors.action : 'transparent', opacity: disabled ? 0.42 : 1 }}
     >
       <Ionicons name={icon} size={15} color={active ? colors.onAction : colors.flameDeep} />
       <View style={{ alignItems: 'flex-start' }}>

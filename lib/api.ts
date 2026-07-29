@@ -5,6 +5,7 @@ import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './lo
 import { debitWallet, autoSettleTopUp } from './walletApi';
 import { api, isBackendConfigured, HttpError } from './apiClient';
 import { instantEtaHHMM, INSTANT_ETA_MINUTES, MORNING_WINDOW } from './deliveryMode';
+import { getServiceabilitySnapshot } from './serviceability';
 
 /**
  * Consumer data layer: addresses + orders. Runs against the on-device store so
@@ -165,6 +166,20 @@ export async function placeOrder(params: {
   const { lines, address, paymentMethod } = params;
   const couponDiscount = params.couponDiscount ?? 0;
   const uid = await requireUserId();
+
+  // Serviceability gate. FAIL-OPEN: only an EXPLICIT `serviceable === false` (a
+  // resolved out-of-zone check) blocks checkout — an unknown/loading state
+  // (serviceable === null) or a network blip never stops a paying customer.
+  const svc = getServiceabilitySnapshot();
+  if (svc.serviceable === false) {
+    throw new Error("We're not delivering to your area just yet. Join the waitlist and we'll notify you the moment we launch here.");
+  }
+  // Defensive: the Instant toggle is disabled in the UI when instant isn't served
+  // here, but re-guard so a stale in-flight cart can't slip an instant order past
+  // a store that doesn't run the express lane.
+  if (params.lane === 'instant' && svc.instant === false) {
+    throw new Error("Instant delivery isn't available at your address yet. Please choose the morning slot.");
+  }
 
   const { subtotal } = cartTotals(lines);
   const delivery_fee = deliveryFeeFor(subtotal);
