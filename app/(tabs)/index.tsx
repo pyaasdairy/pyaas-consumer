@@ -394,7 +394,7 @@ export default function Shop() {
 /**
  * MORNING | INSTANT segmented control — original PYAAS design (white + pink,
  * fully rounded). Morning (left) carries the 5–7:30 AM window; Instant (right)
- * carries a ⚡ 90-minute mini-badge. Writes the shared delivery-mode store so
+ * carries a ⚡ 20-minute mini-badge. Writes the shared delivery-mode store so
  * the product page and checkout honour the same mode.
  */
 function DeliveryModeToggle({ instant }: { instant: boolean }) {
