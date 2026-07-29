@@ -44,7 +44,7 @@ function formatClock(d: Date): string {
 }
 
 /** Instant-lane ETA: server-minted etaAt when it's on the wire (either casing),
- *  else placed + 90 min. Null when nothing parses (hide the hero, never show
+ *  else placed + 20 min. Null when nothing parses (hide the hero, never show
  *  "Arriving by Invalid Date"). */
 function instantEtaOf(order: Order): Date | null {
   const wire = order.etaAt ?? order.eta_at;
@@ -54,7 +54,7 @@ function instantEtaOf(order: Order): Date | null {
   }
   const placed = new Date(order.placed_at);
   if (Number.isNaN(placed.getTime())) return null;
-  return new Date(placed.getTime() + 90 * 60 * 1000);
+  return new Date(placed.getTime() + 20 * 60 * 1000);
 }
 
 export default function OrderTracking() {
@@ -227,7 +227,7 @@ export default function OrderTracking() {
         </View>
 
         {/* ETA hero — instant-lane orders get a big "Arriving by HH:MM · ⚡
-            Instant" card (server etaAt when on the wire, else placed + 90 min);
+            Instant" card (server etaAt when on the wire, else placed + 20 min);
             morning orders keep the window strip. Hidden when nothing parses. */}
         {(() => {
           const isInstantLane =
@@ -244,7 +244,7 @@ export default function OrderTracking() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Pill label="⚡ INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
                     <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>
-                      {order.payment_method === 'cod' ? 'Cash on delivery · keep the amount ready' : '~90 min express delivery'}
+                      {order.payment_method === 'cod' ? 'Cash on delivery · keep the amount ready' : '~20 min express delivery'}
                     </TextBody>
                   </View>
                 </View>

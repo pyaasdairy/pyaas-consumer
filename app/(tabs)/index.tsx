@@ -80,6 +80,17 @@ export default function Shop() {
   // product page honours it too). 'scheduled' (set elsewhere) renders as Morning.
   const mode = useDeliveryMode();
   const instant = mode === 'instant';
+  // Lane split for the Track strip: truly-instant = lane says instant AND the
+  // 'by HH:MM' window shape (legacy rows carried a lane default and must stay
+  // in the Morning world).
+  const isInstantOrder = useCallback(
+    (o: Order) => o.lane === 'instant' && (o.delivery_window ?? '').toLowerCase().startsWith('by '),
+    [],
+  );
+  const stripOrders = useMemo(
+    () => activeOrders.filter((o) => (instant ? isInstantOrder(o) : !isInstantOrder(o))),
+    [activeOrders, instant, isInstantOrder],
+  );
   // Free-pack funnel: the punchy claim card shows while this phone/device is
   // still eligible (the selling point stays visible even after a snooze).
   const [claimEligible, setClaimEligible] = useState(false);
@@ -188,13 +199,18 @@ export default function Shop() {
               </Animated.View>
             ) : null}
 
-            {/* Track your order · shows only when an order is active */}
-            {activeOrders.length > 0 ? (
+            {/* Track your order · MODE-AWARE: the Instant world only tracks
+                instant orders, the Morning world tracks the scheduled ones —
+                a scheduled order's tracker never bleeds into the Instant view
+                (that read as "I never placed an instant order?!"). An order is
+                truly instant only when lane says so AND its window is the
+                'by HH:MM' shape (legacy rows carried lane defaults). */}
+            {stripOrders.length > 0 ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
                 <Tap
                   onPress={() =>
-                    activeOrders.length === 1
-                      ? router.push(`/order/${activeOrders[0].id}`)
+                    stripOrders.length === 1
+                      ? router.push(`/order/${stripOrders[0].id}`)
                       : router.push('/(tabs)/orders')
                   }
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.flameDeep, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12, ...shadow.soft }}
@@ -202,10 +218,10 @@ export default function Shop() {
                   <Ionicons name="bicycle" size={20} color={colors.white} />
                   <View style={{ flex: 1 }}>
                     <TextMed style={{ fontSize: 13.5 }} color={colors.white}>
-                      {activeOrders.length === 1 ? 'Track your order' : `Track your ${activeOrders.length} orders`}
+                      {stripOrders.length === 1 ? 'Track your order' : `Track your ${stripOrders.length} orders`}
                     </TextMed>
                     <TextBody style={{ fontSize: 11.5 }} color="rgba(255,255,255,0.85)">
-                      {activeOrders.length === 1 ? STATUS_LABEL[activeOrders[0].status] : 'Tap to see all active orders'}
+                      {stripOrders.length === 1 ? STATUS_LABEL[stripOrders[0].status] : 'Tap to see all active orders'}
                     </TextBody>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.85)" />
@@ -214,7 +230,7 @@ export default function Shop() {
             ) : null}
 
             {/* Morning: the delivery calendar strip. Instant: swapped for the
-                ~90-minute ETA banner (no calendar — it's a now order). */}
+                ~20-minute ETA banner (no calendar — it's a now order). */}
             {instant ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flameDeep, paddingHorizontal: 14, paddingVertical: 12, ...shadow.soft }}>
@@ -222,7 +238,7 @@ export default function Shop() {
                     <Ionicons name="flash" size={19} color={colors.flameDeep} />
                   </View>
                   <View style={{ flex: 1, gap: 1 }}>
-                    <TextSemi style={{ fontSize: 14.5 }}>Arrives in ~90 minutes</TextSemi>
+                    <TextSemi style={{ fontSize: 14.5 }}>Arrives in ~20 minutes</TextSemi>
                     <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>
                       Order now · at your door by {hhmmTo12(instantEtaHHMM()) ?? 'the next slot'}
                     </TextBody>
@@ -397,8 +413,8 @@ function DeliveryModeToggle({ instant }: { instant: boolean }) {
         onPress={() => setDeliveryMode('instant')}
         icon="flash"
         label="Instant"
-        badge="⚡ 90 मिनट/90 min"
-        a11yLabel="Instant delivery, 90 minutes"
+        badge="⚡ 20 मिनट/20 min"
+        a11yLabel="Instant delivery, 20 minutes"
       />
     </View>
   );

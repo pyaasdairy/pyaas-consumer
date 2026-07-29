@@ -67,7 +67,7 @@ export type Order = {
   placed_at: string;
   priority?: string | null;
   delivery_window?: string | null;
-  // Delivery lane: 'instant' = ~90 min express, 'morning' = the 5–7:30 AM slot
+  // Delivery lane: 'instant' = ~20 min express, 'morning' = the 5–7:30 AM slot
   // (also used for a picked date). Backend stores it and mints etaAt on the task.
   lane?: 'instant' | 'morning' | null;
   // Server-minted instant ETA (ISO). Snake_case tolerated on the wire.
@@ -156,7 +156,7 @@ export async function placeOrder(params: {
   priority?: 'vip' | 'normal';
   orderType?: 'instant' | 'subscription';
   buyerGstin?: string | null;
-  /** Delivery lane. 'instant' = express ~90 min (one-time orders only);
+  /** Delivery lane. 'instant' = express ~20 min (one-time orders only);
    *  'morning' (default) = the 5–7:30 AM slot. */
   lane?: 'instant' | 'morning';
   /** Picked delivery date (ISO YYYY-MM-DD) → delivered in that day's morning slot. */
@@ -178,7 +178,7 @@ export async function placeOrder(params: {
   const lane: 'instant' | 'morning' =
     params.lane === 'instant' && (params.orderType ?? 'instant') !== 'subscription' ? 'instant' : 'morning';
   const placedAt = new Date();
-  // instant → 'by HH:MM' (now + 90 min, local); morning / picked date → the
+  // instant → 'by HH:MM' (now + 20 min, local); morning / picked date → the
   // 5–7:30 AM slot (a picked date also carries delivery_date below).
   const delivery_window = lane === 'instant' ? `by ${instantEtaHHMM(placedAt)}` : MORNING_WINDOW;
 
@@ -196,7 +196,7 @@ export async function placeOrder(params: {
     rider_id: null,
     placed_at: placedAt.toISOString(),
     // Instant rides the express lane at high priority; the backend stores lane
-    // and mints etaAt = placed + 90 min on the delivery task.
+    // and mints etaAt = placed + 20 min on the delivery task.
     priority: lane === 'instant' ? 'high' : params.priority ?? 'normal',
     delivery_window,
     lane,

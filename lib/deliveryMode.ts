@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
  * Shared delivery-mode store (Country-Delight-style instant checkout).
  * The home strip and the product/checkout screen read + write ONE mode so the
  * choice follows the member through the app:
- *   - 'instant'   → one-off order delivered ~90 min from placing (lane 'instant')
+ *   - 'instant'   → one-off order delivered ~20 min from placing (lane 'instant')
  *   - 'morning'   → the classic 5–7:30 AM morning slot (lane 'morning')
  *   - 'scheduled' → a picked date, delivered in that day's morning slot
  * Module-level state + subscribe (no zustand needed): both the hook and the
@@ -35,8 +35,8 @@ export function useDeliveryMode(): DeliveryMode {
   return useSyncExternalStore(subscribe, getDeliveryMode, getDeliveryMode);
 }
 
-/** "Arriving by" clock time for an instant order: now + 90 min, local "HH:MM". */
-export const INSTANT_ETA_MINUTES = 90;
+/** "Arriving by" clock time for an instant order: now + 20 min, local "HH:MM". */
+export const INSTANT_ETA_MINUTES = 20;
 
 export function instantEtaHHMM(from: Date = new Date()): string {
   const eta = new Date(from.getTime() + INSTANT_ETA_MINUTES * 60 * 1000);

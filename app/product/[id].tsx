@@ -81,7 +81,7 @@ export default function ProductDetail() {
   const [startDate, setStartDate] = useState(start && start > tomorrowISO() ? start : tomorrowISO());
   const [showCal, setShowCal] = useState(false);
   // Delivery lane for ONE-TIME orders, seeded from the shared app-wide mode
-  // (home strip) — instant ~90 min · morning 5–7:30 AM slot · a picked date.
+  // (home strip) — instant ~20 min · morning 5–7:30 AM slot · a picked date.
   // Subscriptions always ride the morning route (no instant lane).
   const sharedMode = useDeliveryMode();
   const [deliverBy, setDeliverBy] = useState<DeliveryMode>(sharedMode);
@@ -123,7 +123,7 @@ export default function ProductDetail() {
   // always paid from the wallet. Keep the effective method consistent.
   const effectiveMethod: 'wallet' | 'cod' = isInstant ? payMethod : 'wallet';
   // Effective delivery lane + landing date for a one-time order. Instant lands
-  // today (~90 min); the morning slot lands tomorrow 5–7:30 AM; a picked date
+  // today (~20 min); the morning slot lands tomorrow 5–7:30 AM; a picked date
   // lands that morning. Subscriptions ignore this and use startDate.
   const laneSel: DeliveryMode = isInstant ? deliverBy : 'morning';
   const oneTimeDate = laneSel === 'scheduled' ? pickedDate : laneSel === 'instant' ? todayISO() : tomorrowISO();
@@ -319,7 +319,7 @@ export default function ProductDetail() {
               <TextSemi style={{ fontSize: 16 }}>Delivery</TextSemi>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {([
-                  { key: 'instant', label: 'Instant', sub: '~90 min ⚡' },
+                  { key: 'instant', label: 'Instant', sub: '~20 min ⚡' },
                   { key: 'morning', label: 'Morning slot', sub: '5–7:30 AM' },
                   { key: 'scheduled', label: 'Pick a date', sub: formatShort(pickedDate) },
                 ] as const).map((opt) => {
