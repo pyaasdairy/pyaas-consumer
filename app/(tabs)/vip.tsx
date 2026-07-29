@@ -1,11 +1,13 @@
 /**
- * PYAAS Plus - the loyalty membership tab. Plus is a paid membership whose value
- * is service (priority slots, free delivery, member offers, priority support),
- * NOT a per-SKU discount, so this screen never shows member prices, a savings
- * table or an "X% off" claim. Membership state lives per-user in localStore via
- * lib/vip. Gold is used only as the membership foil/badge accent on the dark
- * card; everything else stays on the flame/blue identity. Motion comes from the
- * shared, gradient-free components/Fx primitives.
+ * PYAAS Plus - the loyalty membership tab. Plus is a paid membership whose core,
+ * permanent value is service (priority slots, free delivery, member offers,
+ * priority support). A "Price comparison ⇄ Monthly savings" toggle makes that
+ * value concrete on a few PARAG milk SKUs (Plus member price vs regular), and a
+ * sticky "₹99 / 30 days · Subscribe" bar joins straight from the wallet.
+ * Membership state lives per-user in localStore via lib/vip. Gold is used only
+ * as the membership foil/badge accent on the dark card; everything else stays on
+ * the flame/blue identity. Motion comes from the shared, gradient-free
+ * components/Fx primitives.
  */
 import React, { useCallback, useState } from 'react';
 import { View, Image, Text, Modal, ActivityIndicator } from 'react-native';
@@ -41,11 +43,19 @@ import {
   vipActive,
   vipDaysLeft,
   vipOnTrial,
+  vipPriceFor,
   PLUS_TRIAL_DAYS,
   PLUS_PRICE_MONTH,
+  PLUS_PERIOD_DAYS,
   type VipMembership,
 } from '../../lib/vip';
+import { getProduct, type Product } from '../../constants/products';
+import { DELIVERY_FEE } from '../../lib/api';
 import { useWallet } from '../../store/wallet';
+
+// A few PARAG milk SKUs for the Plus price comparison (regular vs member price).
+const COMPARE_IDS = ['taaza-1l', 'gold-1l', 'shakti-1l', 'taaza-500ml'];
+const COMPARE: Product[] = COMPARE_IDS.map((id) => getProduct(id)).filter((p): p is Product => !!p);
 
 // Membership accent colours. Gold is the foil/badge only; the card sits on the
 // warm-ink surface so the gold reads as a real foil rather than a colour wash.
@@ -223,6 +233,8 @@ export default function Vip() {
   const [showClaim, setShowClaim] = useState(false);
   const [msg, setMsg] = useState('');
   const [focused, setFocused] = useState(true);
+  // Plus value section: compare member vs regular price, or the monthly saving.
+  const [priceView, setPriceView] = useState<'price' | 'savings'>('price');
   // Paid (wallet-deduct) join flow.
   const [showBuy, setShowBuy] = useState(false);
   const [buying, setBuying] = useState(false);
@@ -330,7 +342,7 @@ export default function Vip() {
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 130, paddingHorizontal: spacing.lg, gap: spacing.lg }}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: active ? 130 : 176, paddingHorizontal: spacing.lg, gap: spacing.lg }}
       >
         {/* HERO */}
         <Animated.View style={[{ height: 360, alignItems: 'center', justifyContent: 'center' }, heroStyle]}>
@@ -388,6 +400,73 @@ export default function Vip() {
               </TextBody>
             </View>
           </View>
+        </Animated.View>
+
+        {/* PLUS VALUE · Price comparison ⇄ Monthly savings */}
+        <Animated.View entering={enterUp(75)} style={{ gap: 12 }}>
+          <TextSemi style={{ fontSize: 18 }} color={INK}>What Plus saves you</TextSemi>
+
+          {/* Toggle */}
+          <View style={{ flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, padding: 4, ...shadow.soft }}>
+            {([['price', 'Price comparison'], ['savings', 'Monthly savings']] as const).map(([key, label]) => {
+              const on = priceView === key;
+              return (
+                <Tap key={key} onPress={() => { haptics.press(); setPriceView(key); }} style={{ flex: 1 }}>
+                  <View style={{ paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center', backgroundColor: on ? colors.action : 'transparent' }}>
+                    <Text style={{ color: on ? colors.onAction : colors.inkSoft, fontFamily: fonts.sansSemi, fontSize: 13.5 }}>{label}</Text>
+                  </View>
+                </Tap>
+              );
+            })}
+          </View>
+
+          <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 12, ...shadow.soft }}>
+            {COMPARE.map((p) => {
+              const reg = p.price;
+              const vip = vipPriceFor(reg);
+              const monthly = (reg - vip) * PLUS_PERIOD_DAYS;
+              return (
+                <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {p.image ? <Image source={p.image} style={{ width: '80%', height: '80%' }} resizeMode="contain" /> : <Ionicons name="water" size={18} color={colors.flameDeep} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextSemi style={{ fontSize: 14 }} color={INK} numberOfLines={1}>{p.name}</TextSemi>
+                    <TextBody style={{ fontSize: 11.5 }}>{p.variant}</TextBody>
+                  </View>
+                  {priceView === 'price' ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 10, color: colors.inkMute, fontFamily: fonts.sansMed }}>Regular</Text>
+                        <Text style={{ fontSize: 13, color: colors.inkMute, fontFamily: fonts.sansSemi, textDecorationLine: 'line-through', ...tabular }}>{rupee(reg)}</Text>
+                      </View>
+                      <View style={{ backgroundColor: colors.goldSoft, borderWidth: 1, borderColor: GOLD, borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 4, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 8.5, color: GOLD_DEEP, fontFamily: fonts.sansBold, letterSpacing: 0.5 }}>PLUS</Text>
+                        <Text style={{ fontSize: 14, color: INK, fontFamily: fonts.serifBlack, ...tabular }}>{rupee(vip)}</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 16, color: colors.flameDeep, fontFamily: fonts.serifBlack, ...tabular }}>{rupee(monthly)}</Text>
+                      <Text style={{ fontSize: 10, color: colors.inkMute, fontFamily: fonts.sansMed }}>saved / month</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+            {/* Free delivery — the always-on Plus value */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10 }}>
+              <Ionicons name="bicycle" size={16} color={colors.blue} />
+              <TextBody style={{ flex: 1, fontSize: 12 }}>
+                {priceView === 'price'
+                  ? 'Plus members pay member price on milk — and delivery is always free.'
+                  : `Plus a further ${rupee(DELIVERY_FEE * PLUS_PERIOD_DAYS)}/mo saved on delivery for a daily subscriber.`}
+              </TextBody>
+            </View>
+          </View>
+          <TextBody style={{ fontSize: 10.5, textAlign: 'center' }} color={colors.inkMute}>
+            Member prices shown for a daily subscriber · savings compare {PLUS_PERIOD_DAYS} daily deliveries at member vs regular price.
+          </TextBody>
         </Animated.View>
 
         {/* BENEFITS */}
@@ -456,6 +535,25 @@ export default function Vip() {
           )}
         </Animated.View>
       </Animated.ScrollView>
+
+      {/* Sticky join bar — "₹99 / 30 days · Subscribe" (non-members). Sits above
+          the floating tab pill and deducts straight from the wallet (openBuy). */}
+      {!active ? (
+        <View style={{ position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: insets.bottom + 82, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, paddingLeft: spacing.lg, paddingRight: 6, height: 64, ...shadow.e3 }}>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+              <Text style={{ fontFamily: fonts.serifBlack, fontSize: 22, letterSpacing: -0.4, color: INK, ...tabular }}>{rupee(PLUS_PRICE_MONTH)}</Text>
+              <Text style={{ fontFamily: fonts.sansSemi, fontSize: 12.5, color: colors.inkSoft }}>/ {PLUS_PERIOD_DAYS} days</Text>
+            </View>
+            <Text style={{ fontFamily: fonts.sansMed, fontSize: 11, color: colors.inkMute }}>From your wallet · cancel anytime</Text>
+          </View>
+          <Tap onPress={openBuy} weight="medium">
+            <View style={{ height: 50, paddingHorizontal: 22, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+              <Text style={{ color: colors.white, fontFamily: fonts.sansBold, fontSize: 15.5 }}>Subscribe</Text>
+            </View>
+          </Tap>
+        </View>
+      ) : null}
 
       {/* Confirm wallet deduct for a paid month. */}
       <Modal visible={showBuy} transparent statusBarTranslucent animationType="fade" onRequestClose={() => !buying && setShowBuy(false)}>

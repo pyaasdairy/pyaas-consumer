@@ -1,0 +1,180 @@
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { getUserId } from './session';
+import { getSingle, putSingle } from './localStore';
+import { isBackendConfigured, api } from './apiClient';
+import { todayISO, parseISO } from './dates';
+
+/**
+ * THE "3 + 3" TRIAL — the launch funnel that replaces the old "2 free days" pack.
+ *
+ * A new member's daily-milk subscription opens with a six-day trial:
+ *   • days 1–3  → PAID   (₹29/day, the wallet is debited as normal)
+ *   • days 4–6  → FREE   (the backend zeroes the debit; the sweep still places
+ *                         the daily order so milk keeps arriving)
+ * after which the subscription simply continues at ₹29/day until paused.
+ *
+ * The trial is OWNED BY THE BACKEND once it is live (GET /consumer/trial/me);
+ * this module normalises that response and, in the local/no-backend demo,
+ * derives the exact same phase from a per-user anchor row written by the claim /
+ * subscribe flows (beginTrial). Both paths produce the identical {@link Trial}
+ * shape so every screen renders the same "Day 2 of 3 · paid" / "Day 5 of 6 ·
+ * FREE 🎉" chip regardless of mode.
+ */
+
+export const TRIAL_PAID_DAYS = 3;
+export const TRIAL_FREE_DAYS = 3;
+export const TRIAL_TOTAL_DAYS = TRIAL_PAID_DAYS + TRIAL_FREE_DAYS;
+
+const TRIAL_TABLE = 'trial'; // per-user local anchor: { start_date }
+
+export type TrialPhase = 'paid' | 'free' | 'completed' | 'none';
+
+export type Trial = {
+  /** Whether the member is currently inside the paid or free trial window. */
+  active: boolean;
+  phase: TrialPhase;
+  /** 1-based day across the whole 6-day trial (0 before day 1 / never started). */
+  overallDay: number;
+  paidDays: number;
+  freeDays: number;
+  totalDays: number;
+  /** ISO date (YYYY-MM-DD) of day 1 = the first delivery, or null. */
+  startDate: string | null;
+};
+
+export const NO_TRIAL: Trial = {
+  active: false,
+  phase: 'none',
+  overallDay: 0,
+  paidDays: TRIAL_PAID_DAYS,
+  freeDays: TRIAL_FREE_DAYS,
+  totalDays: TRIAL_TOTAL_DAYS,
+  startDate: null,
+};
+
+function daysBetween(fromISO: string, toISO: string): number {
+  return Math.round((parseISO(toISO).getTime() - parseISO(fromISO).getTime()) / 86400000);
+}
+
+function phaseFor(overallDay: number, paidDays: number, totalDays: number): TrialPhase {
+  if (overallDay < 1) return 'none';
+  if (overallDay <= paidDays) return 'paid';
+  if (overallDay <= totalDays) return 'free';
+  return 'completed';
+}
+
+/** Derive the trial phase from a day-1 anchor date (local / no-backend mode). */
+function computeTrial(startDate: string): Trial {
+  const overallDay = daysBetween(startDate, todayISO()) + 1;
+  const phase = phaseFor(overallDay, TRIAL_PAID_DAYS, TRIAL_TOTAL_DAYS);
+  return {
+    active: phase === 'paid' || phase === 'free',
+    phase,
+    overallDay: Math.max(0, overallDay),
+    paidDays: TRIAL_PAID_DAYS,
+    freeDays: TRIAL_FREE_DAYS,
+    totalDays: TRIAL_TOTAL_DAYS,
+    startDate,
+  };
+}
+
+// The backend contract is intentionally forgiving: it may hand back a computed
+// phase + current day, or just the anchor date, or both.
+type RawTrial = {
+  active?: boolean;
+  phase?: string;
+  start_date?: string | null;
+  current_day?: number;
+  day?: number;
+  paid_days?: number;
+  free_days?: number;
+};
+
+function normalizeRemote(r: RawTrial): Trial {
+  const paidDays = r.paid_days ?? TRIAL_PAID_DAYS;
+  const freeDays = r.free_days ?? TRIAL_FREE_DAYS;
+  const totalDays = paidDays + freeDays;
+  // If the server only gave us the anchor, derive everything from it.
+  if (r.start_date && r.current_day == null && r.day == null && !r.phase) {
+    return computeTrial(r.start_date);
+  }
+  const overallDay = r.current_day ?? r.day ?? 0;
+  const phase = (['paid', 'free', 'completed', 'none'].includes(String(r.phase))
+    ? (r.phase as TrialPhase)
+    : phaseFor(overallDay, paidDays, totalDays));
+  return {
+    active: r.active ?? (phase === 'paid' || phase === 'free'),
+    phase,
+    overallDay,
+    paidDays,
+    freeDays,
+    totalDays,
+    startDate: r.start_date ?? null,
+  };
+}
+
+/**
+ * The signed-in member's trial. Prefers the backend (GET /consumer/trial/me);
+ * falls back to the local anchor for the offline demo. Always resolves to a
+ * {@link Trial} (NO_TRIAL when signed out / never subscribed).
+ */
+export async function getTrial(): Promise<Trial> {
+  const uid = await getUserId();
+  if (!uid) return NO_TRIAL;
+  if (isBackendConfigured()) {
+    try {
+      const raw = await api.get<RawTrial>('/consumer/trial/me');
+      return normalizeRemote(raw);
+    } catch {
+      // Endpoint not deployed yet / transient — fall through to the local anchor
+      // so the trial chip still works against a locally-started subscription.
+    }
+  }
+  const row = await getSingle<{ start_date: string }>(TRIAL_TABLE, uid);
+  if (!row?.start_date) return NO_TRIAL;
+  return computeTrial(row.start_date);
+}
+
+/**
+ * Anchor day 1 of the trial at `startDate` (the first delivery date). Idempotent:
+ * the ORIGINAL anchor is kept so a second subscription never re-arms the trial.
+ * A no-op when the backend owns the trial is harmless — getTrial reads the server
+ * first, so this local row is only ever consulted in the offline demo.
+ */
+export async function beginTrial(startDate: string): Promise<void> {
+  const uid = await getUserId();
+  if (!uid) return;
+  const existing = await getSingle<{ start_date: string }>(TRIAL_TABLE, uid);
+  if (existing?.start_date) return;
+  await putSingle<{ start_date: string }>(TRIAL_TABLE, uid, { start_date: startDate });
+}
+
+/** The chip copy for the current phase, or null when there is nothing to show. */
+export function trialLabel(t: Trial): string | null {
+  if (!t.active) return null;
+  if (t.phase === 'paid') return `Day ${t.overallDay} of ${t.paidDays} · paid`;
+  if (t.phase === 'free') return `Day ${t.overallDay} of ${t.totalDays} · FREE 🎉`;
+  return null;
+}
+
+/**
+ * Self-loading trial hook. Refetches on screen focus (so the phase advances a day
+ * without a manual reload) and exposes `refresh` for imperative re-pulls.
+ */
+export function useTrial(): { trial: Trial; loaded: boolean; refresh: () => void } {
+  const [trial, setTrial] = useState<Trial>(NO_TRIAL);
+  const [loaded, setLoaded] = useState(false);
+
+  const refresh = useCallback(() => {
+    let on = true;
+    getTrial()
+      .then((t) => { if (on) { setTrial(t); setLoaded(true); } })
+      .catch(() => { if (on) { setTrial(NO_TRIAL); setLoaded(true); } });
+    return () => { on = false; };
+  }, []);
+
+  useFocusEffect(useCallback(() => refresh(), [refresh]));
+
+  return { trial, loaded, refresh };
+}

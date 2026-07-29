@@ -16,6 +16,7 @@ import { StartDatePicker } from '../../components/StartDatePicker';
 import { discountPct, complianceFor, getReviews } from '../../constants/products';
 import { useCatalog, groupProducts, physicalAttributes } from '../../lib/catalog';
 import { VariantSelector } from '../../components/VariantSelector';
+import { SubscribeSheet, type SubscribeResult } from '../../components/SubscribeSheet';
 import { createSubscription, type Frequency } from '../../lib/subscriptions';
 import { placeOrder, listAddresses } from '../../lib/api';
 import { captureRestockLead } from '../../lib/leads';
@@ -105,6 +106,9 @@ export default function ProductDetail() {
   const [err, setErr] = useState('');
   const [shortfall, setShortfall] = useState(0);
   const [notified, setNotified] = useState(false);
+  // The polished subscribe bottom sheet (recurring milk). One-time / instant
+  // orders keep the direct Proceed flow below.
+  const [showSubscribe, setShowSubscribe] = useState(false);
   // Payment method: subscriptions (recurring) are WALLET-only; a one-time
   // INSTANT delivery may also be Cash on Delivery. Optional company GSTIN
   // (printed on the proforma bill).
@@ -243,6 +247,30 @@ export default function ProductDetail() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Sticky-CTA router: a recurring milk subscription opens the polished
+  // SubscribeSheet (frequency / qty / start date / 3-paid-3-free); a one-time or
+  // instant order (and every non-subscribable SKU) goes straight through proceed.
+  function onPrimary() {
+    if (!product) return;
+    if (product.subscribable && freq !== 'one_time') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      setShowSubscribe(true);
+      return;
+    }
+    proceed();
+  }
+
+  // The sheet already created the subscription (+ trial anchor + mandate seam);
+  // reuse the shared confirmation screen.
+  function onSubscribed(r: SubscribeResult) {
+    if (!product) return;
+    setShowSubscribe(false);
+    router.push({
+      pathname: '/order-confirmed',
+      params: { id: product.id, qty: String(r.qty), freq: r.freq, start: r.startDate, total: String(r.total), saved: String(r.saved) },
+    });
   }
 
   return (
@@ -604,7 +632,11 @@ export default function ProductDetail() {
           ) : shortfall > 0 ? (
             <ProceedButton title="Add money to wallet" loading={false} onPress={() => router.push('/(tabs)/wallet')} />
           ) : (
-            <ProceedButton title="Proceed" loading={busy} onPress={proceed} />
+            <ProceedButton
+              title={product.subscribable && freq !== 'one_time' ? 'Subscribe' : 'Proceed'}
+              loading={busy}
+              onPress={onPrimary}
+            />
           )}
         </View>
       </Glass>
@@ -617,6 +649,18 @@ export default function ProductDetail() {
           onClose={() => setShowCal(false)}
         />
       ) : null}
+
+      {/* Subscribe bottom sheet (recurring milk) */}
+      <SubscribeSheet
+        visible={showSubscribe}
+        product={product}
+        unitPrice={unit}
+        savedPer={savedPer}
+        initialQty={qty}
+        initialFreq={freq === 'one_time' ? 'daily' : freq}
+        onClose={() => setShowSubscribe(false)}
+        onConfirmed={onSubscribed}
+      />
     </View>
   );
 }

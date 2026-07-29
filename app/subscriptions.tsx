@@ -17,6 +17,7 @@ import { useWallet } from '../store/wallet';
 const FREQS: { key: Frequency; label: string }[] = [
   { key: 'daily', label: 'Daily' },
   { key: 'alternate', label: 'Alternate' },
+  { key: 'weekly', label: 'Weekly' },
   { key: 'one_time', label: 'One time' },
 ];
 
@@ -155,9 +156,9 @@ export default function Subscriptions() {
             <Ionicons name="infinite-outline" size={40} color={colors.inkMute} />
             <TextBody>No active subscription.</TextBody>
             <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkMute}>
-              Claim your free pack on the home screen — 2 mornings of milk on us, then it continues daily from your wallet.
+              Start your subscription on the home screen — pay 3 days, get 3 FREE, then it continues daily from your wallet.
             </TextBody>
-            <Button title="Claim your free pack" small style={{ marginTop: 4, paddingHorizontal: 24 }} onPress={() => router.replace('/(tabs)')} />
+            <Button title="Start your subscription" small style={{ marginTop: 4, paddingHorizontal: 24 }} onPress={() => router.replace('/(tabs)')} />
           </View>
         ) : (
           (() => {

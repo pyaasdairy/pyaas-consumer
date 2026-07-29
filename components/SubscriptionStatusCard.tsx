@@ -7,6 +7,7 @@ import { colors, radius, rupee, shadow, spacing, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Tap } from './ui';
 import { getProduct } from '../constants/products';
 import { listSubscriptions, listVacations, upcomingDeliveries, perDeliveryCost, type Subscription } from '../lib/subscriptions';
+import { useTrial, trialLabel } from '../lib/trial';
 import { todayISO, formatWeekday } from '../lib/dates';
 
 /**
@@ -16,9 +17,11 @@ import { todayISO, formatWeekday } from '../lib/dates';
  *     pill with product, qty, next delivery day and daily price, linking to
  *     /subscriptions to manage (pause / cancel).
  *   - paused-only → an amber-ish paused state linking to /subscriptions.
- *   - none → "No active subscription — claim your free pack", linking to the
+ *   - none → "Start your subscription — pay 3 days, get 3 FREE", linking to the
  *     claim flow (onClaim) — unless the host screen already shows its own claim
  *     card (showEmpty=false), to avoid saying it twice.
+ *   - during the 3+3 trial the LIVE card shows the phase chip ("Day 2 of 3 ·
+ *     paid" / "Day 5 of 6 · FREE 🎉") driven by lib/trial.
  * Self-loading on focus; renders nothing until the first load resolves so it
  * never flashes the empty state at a subscribed member.
  */
@@ -26,6 +29,7 @@ const LIVE_GREEN = '#1B8A3A'; // status green, dot + LIVE pill only (not a brand
 
 export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { onClaim?: () => void; showEmpty?: boolean; style?: StyleProp<ViewStyle> }) {
   const router = useRouter();
+  const { trial } = useTrial();
   const [loaded, setLoaded] = useState(false);
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [nextDay, setNextDay] = useState<string | null>(null);
@@ -72,8 +76,8 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
           <Ionicons name="gift" size={19} color={colors.flameDeep} />
         </View>
         <View style={{ flex: 1, gap: 1 }}>
-          <TextSemi style={{ fontSize: 14 }}>No active subscription</TextSemi>
-          <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>Claim your free pack — 2 mornings of milk on us</TextBody>
+          <TextSemi style={{ fontSize: 14 }}>Start your subscription</TextSemi>
+          <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>Pay 3 days, get 3 FREE 🎉 · fresh milk every morning</TextBody>
         </View>
         <Ionicons name="chevron-forward" size={16} color={colors.flameDeep} />
       </Tap>
@@ -120,9 +124,17 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
           <TextSemi numberOfLines={1} style={{ fontSize: 14 }}>
             {s.qty} × {p?.name ?? s.product_id}{active.length > 1 ? `  +${active.length - 1} more` : ''}
           </TextSemi>
-          <TextBody style={{ fontSize: 12, ...tabular }} color={colors.inkSoft}>
-            {nextDay ? `Next delivery ${formatWeekday(nextDay)}` : 'Delivers every morning'} · {rupee(daily)}/day
-          </TextBody>
+          {trial.active ? (
+            /* 3+3 trial phase, driven by lib/trial: "Day 2 of 3 · paid" (blue) /
+               "Day 5 of 6 · FREE 🎉" (green). Paid days still carry the ₹/day. */
+            <TextSemi style={{ fontSize: 12, ...tabular }} color={trial.phase === 'free' ? LIVE_GREEN : colors.blue}>
+              {trialLabel(trial)}{trial.phase === 'paid' ? ` · ${rupee(daily)}/day` : ''}
+            </TextSemi>
+          ) : (
+            <TextBody style={{ fontSize: 12, ...tabular }} color={colors.inkSoft}>
+              {nextDay ? `Next delivery ${formatWeekday(nextDay)}` : 'Delivers every morning'} · {rupee(daily)}/day
+            </TextBody>
+          )}
         </View>
       </View>
     </Tap>

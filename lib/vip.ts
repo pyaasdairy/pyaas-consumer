@@ -29,6 +29,18 @@ export const PLUS_TRIAL_DAYS = 30;
 /** Monthly membership price in rupees (billing not wired in the demo build). */
 export const PLUS_PRICE_MONTH = 99;
 
+/**
+ * Illustrative PYAAS Plus member price on milk, shown on the Plus comparison.
+ * The real, permanent Plus value is service (free delivery + priority slots);
+ * this modest member price makes the "VIP vs regular" comparison concrete.
+ */
+export const VIP_MILK_DISCOUNT_PCT = 10;
+
+/** The Plus member price for a regular rupee price (rounded to the nearest ₹). */
+export function vipPriceFor(regular: number): number {
+  return Math.round(regular * (1 - VIP_MILK_DISCOUNT_PCT / 100));
+}
+
 export type VipStatus = 'trial' | 'active' | 'expired' | 'cancelled';
 
 export type VipMembership = {

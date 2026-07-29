@@ -6,7 +6,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useHideTabBarOnScroll } from '../../lib/navVisibility';
-import { colors, radius, spacing, shadow, rupee } from '../../lib/theme';
+import { colors, radius, spacing, shadow } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../../components/ui';
 import { ProductCard } from '../../components/ProductCard';
 import { FlipCard, PackBack } from '../../components/FlipCard';
@@ -26,7 +26,7 @@ import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
-import { freePackEligible, onFreePackChanged, FREE_PACK_DAILY_PRICE, FREE_PACK_DAYS } from '../../lib/freePack';
+import { freePackEligible, onFreePackChanged, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
 import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
@@ -305,11 +305,11 @@ export default function Shop() {
                     <Image source={TAAZA} style={{ width: 58, height: 58 }} contentFit="contain" />
                     <View style={{ flex: 1, gap: 2 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Pill small label="FREE" bg={colors.white} color={colors.blue} />
-                        <TextSemi color={colors.white} style={{ fontSize: 15 }}>Claim your free pack</TextSemi>
+                        <Pill small label={`${TRIAL_FREE_DAYS} DAYS FREE`} bg={colors.white} color={colors.blue} />
+                        <TextSemi color={colors.white} style={{ fontSize: 15 }}>Start your subscription</TextSemi>
                       </View>
                       <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 11.5, lineHeight: 15 }}>
-                        500 ml milk daily · first {FREE_PACK_DAYS} days free, then {rupee(FREE_PACK_DAILY_PRICE)}/day · pause anytime
+                        Pay {TRIAL_PAID_DAYS} days, get {TRIAL_FREE_DAYS} FREE 🎉 · 500 ml every morning · pause anytime
                       </TextBody>
                     </View>
                     <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>

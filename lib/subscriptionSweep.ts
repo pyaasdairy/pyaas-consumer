@@ -26,10 +26,11 @@ import { getProduct } from '../constants/products';
  *       write an idempotent marker row so the same (sub, day) never orders twice.
  *
  * The DEBIT then rides the existing delivered-order settle path
- * (settleDeliveredOrders → debitWallet, rewards-first on the server), so the
- * ₹58 free-pack promo naturally covers the 2 free days and day 3 onwards
- * charges the wallet. In local (no-backend) mode placeOrder debits the wallet
- * immediately — same rewards-first ledger.
+ * (settleDeliveredOrders → debitWallet, rewards-first on the server). Under the
+ * 3+3 trial the paid days (1–3) charge the wallet and the free days (4–6) are
+ * zeroed by the backend (the local promo credit covers them), then it continues
+ * daily. In local (no-backend) mode placeOrder debits the wallet immediately —
+ * same rewards-first ledger.
  *
  * If the wallet can't cover a due delivery the order is NOT placed (never place
  * milk that can't be paid for); reconcileWithBalance then auto-pauses the sub,

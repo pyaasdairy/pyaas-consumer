@@ -9,7 +9,7 @@ import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import { getDeviceCoords, setAddressCoords } from '../lib/location';
 import { addAddress } from '../lib/api';
-import { claimFreePack, shouldShowFreePack, snoozeFreePack, FREE_PACK_DAILY_PRICE, FREE_PACK_DAYS } from '../lib/freePack';
+import { claimFreePack, shouldShowFreePack, snoozeFreePack, FREE_PACK_DAILY_PRICE, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
 import { formatDeliveryWindow } from '../lib/dates';
 import { useAuth } from '../lib/auth';
 import { useWallet } from '../store/wallet';
@@ -23,15 +23,15 @@ const DELIVERY_WINDOW = '06:00-07:00'; // matches placeOrder's stamped window
 type Step = 'intro' | 'address' | 'confirm' | 'done' | 'signin' | 'ineligible';
 
 /**
- * "Claim my pack" onboarding — the subscription funnel. Claiming now grants
- * FREE 500 ml daily milk for 2 days (a ₹58 promo credit) AND auto-starts a
- * daily taaza-500ml subscription from tomorrow: days 1–2 ride the promo
- * credit, from day 3 the wallet pays ₹29/day and the subscription CONTINUES
- * until paused/cancelled. The sheet copy says exactly that — no surprise
- * charges. Walks the user from an intro card -> delivery address (typed or
- * from GPS) -> a confirmation box -> a delivery-window promise. Fires on first
- * launch (ClaimPackGate), from the home claim card and when a member starts
- * their PYAAS Plus trial. All money movement is in lib/freePack (idempotent).
+ * "Start your subscription" onboarding — the 3 + 3 trial funnel. Claiming
+ * auto-starts a daily taaza-500ml subscription from tomorrow and opens the
+ * six-day trial: days 1–3 are PAID (₹29/day from the wallet), days 4–6 are
+ * FREE, and from then on it CONTINUES at ₹29/day until paused/cancelled. The
+ * sheet copy says exactly that — pay 3, get 3 free, no surprise charges. Walks
+ * the user from an intro card -> delivery address (typed or from GPS) -> a
+ * confirmation box -> a delivery-window promise. Fires on first launch
+ * (ClaimPackGate), from the home claim card and when a member starts their
+ * PYAAS Plus trial. All money movement is in lib/freePack (idempotent).
  */
 export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: { visible: boolean; onClose: () => void; onClaimed?: () => void; onStartShopping?: () => void }) {
   const { profile } = useAuth();
@@ -103,7 +103,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
       }
       if (!r.ok) {
         // Gate rejected (phone/device already claimed): show WHY, no promises.
-        setBlockReason(r.reason ?? 'This free pack has already been claimed.');
+        setBlockReason(r.reason ?? 'This trial has already been started.');
         setStep('ineligible');
         return;
       }
@@ -137,15 +137,15 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
               {step === 'done'
                 ? 'All set, see you at dawn'
                 : step === 'ineligible'
-                  ? 'Already claimed'
+                  ? 'Trial already started'
                   : step === 'signin'
-                    ? 'Sign in to claim'
-                    : `${FREE_PACK_DAYS} mornings of free milk`}
+                    ? 'Sign in to start'
+                    : `Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} FREE`}
             </Serif>
             <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
               {step === 'ineligible' || step === 'signin'
                 ? 'PYAAS Taaza · 500 ml fresh every morning'
-                : `PYAAS Taaza · 500 ml daily · first ${FREE_PACK_DAYS} days on us`}
+                : `PYAAS Taaza · 500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} free`}
             </TextBody>
           </View>
 
@@ -153,15 +153,16 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             {step === 'intro' ? (
               <Animated.View entering={FadeIn.duration(240)} style={{ gap: spacing.md }}>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Welcome to PYAAS. FREE 500 ml daily pack for {FREE_PACK_DAYS} days, fresh at your door every morning.
+                  Start your daily milk subscription — pay for your first {TRIAL_PAID_DAYS} days, then the next {TRIAL_FREE_DAYS} days are FREE. Fresh at your door every morning.
                 </TextBody>
-                {/* The honest funnel explainer — exactly what claiming does. */}
+                {/* The honest funnel explainer — exactly what starting does. */}
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 8 }}>
-                  <IntroLine icon="gift" text={`FREE 500 ml daily pack for ${FREE_PACK_DAYS} days`} />
-                  <IntroLine icon="infinite" text={`From day 3 your subscription continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet`} />
+                  <IntroLine icon="cash-outline" text={`First ${TRIAL_PAID_DAYS} days at ${rupee(FREE_PACK_DAILY_PRICE)}/day`} />
+                  <IntroLine icon="sparkles" text={`Next ${TRIAL_FREE_DAYS} days FREE 🎉`} />
+                  <IntroLine icon="infinite" text={`Then continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet`} />
                   <IntroLine icon="pause-circle" text="Pause anytime" />
                 </View>
-                <PrimaryButton title={`Claim my ${FREE_PACK_DAYS} free days`} onPress={() => { haptics.press(); setStep('address'); }} />
+                <PrimaryButton title="Start my subscription" onPress={() => { haptics.press(); setStep('address'); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Maybe later</TextMed>
                 </Tap>
@@ -188,15 +189,15 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
 
             {step === 'confirm' ? (
               <Animated.View entering={FadeInDown.duration(260)} style={{ gap: spacing.md }}>
-                <TextSemi style={{ fontSize: 16 }}>Confirm your free pack</TextSemi>
+                <TextSemi style={{ fontSize: 16 }}>Confirm your subscription</TextSemi>
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
-                  <Row icon="cube" label="PYAAS Taaza Toned Milk" value={`500 ml daily · first ${FREE_PACK_DAYS} days FREE`} />
+                  <Row icon="cube" label="PYAAS Taaza Toned Milk" value={`500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} FREE`} />
                   <Row icon="location" label="Delivering to" value={`${line1.trim()}${city ? ', ' + city.trim() : ''}${pincode ? ' - ' + pincode.trim().replace(/\D/g, '') : ''}`} />
                   <Row icon="time" label="First pack arrives tomorrow" value={formatDeliveryWindow(DELIVERY_WINDOW)} highlight />
-                  <Row icon="wallet" label="From day 3" value={`Subscription continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet · pause anytime`} />
+                  <Row icon="wallet" label="Billing" value={`Pay ${TRIAL_PAID_DAYS} days · next ${TRIAL_FREE_DAYS} days FREE · then ${rupee(FREE_PACK_DAILY_PRICE)}/day · pause anytime`} />
                 </View>
                 {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
-                <PrimaryButton title={busy ? 'Confirming…' : 'Confirm my free pack'} loading={busy} onPress={confirm} />
+                <PrimaryButton title={busy ? 'Starting…' : 'Start my subscription'} loading={busy} onPress={confirm} />
                 <Tap haptic={false} onPress={() => setStep('address')} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Change address</TextMed>
                 </Tap>
@@ -209,9 +210,9 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="checkmark" size={34} color={colors.blue} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Your first free PYAAS Taaza pack arrives {formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow.
+                  Your first PYAAS Taaza pack arrives {formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow.
                   {subStarted
-                    ? ` Your daily subscription is LIVE — the first ${FREE_PACK_DAYS} mornings are free, then ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet. Pause anytime from Subscriptions.`
+                    ? ` Your daily subscription is LIVE — pay your first ${TRIAL_PAID_DAYS} days, then ${TRIAL_FREE_DAYS} days FREE 🎉, then ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet. Pause anytime from Subscriptions.`
                     : ' We will notify you when the rider sets off.'}
                 </TextBody>
                 <PrimaryButton title="Start shopping" onPress={onStartShopping ?? onClose} />
@@ -238,7 +239,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="person-circle-outline" size={32} color={colors.flameDeep} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Your free pack is claimed against your phone number. Sign in (or finish setting up your profile) and come back — the offer will be waiting.
+                  Your trial is tied to your phone number. Sign in (or finish setting up your profile) and come back — the offer will be waiting.
                 </TextBody>
                 <PrimaryButton title="Sign in" onPress={() => { onClose(); router.replace('/(auth)/sign-in'); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
