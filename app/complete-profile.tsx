@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
@@ -27,6 +27,14 @@ export default function CompleteProfile() {
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Collapse the tall header while the keyboard is open so the name field + the
+  // "Start with PYAAS" button stay above the keyboard (the field auto-focuses).
+  const [kbUp, setKbUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbUp(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbUp(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   async function save() {
     if (!name.trim()) { setError('Please tell us your name.'); return; }
@@ -52,17 +60,21 @@ export default function CompleteProfile() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.flameDeep }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={{ flex: 1, backgroundColor: colors.flameDeep }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={{ alignItems: 'center', paddingTop: insets.top + spacing.xxl, paddingBottom: spacing.xxl, gap: 10 }}>
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="happy-outline" size={32} color={colors.white} />
+          {kbUp ? (
+            <View style={{ height: insets.top + spacing.md }} />
+          ) : (
+            <View style={{ alignItems: 'center', paddingTop: insets.top + spacing.xxl, paddingBottom: spacing.xxl, gap: 10 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="happy-outline" size={32} color={colors.white} />
+              </View>
+              <Serif color={colors.white} style={{ fontSize: 28 }}>Almost there</Serif>
+              <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 14 }}>Let’s set up your PYAAS profile.</TextBody>
             </View>
-            <Serif color={colors.white} style={{ fontSize: 28 }}>Almost there</Serif>
-            <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 14 }}>Let’s set up your PYAAS profile.</TextBody>
-          </View>
+          )}
 
           <Animated.View
             entering={enterUp()}
-            style={{ flex: 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}
+            style={{ flex: kbUp ? undefined : 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: kbUp ? spacing.lg : spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}
           >
             <Field label="Full name" value={name} onChangeText={setName} placeholder="Your name" autoFocus autoComplete="name" textContentType="name" />
             <Field label="Mobile number (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10-digit mobile" autoComplete="tel" textContentType="telephoneNumber" />
