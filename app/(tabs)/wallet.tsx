@@ -169,7 +169,7 @@ export default function Wallet() {
             ) : autopayOn ? (
               <>
                 <TextBody style={{ fontSize: 13 }}>
-                  When your balance drops below {rupee(autopay?.threshold ?? threshold)}, Paytm AutoPay adds {rupee(autopay?.recharge_amount ?? topupAmt)} automatically — and settles deliveries if the wallet runs short.
+                  When your balance drops below {rupee(autopay?.threshold ?? threshold)}, Paytm AutoPay adds {rupee(autopay?.recharge_amount ?? topupAmt)} automatically, and settles deliveries if the wallet runs short.
                 </TextBody>
                 {autopay?.umn ? (
                   <TextBody color={colors.inkMute} style={{ fontSize: 11 }} numberOfLines={1}>Mandate (UMN): {autopay.umn}</TextBody>
@@ -181,7 +181,7 @@ export default function Wallet() {
               </>
             ) : (
               <>
-                <TextBody style={{ fontSize: 13 }}>Never run dry. A UPI AutoPay mandate with Paytm recharges your wallet before it runs out — approved once, capped per debit, cancellable any time.</TextBody>
+                <TextBody style={{ fontSize: 13 }}>Never run dry. A UPI AutoPay mandate with Paytm recharges your wallet before it runs out. Approved once, capped per debit, cancellable any time.</TextBody>
                 <View style={{ gap: 8 }}>
                   <TextMed color={colors.inkSoft} style={{ fontSize: 12.5 }}>When balance falls below</TextMed>
                   <ChipRow options={TOPUP_THRESHOLDS} value={threshold} onChange={setThreshold} />

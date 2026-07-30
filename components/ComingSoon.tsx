@@ -78,7 +78,7 @@ export function ComingSoon() {
             Coming Soon to{'\n'}Your Area! 🐄
           </Serif>
           <TextBody style={{ fontSize: 14.5, lineHeight: 21, textAlign: 'center', maxWidth: 320 }} color={colors.inkSoft}>
-            We're not delivering fresh PYAAS milk to your doorstep just yet — but
+            We're not delivering fresh PYAAS milk to your doorstep just yet, but
             we're expanding fast. Leave your number and you'll be the first to know
             the moment we launch near you.
           </TextBody>

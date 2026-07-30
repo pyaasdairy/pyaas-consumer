@@ -17,7 +17,7 @@ import { todayISO, formatWeekday } from '../lib/dates';
  *     pill with product, qty, next delivery day and daily price, linking to
  *     /subscriptions to manage (pause / cancel).
  *   - paused-only → an amber-ish paused state linking to /subscriptions.
- *   - none → "Start your subscription — pay 3 days, get 3 FREE", linking to the
+ *   - none → "Start your subscription, pay 2 days, get 2 FREE", linking to the
  *     claim flow (onClaim) — unless the host screen already shows its own claim
  *     card (showEmpty=false), to avoid saying it twice.
  *   - during the 3+3 trial the LIVE card shows the phase chip ("Day 2 of 3 ·

@@ -459,7 +459,7 @@ export default function Vip() {
               <Ionicons name="bicycle" size={16} color={colors.blue} />
               <TextBody style={{ flex: 1, fontSize: 12 }}>
                 {priceView === 'price'
-                  ? 'Plus members pay member price on milk — and delivery is always free.'
+                  ? 'Plus members pay member price on milk, and delivery is always free.'
                   : `Plus a further ${rupee(DELIVERY_FEE * PLUS_PERIOD_DAYS)}/mo saved on delivery for a daily subscriber.`}
               </TextBody>
             </View>

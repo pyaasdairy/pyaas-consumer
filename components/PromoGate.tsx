@@ -100,7 +100,7 @@ export function PromoGate() {
         icon="star"
         badge={`${PLUS_TRIAL_DAYS} DAYS FREE`}
         title="Become a PYAAS VIP"
-        body="Priority morning slots, free delivery and member-only offers. Start your free trial — no card needed, cancel anytime."
+        body="Priority morning slots, free delivery and member-only offers. Start your free trial. No card needed, cancel anytime."
         cta="Become VIP"
         onAccept={() => { setDismissedVip(true); router.push('/(tabs)/vip'); }}
       />

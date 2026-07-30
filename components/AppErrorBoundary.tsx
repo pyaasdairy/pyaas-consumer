@@ -51,7 +51,7 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
           Something went wrong
         </Text>
         <Text style={{ fontSize: 14, color: colors.inkMute, textAlign: 'center', lineHeight: 20 }}>
-          The app hit a snag. Tap reload to continue — your account and orders are safe.
+          The app hit a snag. Tap reload to continue. Your account and orders are safe.
         </Text>
         <Pressable
           accessibilityRole="button"

@@ -27,7 +27,7 @@ type Step = 'intro' | 'address' | 'confirm' | 'fund' | 'done' | 'signin' | 'inel
 const MIN_START_BALANCE = minWalletToStart(FREE_PACK_DAILY_PRICE);
 
 /**
- * "Start your subscription" onboarding — the 3 + 3 trial funnel. Claiming
+ * "Start your subscription" onboarding: the 2 + 2 trial funnel. Claiming
  * auto-starts a daily taaza-500ml subscription from tomorrow and opens the
  * six-day trial: days 1–3 are PAID (₹29/day from the wallet), days 4–6 are
  * FREE, and from then on it CONTINUES at ₹29/day until paused/cancelled. The
@@ -249,7 +249,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             {step === 'intro' ? (
               <Animated.View entering={FadeIn.duration(240)} style={{ gap: spacing.md }}>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Start your daily milk subscription — pay for your first {TRIAL_PAID_DAYS} days, then the next {TRIAL_FREE_DAYS} days are FREE. Fresh at your door every morning.
+                  Start your daily milk subscription. Pay for your first {TRIAL_PAID_DAYS} days, then the next {TRIAL_FREE_DAYS} days are FREE. Fresh at your door every morning.
                 </TextBody>
                 {/* The honest funnel explainer — exactly what starting does. */}
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 8 }}>
