@@ -83,6 +83,17 @@ export default function OtpLogin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
+  // Cold-start / flaky-network fetches throw low-level messages ("fetch failed:
+  // Fetch request has been canceled"). Show friendly copy for those; pass real
+  // server messages (e.g. "Too many attempts") straight through.
+  function friendly(e: any, fallback: string) {
+    const m = String(e?.message ?? '');
+    if (/fetch|network|timeout|timed out|cancell?ed|aborted|connection|ECONN|failed to fetch/i.test(m)) {
+      return 'Network looks slow. Please check your connection and try again.';
+    }
+    return m || fallback;
+  }
+
   async function sendCode() {
     if (digits().length < 10) { setError('Enter a valid 10-digit mobile number.'); return; }
     setError(''); setLoading(true);
@@ -93,7 +104,7 @@ export default function OtpLogin() {
       }
       setStep('code');
     } catch (e: any) {
-      setError(e?.message ?? 'Could not send the code. Please try again.');
+      setError(friendly(e, 'Could not send the code. Please try again.'));
     } finally { setLoading(false); }
   }
 
@@ -114,7 +125,7 @@ export default function OtpLogin() {
         await signInWithPhone(digits()); // offline demo
       }
     } catch (e: any) {
-      setError(e?.message ?? 'Could not sign you in. Please try again.');
+      setError(friendly(e, 'Could not sign you in. Please try again.'));
     } finally { setLoading(false); }
   }
 
@@ -204,33 +215,46 @@ export default function OtpLogin() {
  */
 function OtpBoxes({ value, error, onChange, onComplete }: { value: string; error?: boolean; onChange: (v: string) => void; onComplete: (v: string) => void }) {
   const inputs = useRef<Array<TextInput | null>>([]);
+  // Mirror the code in a ref so a BURST of rapid onChangeText events (fast typing,
+  // paste-as-keystrokes, or SMS autofill delivered char-by-char) each read the
+  // LATEST value. Reading the `value` prop directly dropped digits: box-1's
+  // handler fires before box-0's onChange→setCode has flushed, so it rebuilt the
+  // code from a stale (empty) prop and the first digit was lost.
+  const valRef = useRef(value);
+  valRef.current = value;
   const cells = Array.from({ length: 6 }, (_, i) => value[i] ?? '');
   const focusIndex = (i: number) => inputs.current[Math.max(0, Math.min(5, i))]?.focus();
 
+  function commit(next: string) {
+    const m = next.replace(/\D/g, '').slice(0, 6);
+    valRef.current = m; // synchronous — the next keystroke in this burst reads it
+    onChange(m);
+    return m;
+  }
+
   function setAt(index: number, text: string) {
     const clean = text.replace(/\D/g, '');
+    const cur = valRef.current;
     if (clean.length > 1) {
       // Over-typing a filled box appends a char; if the lead char is the digit
       // already shown, the user typed a single replacement, so take the new one.
-      if (cells[index] && clean.length === 2 && clean[0] === cells[index]) { setAt(index, clean.slice(1)); return; }
+      if (cur[index] && clean.length === 2 && clean[0] === cur[index]) { setAt(index, clean.slice(1)); return; }
       // Otherwise it's a paste / OS SMS autofill of the whole code — fan it out.
-      const merged = (value.slice(0, index) + clean).slice(0, 6);
-      onChange(merged);
+      const merged = commit(cur.slice(0, index) + clean);
       if (merged.length >= 6) { Keyboard.dismiss(); onComplete(merged); } else focusIndex(merged.length);
       return;
     }
-    const arr = value.split('');
+    const arr = cur.split('');
     arr[index] = clean; // '' when the field was cleared
-    const merged = arr.join('').slice(0, 6);
-    onChange(merged);
+    const merged = commit(arr.join(''));
     if (clean) { if (merged.length >= 6) { Keyboard.dismiss(); onComplete(merged); } else focusIndex(index + 1); }
   }
 
   function onKey(e: { nativeEvent: { key: string } }, index: number) {
-    if (e.nativeEvent.key === 'Backspace' && !cells[index] && index > 0) {
-      const arr = value.split('');
+    if (e.nativeEvent.key === 'Backspace' && !valRef.current[index] && index > 0) {
+      const arr = valRef.current.split('');
       arr[index - 1] = '';
-      onChange(arr.join(''));
+      commit(arr.join(''));
       focusIndex(index - 1);
     }
   }
