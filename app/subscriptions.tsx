@@ -197,7 +197,17 @@ export default function Subscriptions() {
                       <Pill label={s.status === 'active' ? 'ACTIVE' : 'PAUSED'} bg={s.status === 'active' ? colors.blueSoft : colors.cream} color={s.status === 'active' ? colors.blue : colors.inkMute} />
                     </View>
                   </Tap>
-                  <Tap onPress={() => toggle(s)} disabled={busy} style={{ padding: 8 }}>
+                  <Tap
+                    onPress={() => {
+                      // Resuming a paused-but-underfunded sub would just be auto-paused
+                      // again by reconcile — the tap would look dead. Open the manage
+                      // sheet instead so we can guide them to recharge.
+                      if (s.status !== 'active' && useWallet.getState().balance < perDeliveryCost(s)) { setDetailSub(s); return; }
+                      toggle(s);
+                    }}
+                    disabled={busy}
+                    style={{ padding: 8 }}
+                  >
                     <Ionicons name={s.status === 'active' ? 'pause-circle' : 'play-circle'} size={30} color={colors.flameDeep} />
                   </Tap>
                 </Animated.View>
