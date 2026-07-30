@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap, Stepper } from './ui';
 import { haptics } from '../lib/haptics';
-import { createSubscription, type Frequency } from '../lib/subscriptions';
+import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, type Frequency } from '../lib/subscriptions';
 import { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/trial';
 import { isBackendConfigured } from '../lib/apiClient';
 import { currentMandate, createMandate } from '../lib/autopay';
@@ -53,6 +54,7 @@ export function SubscribeSheet({
   onClose: () => void;
   onConfirmed: (r: SubscribeResult) => void;
 }) {
+  const router = useRouter();
   const refreshWallet = useWallet((s) => s.refresh);
   const [freq, setFreq] = useState<Frequency>(initialFreq);
   const [qty, setQty] = useState(initialQty);
@@ -80,16 +82,26 @@ export function SubscribeSheet({
     setBusy(true);
     setErr('');
     try {
-      // Local (no-backend) mode keeps the prepaid gate: the wallet must cover the
-      // first delivery. In backend mode the wallet is debited on delivery, so no
-      // upfront funds are required to start.
-      if (!isBackendConfigured()) {
-        await refreshWallet();
-        const bal = useWallet.getState().balance;
-        if (bal < perDelivery) {
-          setErr(`Your wallet has ${rupee(bal)}. Add ${rupee(perDelivery - bal)} to start this subscription.`);
-          return;
-        }
+      // PREPAID START GATE (BOTH modes): a subscription can NEVER begin unless the
+      // wallet already covers at least MIN_SUB_DAYS_COVER days of the per-delivery
+      // charge. If it is short we create NOTHING and force the member to the wallet
+      // recharge screen first, returning here once funded.
+      await refreshWallet();
+      const bal = useWallet.getState().balance;
+      const need = minWalletToStart(perDelivery);
+      if (bal < need) {
+        const short = Math.max(1, Math.ceil(need - bal));
+        const amount = Math.max(100, Math.ceil(short / 50) * 50);
+        const qs = new URLSearchParams({
+          min: String(short),
+          amount: String(amount),
+          returnTo: `/product/${product.id}`,
+          reason: 'to start this subscription',
+        }).toString();
+        haptics.press();
+        onClose();
+        router.push(`/recharge?${qs}`);
+        return;
       }
       await createSubscription({
         productId: product.id,
@@ -233,7 +245,7 @@ export function SubscribeSheet({
               {busy ? <ActivityIndicator color={colors.white} /> : <Ionicons name="checkmark-circle" size={19} color={colors.white} />}
               <TextSemi color={colors.white} style={{ fontSize: 16 }}>{busy ? 'Starting…' : `Start subscription · ${rupee(perDelivery)}/delivery`}</TextSemi>
             </Tap>
-            <TextBody style={{ fontSize: 11, textAlign: 'center' }} color={colors.inkMute}>Paid from your PYAAS Wallet · pause, skip or cancel anytime.</TextBody>
+            <TextBody style={{ fontSize: 11, textAlign: 'center' }} color={colors.inkMute}>Paid from your PYAAS Wallet · keep at least {MIN_SUB_DAYS_COVER} days funded · pause, skip or cancel anytime.</TextBody>
           </ScrollView>
         </Animated.View>
       </View>

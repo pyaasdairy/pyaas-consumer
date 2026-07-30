@@ -19,7 +19,10 @@ import { requestPhoneHint, startSmsRetriever, ensurePhoneNumberPermission } from
  * apiClient POST /auth/otp/request + /auth/otp/verify (which return JWT tokens);
  * the rest of the screen stays the same.
  */
-const BADGE = 132;
+// Large white PYAAS wordmark shown on the pink header (no circle badge). The
+// asset is 1127×317, so height is derived from the width to keep it crisp.
+const LOGO_W = 244;
+const LOGO_RATIO = 317 / 1127;
 
 export default function OtpLogin() {
   const router = useRouter();
@@ -128,8 +131,8 @@ export default function OtpLogin() {
               <View style={{ height: spacing.sm }} />
             ) : (
               <>
-                <View style={{ alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.xxl, gap: 12 }}>
-                  <Image source={require('../../assets/parag-logo.png')} style={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: colors.white }} resizeMode="contain" />
+                <View style={{ alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.xxl, gap: 14 }}>
+                  <Image source={require('../../assets/pyaas-logo-white-trim.png')} style={{ width: LOGO_W, height: LOGO_W * LOGO_RATIO }} resizeMode="contain" />
                   <TextMed color="rgba(255,255,255,0.92)" style={{ fontSize: 14 }}>Pure, natural, good health.</TextMed>
                 </View>
                 <ShineSweep dur={3600} travel={420} bandWidth={120} delay={600} />
@@ -153,10 +156,7 @@ export default function OtpLogin() {
               <>
                 <Serif style={{ fontSize: 30 }}>Enter the code</Serif>
                 <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Sent to +91 {digits()}. <TextMed color={colors.flameDeep} onPress={() => setStep('phone')}>Change</TextMed></TextBody>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1.5, borderBottomColor: colors.line, paddingVertical: 12 }}>
-                  <Ionicons name="keypad-outline" size={20} color={colors.flameDeep} />
-                  <TextInput value={code} onChangeText={(t) => { setCode(t); if (t.replace(/\D/g, '').length === 6 && !loading) verify(t); }} keyboardType="number-pad" placeholder="6-digit code" placeholderTextColor={colors.inkMute} maxLength={6} autoFocus returnKeyType="done" onSubmitEditing={() => verify()} autoComplete="sms-otp" textContentType="oneTimeCode" importantForAutofill="yes" style={{ flex: 1, fontFamily: fonts.sans, fontSize: 18, letterSpacing: 4, color: colors.ink }} />
-                </View>
+                <OtpBoxes value={code} error={!!error} onChange={setCode} onComplete={(c) => { if (!loading) verify(c); }} />
                 {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
                 {devOtp ? (
                   <View style={{ marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.flameSoft, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -191,6 +191,77 @@ export default function OtpLogin() {
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * Six individual OTP digit boxes. Typing advances to the next box; backspace on
+ * an empty box steps back and clears the previous one; pasting or OS SMS-autofill
+ * that delivers the whole code at once (arriving as a multi-char change on the
+ * focused box) fans out across all six; entering the sixth digit auto-submits.
+ * `code` stays a plain left-packed 6-char string so the parent's verify() and the
+ * SMS Retriever path keep working unchanged.
+ */
+function OtpBoxes({ value, error, onChange, onComplete }: { value: string; error?: boolean; onChange: (v: string) => void; onComplete: (v: string) => void }) {
+  const inputs = useRef<Array<TextInput | null>>([]);
+  const cells = Array.from({ length: 6 }, (_, i) => value[i] ?? '');
+  const focusIndex = (i: number) => inputs.current[Math.max(0, Math.min(5, i))]?.focus();
+
+  function setAt(index: number, text: string) {
+    const clean = text.replace(/\D/g, '');
+    if (clean.length > 1) {
+      // Over-typing a filled box appends a char; if the lead char is the digit
+      // already shown, the user typed a single replacement, so take the new one.
+      if (cells[index] && clean.length === 2 && clean[0] === cells[index]) { setAt(index, clean.slice(1)); return; }
+      // Otherwise it's a paste / OS SMS autofill of the whole code — fan it out.
+      const merged = (value.slice(0, index) + clean).slice(0, 6);
+      onChange(merged);
+      if (merged.length >= 6) { Keyboard.dismiss(); onComplete(merged); } else focusIndex(merged.length);
+      return;
+    }
+    const arr = value.split('');
+    arr[index] = clean; // '' when the field was cleared
+    const merged = arr.join('').slice(0, 6);
+    onChange(merged);
+    if (clean) { if (merged.length >= 6) { Keyboard.dismiss(); onComplete(merged); } else focusIndex(index + 1); }
+  }
+
+  function onKey(e: { nativeEvent: { key: string } }, index: number) {
+    if (e.nativeEvent.key === 'Backspace' && !cells[index] && index > 0) {
+      const arr = value.split('');
+      arr[index - 1] = '';
+      onChange(arr.join(''));
+      focusIndex(index - 1);
+    }
+  }
+
+  return (
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      {cells.map((c, i) => (
+        <TextInput
+          key={i}
+          ref={(r) => { inputs.current[i] = r; }}
+          value={c}
+          onChangeText={(t) => setAt(i, t)}
+          onKeyPress={(e) => onKey(e, i)}
+          keyboardType="number-pad"
+          returnKeyType="done"
+          autoFocus={i === 0}
+          selectTextOnFocus
+          // Keep the OS SMS autofill hooks on the first box so the whole code can
+          // land at once; the multi-char handler above then fans it across all six.
+          autoComplete={i === 0 ? 'sms-otp' : 'off'}
+          textContentType={i === 0 ? 'oneTimeCode' : 'none'}
+          importantForAutofill={i === 0 ? 'yes' : 'no'}
+          style={{
+            flex: 1, height: 58, borderRadius: radius.md, borderWidth: 1.5,
+            borderColor: error ? colors.danger : c ? colors.flameDeep : colors.line,
+            backgroundColor: c ? colors.cream : colors.white,
+            textAlign: 'center', fontFamily: fonts.sansSemi, fontSize: 22, color: colors.ink,
+          }}
+        />
+      ))}
+    </View>
   );
 }
 

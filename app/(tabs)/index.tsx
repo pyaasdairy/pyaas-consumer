@@ -18,7 +18,7 @@ import { BottomBar, useBottomBarClearance } from '../../components/BottomBar';
 import { DeliveryStrip } from '../../components/DeliveryStrip';
 import { HeroSlideshow } from '../../components/HeroSlideshow';
 import { CATEGORIES, type Category } from '../../constants/products';
-import { useCatalog, getMergedProducts, refreshCatalog, groupProducts } from '../../lib/catalog';
+import { useCatalog, getMergedProducts, refreshCatalog, groupProducts, type GroupedProduct } from '../../lib/catalog';
 import { PromoGate } from '../../components/PromoGate';
 import { ComingSoon } from '../../components/ComingSoon';
 import { useServiceability } from '../../lib/serviceability';
@@ -27,6 +27,8 @@ import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
 import { freePackEligible, onFreePackChanged, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
+import { listSubscriptions } from '../../lib/subscriptions';
+import { getTrial } from '../../lib/trial';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
 import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
@@ -113,6 +115,9 @@ export default function Shop() {
   // still eligible (the selling point stays visible even after a snooze).
   const [claimEligible, setClaimEligible] = useState(false);
   const [claimOpen, setClaimOpen] = useState(false);
+  // FRESH user = no active/paused subscription AND has never redeemed the 2+2
+  // trial. Only these members see the middle "start your subscription" strip.
+  const [freshUser, setFreshUser] = useState(false);
   const phone = profile?.phone ?? '';
 
   const recheckClaim = useCallback(() => {
@@ -121,6 +126,18 @@ export default function Shop() {
       .then((g) => setClaimEligible(g.eligible))
       .catch(() => setClaimEligible(false));
   }, [phone]);
+
+  // A member is "fresh" (a candidate for the 2+2 subscription starter) only when
+  // they hold NO active/paused subscription AND have not started the trial yet.
+  const recheckFresh = useCallback(() => {
+    Promise.all([listSubscriptions(), getTrial()])
+      .then(([subs, trial]) => {
+        const hasSub = subs.some((s) => s.status === 'active' || s.status === 'paused');
+        const redeemed = trial.phase !== 'none' || !!trial.startDate;
+        setFreshUser(!hasSub && !redeemed);
+      })
+      .catch(() => setFreshUser(false));
+  }, []);
 
   // Active orders drive the "Track your order" strip. Refetched whenever the
   // home tab regains focus; renders nothing gracefully when there are none.
@@ -148,11 +165,13 @@ export default function Shop() {
         })
         .catch(() => { /* error-soft — retried on next focus */ });
       recheckClaim();
+      recheckFresh();
       // The boot modal can claim while home stays focused (no focus change) —
-      // subscribe so the claim card hides the moment ANY path claims the pack.
-      const off = onFreePackChanged(recheckClaim);
+      // subscribe so the claim card + fresh-user strip hide the moment ANY path
+      // claims the pack / starts the subscription.
+      const off = onFreePackChanged(() => { recheckClaim(); recheckFresh(); });
       return () => { on = false; off(); };
-    }, [recheckClaim, refreshWallet, svcCheck])
+    }, [recheckClaim, recheckFresh, refreshWallet, svcCheck])
   );
   // On every Home focus, re-pull the live catalog and flag any cart line that
   // just went out of stock (or was hidden) so a stale cart can't be checked out.
@@ -188,7 +207,21 @@ export default function Shop() {
   // card with a size selector). The Most-ordered / favourites shelves below stay
   // per-variant (curated single SKUs).
   const groups = useMemo(() => groupProducts(products), [products]);
-  const data = useMemo(() => (cat === 'all' ? groups : groups.filter((g) => g.base.category === cat)), [cat, groups]);
+  const data = useMemo(() => {
+    const list = cat === 'all' ? groups : groups.filter((g) => g.base.category === cat);
+    // A group is in stock while ANY of its size variants is orderable. Sort so
+    // in-stock groups lead and out-of-stock ones sink to the bottom, and pin
+    // PYAAS Taaza (the hero SKU) to the very top. Array.sort is stable (Hermes),
+    // so within each tier the authored catalog order is preserved.
+    const inStock = (g: GroupedProduct) => g.variants.some((v) => !v.outOfStock);
+    const isTaaza = (g: GroupedProduct) => g.base.id === 'taaza-500ml' || /taaza/i.test(g.base.name);
+    return [...list].sort((a, b) => {
+      if (isTaaza(a) !== isTaaza(b)) return isTaaza(a) ? -1 : 1;
+      const sa = inStock(a) ? 0 : 1;
+      const sb = inStock(b) ? 0 : 1;
+      return sa - sb;
+    });
+  }, [cat, groups]);
   const popular = useMemo(() => products.filter((p) => p.mostOrdered), [products]);
   const favorites = useMemo(() => favIds.map((id) => products.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds, products]);
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
@@ -232,14 +265,17 @@ export default function Shop() {
               </Animated.View>
             ) : null}
 
-            {/* Delivery promise · morning order-by / arrive-by (morning mode only —
-                instant mode gets the ETA banner where the calendar strip was) */}
-            {!instant ? (
+            {/* Subscription starter · shown ONLY to a fresh member (no active/paused
+                subscription and the 2+2 trial not yet redeemed). Tapping opens the
+                claim / subscribe flow. Existing or already-redeemed members render
+                nothing here. */}
+            {freshUser ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.flame, paddingHorizontal: 14, paddingVertical: 10 }}>
-                  <Ionicons name="sunny" size={18} color={colors.flameDeep} />
-                  <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.ink}>Order by 9 PM, at your door by 7 AM</TextMed>
-                </View>
+                <Tap onPress={() => setClaimOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.flame, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
+                  <Ionicons name="gift" size={18} color={colors.flameDeep} />
+                  <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.ink}>Start your subscription: pay 2 days, get 2 free</TextMed>
+                  <Ionicons name="chevron-forward" size={16} color={colors.flameDeep} />
+                </Tap>
               </Animated.View>
             ) : null}
 

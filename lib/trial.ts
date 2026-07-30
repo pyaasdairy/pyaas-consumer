@@ -6,11 +6,12 @@ import { isBackendConfigured, api } from './apiClient';
 import { todayISO, parseISO } from './dates';
 
 /**
- * THE "3 + 3" TRIAL — the launch funnel that replaces the old "2 free days" pack.
+ * THE "2 + 2" TRIAL — the launch funnel that replaces the old "2 free days" pack.
+ * Applies to PYAAS Taaza toned milk only.
  *
- * A new member's daily-milk subscription opens with a six-day trial:
- *   • days 1–3  → PAID   (₹29/day, the wallet is debited as normal)
- *   • days 4–6  → FREE   (the backend zeroes the debit; the sweep still places
+ * A new member's daily-milk subscription opens with a four-day trial:
+ *   • days 1–2  → PAID   (₹29/day, the wallet is debited as normal)
+ *   • days 3–4  → FREE   (the backend zeroes the debit; the sweep still places
  *                         the daily order so milk keeps arriving)
  * after which the subscription simply continues at ₹29/day until paused.
  *
@@ -18,12 +19,12 @@ import { todayISO, parseISO } from './dates';
  * this module normalises that response and, in the local/no-backend demo,
  * derives the exact same phase from a per-user anchor row written by the claim /
  * subscribe flows (beginTrial). Both paths produce the identical {@link Trial}
- * shape so every screen renders the same "Day 2 of 3 · paid" / "Day 5 of 6 ·
+ * shape so every screen renders the same "Day 1 of 2 · paid" / "Day 3 of 4 ·
  * FREE 🎉" chip regardless of mode.
  */
 
-export const TRIAL_PAID_DAYS = 3;
-export const TRIAL_FREE_DAYS = 3;
+export const TRIAL_PAID_DAYS = 2;
+export const TRIAL_FREE_DAYS = 2;
 export const TRIAL_TOTAL_DAYS = TRIAL_PAID_DAYS + TRIAL_FREE_DAYS;
 
 const TRIAL_TABLE = 'trial'; // per-user local anchor: { start_date }
@@ -34,7 +35,7 @@ export type Trial = {
   /** Whether the member is currently inside the paid or free trial window. */
   active: boolean;
   phase: TrialPhase;
-  /** 1-based day across the whole 6-day trial (0 before day 1 / never started). */
+  /** 1-based day across the whole 4-day trial (0 before day 1 / never started). */
   overallDay: number;
   paidDays: number;
   freeDays: number;
@@ -80,12 +81,12 @@ function computeTrial(startDate: string): Trial {
 }
 
 // The backend contract is intentionally forgiving. Three shapes are accepted:
-//   1. The live backend (trial.go trialView): DELIVERED-day counts + a phase —
+//   1. The live backend (trial.go trialView): DELIVERED-day counts + a phase,
 //      { phase, deliveredPaid, deliveredFree, paidRemaining, freeRemaining, freeActive }.
 //   2. A legacy computed shape: { phase, current_day/day, paid_days/free_days }.
 //   3. A bare local anchor: { start_date } → derive the phase from the calendar.
 type RawTrial = {
-  // (1) backend "3+3" ledger shape — camelCase, delivered-day counts.
+  // (1) backend "2+2" ledger shape, camelCase, delivered-day counts.
   phase?: string;
   deliveredPaid?: number;
   deliveredFree?: number;
@@ -111,8 +112,8 @@ function mapBackendPhase(raw: string | undefined, deliveredPaid: number, deliver
 }
 
 function normalizeRemote(r: RawTrial): Trial {
-  // (1) Backend "3+3" ledger: delivered-day counts drive the day number so the
-  // chip advances with real deliveries ("Day 2 of 3 · paid" / "Day 5 of 6 · FREE").
+  // (1) Backend "2+2" ledger: delivered-day counts drive the day number so the
+  // chip advances with real deliveries ("Day 1 of 2 · paid" / "Day 3 of 4 · FREE").
   const hasLedger =
     r.deliveredPaid != null || r.deliveredFree != null ||
     r.paidRemaining != null || r.freeRemaining != null;

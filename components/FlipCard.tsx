@@ -24,18 +24,34 @@ export function FlipCard({
   back,
   index = 0,
   flipEvery = FLIP_EVERY,
+  disabled = false,
   style,
 }: {
   front: React.ReactNode;
   back: React.ReactNode;
   index?: number;
   flipEvery?: number;
+  /** Force the card to stay on its front face (no auto-flip). */
+  disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  // An out-of-stock pack rotating to a nutrition panel reads as a glitch on a
+  // greyed, unbuyable card, so those never flip. We read it straight off the
+  // front element's `product` prop, so the caller needs no extra wiring.
+  const frontProduct = React.isValidElement(front)
+    ? (front.props as { product?: Product }).product
+    : undefined;
+  const noFlip = disabled || frontProduct?.outOfStock === true;
+
   const flip = useSharedValue(0); // 0 = front facing, 1 = back facing
   const [showingBack, setShowingBack] = useState(false);
   const showingBackRef = useRef(false);
   const pausedRef = useRef(false);
+  // The card is locked to the front face's measured natural height. Once that
+  // height is known, BOTH faces are absolutely positioned inside this fixed
+  // box, so the rotation can never change the card's size or reflow its
+  // neighbours / the surrounding page — only the inner faces spin.
+  const [boxH, setBoxH] = useState<number | null>(null);
 
   // Timer-driven flips run on the JS side (a slow 2.5s cadence, not a gesture),
   // so plain refs + state are enough. The pointerEvents swap is deferred to the
@@ -43,6 +59,7 @@ export function FlipCard({
   // user visually sees (rotation < 90°), so it must keep receiving taps — an
   // instant swap would let the invisible face steal a tap on the CTA.
   useEffect(() => {
+    if (noFlip) return;
     let interval: ReturnType<typeof setInterval> | null = null;
     let midpoint: ReturnType<typeof setTimeout> | null = null;
     const kickoff = setTimeout(() => {
@@ -60,7 +77,7 @@ export function FlipCard({
       if (interval) clearInterval(interval);
       if (midpoint) clearTimeout(midpoint);
     };
-  }, [flip, flipEvery, index]);
+  }, [flip, flipEvery, index, noFlip]);
 
   const frontStyle = useAnimatedStyle(() => ({
     transform: [{ perspective: 1200 }, { rotateY: `${interpolate(flip.value, [0, 1], [0, 180])}deg` }],
@@ -72,15 +89,34 @@ export function FlipCard({
   const holdOff = () => { pausedRef.current = true; };
   const holdOn = () => { pausedRef.current = false; };
 
+  // Non-flipping cards (out of stock / disabled) render the front face only,
+  // static, at its own natural size.
+  if (noFlip) {
+    return <View style={style}>{front}</View>;
+  }
+
+  const measured = boxH != null;
+  // Anchor the front to the top of the box so its absolute height still tracks
+  // its content (no `bottom`), while the back stretches to fill the full box.
+  const frontFace: ViewStyle | null = measured ? { position: 'absolute', top: 0, left: 0, right: 0 } : null;
+
   return (
     <View
-      style={style}
+      style={[style, measured ? { height: boxH } : null]}
       onTouchStart={holdOff}
       onTouchEnd={holdOn}
       onTouchCancel={holdOn}
     >
-      {/* Front defines the card's size; back absolutely fills the same box. */}
-      <Animated.View pointerEvents={showingBack ? 'none' : 'auto'} style={[{ backfaceVisibility: 'hidden' }, frontStyle]}>
+      {/* Front is in-flow only until measured (to size the box), then it goes
+          absolute so both faces share one fixed box and the flip stays put. */}
+      <Animated.View
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && h !== boxH) setBoxH(h);
+        }}
+        pointerEvents={showingBack ? 'none' : 'auto'}
+        style={[{ backfaceVisibility: 'hidden' }, frontFace, frontStyle]}
+      >
         {front}
       </Animated.View>
       <Animated.View

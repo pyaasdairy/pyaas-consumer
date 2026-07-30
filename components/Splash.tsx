@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { Image } from 'react-native';
+import { Image, View } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withDelay, Easing, runOnJS } from 'react-native-reanimated';
 import { colors } from '../lib/theme';
 
-const BADGE = 168; // white badge that holds the colourful PARAG sunburst logo
+const DROP = 172; // white milk-drop (teardrop) that holds the PYAAS wordmark
+const LOGO_RATIO = 317 / 1127; // pyaas-logo-trim.png aspect (w:h)
 
 /**
  * Branded launch splash. Overlays the app and fades out when it's ready, so the
@@ -46,14 +47,37 @@ export function Splash({ ready, onDone }: { ready: boolean; onDone: () => void }
       style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }, overlayStyle]}
     >
       <Animated.View style={logoStyle}>
-        <Image
-          source={require('../assets/parag-logo.png')}
-          style={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: colors.white }}
-          resizeMode="contain"
-        />
+        <View style={{ width: DROP, height: DROP, alignItems: 'center', justifyContent: 'center' }}>
+          {/* White milk drop: a rounded square with one sharp corner, rotated so
+              the point sits at the top — the classic teardrop silhouette. */}
+          <View
+            style={{
+              position: 'absolute',
+              width: DROP,
+              height: DROP,
+              backgroundColor: colors.white,
+              borderTopLeftRadius: 0,
+              borderTopRightRadius: DROP / 2,
+              borderBottomRightRadius: DROP / 2,
+              borderBottomLeftRadius: DROP / 2,
+              transform: [{ rotate: '45deg' }],
+              shadowColor: '#6B2E52',
+              shadowOpacity: 0.18,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 8,
+            }}
+          />
+          {/* PYAAS wordmark centred in the drop's belly (nudged below centre). */}
+          <Image
+            source={require('../assets/pyaas-logo-trim.png')}
+            style={{ width: DROP * 0.62, height: DROP * 0.62 * LOGO_RATIO, marginTop: DROP * 0.12 }}
+            resizeMode="contain"
+          />
+        </View>
       </Animated.View>
-      <Animated.Text style={[{ position: 'absolute', top: '62%', color: 'rgba(255,255,255,0.92)', fontWeight: '600', fontSize: 13, letterSpacing: 2.5 }, tagStyle]}>
-        PURE · NATURAL · GOOD HEALTH
+      <Animated.Text style={[{ position: 'absolute', top: '66%', color: 'rgba(255,255,255,0.92)', fontWeight: '600', fontSize: 13, letterSpacing: 2.5 }, tagStyle]}>
+        KNOW YOUR MILK
       </Animated.Text>
     </Animated.View>
   );

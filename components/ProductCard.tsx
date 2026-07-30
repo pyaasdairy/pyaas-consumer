@@ -58,17 +58,20 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD' }: 
         style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.sm, ...shadow.soft }}
       >
         <View style={{ backgroundColor: colors.wash, borderRadius: radius.md, height: 140, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          {selected.image ? (
-            selected.packCount && selected.packCount >= 2 ? (
-              <StackedProductImage source={selected.image} count={selected.packCount} />
+          {/* Only the pack-shot greys out of stock; the badge + heart stay crisp. */}
+          <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', opacity: selected.outOfStock ? 0.45 : 1 }}>
+            {selected.image ? (
+              selected.packCount && selected.packCount >= 2 ? (
+                <StackedProductImage source={selected.image} count={selected.packCount} />
+              ) : (
+                <Image source={selected.image} style={{ width: '78%', height: '88%' }} contentFit="contain" transition={200} />
+              )
             ) : (
-              <Image source={selected.image} style={{ width: '78%', height: '88%' }} contentFit="contain" transition={200} />
-            )
-          ) : (
-            <View style={{ paddingHorizontal: 10, alignItems: 'center' }}>
-              <TextSemi numberOfLines={2} style={{ textAlign: 'center', fontSize: 14 }} color={colors.flameDeep}>{selected.name}</TextSemi>
-            </View>
-          )}
+              <View style={{ paddingHorizontal: 10, alignItems: 'center' }}>
+                <TextSemi numberOfLines={2} style={{ textAlign: 'center', fontSize: 14 }} color={colors.flameDeep}>{selected.name}</TextSemi>
+              </View>
+            )}
+          </View>
           {/* Top-left badge · boxed to stop short of the heart button (right: 44 =
               32px heart + 6px inset + 6px gap) so a long label can never overlap it. */}
           <View pointerEvents="none" style={{ position: 'absolute', top: 8, left: 8, right: 44, flexDirection: 'row' }}>

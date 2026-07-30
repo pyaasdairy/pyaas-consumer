@@ -189,6 +189,18 @@ export function perDeliveryCost(s: Pick<Subscription, 'unit_price' | 'qty'>): nu
   return s.unit_price * s.qty;
 }
 
+/**
+ * PREPAID START GATE — a subscription may never begin unless the wallet already
+ * holds at least this many days of its per-delivery charge. Applies in BOTH
+ * local and backend modes: no funds, no subscription.
+ */
+export const MIN_SUB_DAYS_COVER = 2;
+
+/** Minimum wallet balance required to START a subscription of `perDelivery` rupees. */
+export function minWalletToStart(perDelivery: number): number {
+  return Math.ceil(perDelivery) * MIN_SUB_DAYS_COVER;
+}
+
 /** Whether the wallet can fund an order/first delivery of `amount` rupees. */
 export function canAfford(balance: number, amount: number): boolean {
   return balance >= amount;

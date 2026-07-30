@@ -9,6 +9,8 @@ import { ShineSweep } from './Fx';
 import { useWallet } from '../store/wallet';
 import { getVip, vipActive, PLUS_TRIAL_DAYS, type VipMembership } from '../lib/vip';
 import { LOW_BALANCE_THRESHOLD } from '../lib/pricing';
+import { getLedger } from '../lib/walletApi';
+import { listSubscriptions } from '../lib/subscriptions';
 
 /**
  * PERSISTENT PROMO LOOP
@@ -31,6 +33,12 @@ export function PromoGate() {
   const balance = useWallet((s) => s.balance);
   const refreshWallet = useWallet((s) => s.refresh);
   const [vip, setVip] = useState<VipMembership | null>(null);
+  // Persistent account signals that decide whether a low-wallet / VIP nag is even
+  // appropriate: whether the member holds an ACTIVE subscription, and whether the
+  // wallet has EVER been funded (a recharge / promo / refund credit ever landed).
+  // A brand-new ₹0 account has neither, so it is never nagged (see below).
+  const [hasActiveSub, setHasActiveSub] = useState(false);
+  const [everFunded, setEverFunded] = useState(false);
   // Session dismissals — reset to false on every focus (see below).
   const [dismissedLow, setDismissedLow] = useState(false);
   const [dismissedVip, setDismissedVip] = useState(false);
@@ -48,16 +56,29 @@ export function PromoGate() {
       Promise.all([
         refreshWallet().catch(() => {}),
         getVip().then((m) => { if (active) setVip(m); }).catch(() => {}),
+        listSubscriptions()
+          .then((subs) => { if (active) setHasActiveSub(subs.some((s) => s.status === 'active')); })
+          .catch(() => { if (active) setHasActiveSub(false); }),
+        // "Ever funded" = any incoming ledger credit (recharge / promo reward /
+        // refund). A brand-new account's ledger is empty, so this stays false.
+        getLedger()
+          .then((rows) => { if (active) setEverFunded(rows.some((r) => r.type === 'credit' || r.type === 'reward' || r.type === 'refund')); })
+          .catch(() => { if (active) setEverFunded(false); }),
       ]).finally(() => { if (active) setReady(true); });
       return () => { active = false; };
     }, [refreshWallet])
   );
 
   const lowEligible = balance < LOW_BALANCE_THRESHOLD;
-  const vipEligible = !vipActive(vip); // not subscribed / lapsed → eligible to join
-
-  const showLow = ready && lowEligible && !dismissedLow;
-  const showVip = ready && vipEligible && !dismissedVip && !showLow;
+  // Low-wallet nag is only appropriate once the member has skin in the game: an
+  // active subscription OR a wallet that has ever held funds. A brand-new ₹0
+  // account that has never recharged is NOT nagged on first sign-in.
+  const showLow = ready && lowEligible && (hasActiveSub || everFunded) && !dismissedLow;
+  // Become-VIP upsell targets an EXISTING member whose wallet is running low while
+  // a subscription is live (an active subscription means they have purchased, so
+  // this never fires for a brand-new / never-purchased user). Not shown alongside
+  // the higher-priority low-balance modal.
+  const showVip = ready && !vipActive(vip) && hasActiveSub && lowEligible && !dismissedVip && !showLow;
 
   return (
     <>

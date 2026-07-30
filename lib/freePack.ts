@@ -13,19 +13,20 @@ import { beginTrial, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 
 /**
- * THE "3 + 3" TRIAL FUNNEL — "pay 3 days, get 3 FREE" (replaces the retired
- * "2 free days" pack). Claiming starts the member's daily-milk subscription and
- * opens the six-day trial owned by lib/trial (days 1–3 paid, days 4–6 free).
+ * THE "2 + 2" TRIAL FUNNEL — "pay 2 days, get 2 FREE" (replaces the retired
+ * "2 free days" pack). Applies to PYAAS Taaza toned milk only. Claiming starts
+ * the member's daily-milk subscription and opens the four-day trial owned by
+ * lib/trial (days 1–2 paid, days 3–4 free).
  *
  * Claiming does THREE things (the marketing gimmick is really a subscription
  * funnel):
- *   (a) credits the PROMO balance with the value of the THREE FREE days
- *       (3 × ₹29 = ₹87), idempotent on ref `trial_3plus3:<phone>`, so days 4–6
+ *   (a) credits the PROMO balance with the value of the TWO FREE days
+ *       (2 × ₹29 = ₹58), idempotent on ref `trial_2plus2:<phone>`, so days 3–4
  *       net out for free in the local demo (the backend zeroes free-day debits
  *       for real);
  *   (b) auto-creates a DAILY subscription for taaza-500ml starting tomorrow and
- *       anchors the trial (beginTrial): days 1–3 are paid from the wallet,
- *       days 4–6 are free, and the subscription CONTINUES at ₹29/day until the
+ *       anchors the trial (beginTrial): days 1–2 are paid from the wallet,
+ *       days 3–4 are free, and the subscription CONTINUES at ₹29/day until the
  *       member pauses/cancels;
  *   (c) in test-top-up mode only (EXPO_PUBLIC_WALLET_TEST_TOPUP==='true'),
  *       tops the wallet up ₹200 via the test path so the paid days demonstrably
@@ -33,7 +34,7 @@ export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
  *
  * It can be claimed exactly ONCE, gated on THREE layers so no one can
  * reinstall their way to infinite free milk:
- *   1. Per PHONE  - `addPromoCredit` is idempotent on ref_id `trial_3plus3:<phone>`,
+ *   1. Per PHONE  - `addPromoCredit` is idempotent on ref_id `trial_2plus2:<phone>`,
  *      and the device-global claims table rejects a second claim by the same phone.
  *   2. Per DEVICE - a device-global claims table (shared across every account on
  *      the device) allows only ONE trial per device, so switching numbers on
@@ -48,9 +49,9 @@ export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 export const FREE_PACK_PRODUCT_ID = 'taaza-500ml';
 /** ₹/day of the funnel SKU (falls back to the launch price if the SKU moves). */
 export const FREE_PACK_DAILY_PRICE = getProduct(FREE_PACK_PRODUCT_ID)?.price ?? 29;
-/** Promo credit granted on claim: the value of the THREE FREE days (3 × ₹29). */
+/** Promo credit granted on claim: the value of the TWO FREE days (2 × ₹29). */
 export const FREE_PACK_VALUE = FREE_PACK_DAILY_PRICE * TRIAL_FREE_DAYS;
-/** Test-mode wallet top-up so the day-3 subscription charge demonstrably succeeds. */
+/** Test-mode wallet top-up so the paid-day subscription charges demonstrably succeed. */
 const TEST_TOPUP_AMOUNT = 200;
 const DEVICE_ID_KEY = 'parag_device_id';
 const CLAIMS_TABLE = 'free_pack_claims'; // device-global (ownerId = 'device')
@@ -98,11 +99,11 @@ export async function freePackEligible(phone: string): Promise<{ eligible: boole
 // latch a complete guard against the check-then-act race over AsyncStorage.
 let claimInFlight: Promise<{ ok: boolean; value: number; reason?: string; subscriptionId?: string }> | null = null;
 
-/** Start the 3+3 trial subscription for the signed-in phone. Idempotent +
- *  guarded (serialized — concurrent calls share one claim). Credits the 3 free
- *  days as promo, auto-starts the taaza-500ml DAILY subscription (from tomorrow),
- *  anchors the trial, and in test mode tops the wallet up so the paid days
- *  charge cleanly. */
+/** Start the 2+2 trial subscription for the signed-in phone. Idempotent +
+ *  guarded (serialized, concurrent calls share one claim). Credits the 2 free
+ *  days of PYAAS Taaza as promo, auto-starts the taaza-500ml DAILY subscription
+ *  (from tomorrow), anchors the trial, and in test mode tops the wallet up so
+ *  the paid days charge cleanly. */
 export function claimFreePack(phone: string): Promise<{ ok: boolean; value: number; reason?: string; subscriptionId?: string }> {
   if (!claimInFlight) {
     claimInFlight = doClaimFreePack(phone).finally(() => { claimInFlight = null; });
@@ -116,21 +117,21 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
   if (!gate.eligible) return { ok: false, value: 0, reason: gate.reason };
   const deviceId = await getDeviceId();
   const p = normPhone(phone);
-  // (a) Grant the 3-free-days promo credit FIRST, idempotent on the phone. In backend
+  // (a) Grant the 2-free-days promo credit FIRST, idempotent on the phone. In backend
   // mode this either lands on the server or is durably parked for replay
   // (walletApi pending_promos); a HARD failure throws before the claim row is
   // written below, so a failed claim stays claimable instead of burning the
   // one-per-device gate with no money behind it.
   await addPromoCredit(FREE_PACK_VALUE, {
-    ref_id: `trial_3plus3:${p}`,
-    remark: `Trial · ${TRIAL_FREE_DAYS} free days of PYAAS Taaza 500 ml`,
+    ref_id: `trial_2plus2:${p}`,
+    remark: `Trial · ${TRIAL_FREE_DAYS} free days of PYAAS Taaza toned milk 500 ml`,
   });
   // Record the claim (device-global) only now that the credit path succeeded.
   await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
     phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
   });
   // (b) Auto-start the daily subscription (first delivery tomorrow) and anchor
-  // the trial. Days 1–3 are paid; days 4–6 are free (backend zeroes the debit,
+  // the trial. Days 1–2 are paid; days 3–4 are free (backend zeroes the debit,
   // the local promo credit covers it); it keeps running at ₹29/day until
   // paused/cancelled. Reuses an existing daily sub for the SKU instead of
   // doubling the member's milk — and REACTIVATES it (fresh start date,
@@ -158,7 +159,7 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
     // existing subscription never re-arms the trial.
     await beginTrial(tomorrowISO());
   } catch { /* non-fatal — the promo credit stands; the member can subscribe manually */ }
-  // (c) TEST-ONLY top-up (₹200) so the day-3 wallet charge demonstrably succeeds.
+  // (c) TEST-ONLY top-up (₹200) so the paid-day wallet charge demonstrably succeeds.
   if (WALLET_TEST_TOPUP) {
     const topupRef = `free_pack_topup:${p}`;
     try {
