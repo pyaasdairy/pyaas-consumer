@@ -18,6 +18,10 @@ const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
 // Consumer app-key — identifies this app to the backend so app-only endpoints
 // (the traceability bridge) answer only the PARAG app. Ships in the bundle
 // (EXPO_PUBLIC_*): it gates casual/other-client access, not a true secret.
+// MUST equal the deployed backend's CONSUMER_APP_KEY (currently
+// parag_consumer_dev_key_v1) or every serviceability/catalog read 403s and the
+// app fail-opens. NOTE: EXPO_PUBLIC_* values are inlined into Metro's transform
+// cache — changing only .env may not rebuild them; bust the cache when it changes.
 const APP_KEY = process.env.EXPO_PUBLIC_CONSUMER_APP_KEY ?? '';
 const ACCESS_KEY = 'parag_access_token';
 const REFRESH_KEY = 'parag_refresh_token';
