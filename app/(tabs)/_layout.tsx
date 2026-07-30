@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { PyaasTabBar } from '../../components/PyaasTabBar';
 import { ClaimPackGate } from '../../components/ClaimPackFlow';
+import LocationGate from '../../components/LocationGate';
 
 export default function TabsLayout() {
   return (
@@ -20,6 +21,8 @@ export default function TabsLayout() {
       {/* Welcome claim-your-free-pack flow (address + location + delivery window),
           shown once per device to an eligible member on launch. */}
       <ClaimPackGate />
+      {/* App-wide delivery-location picker + city-shift guard (covers Coming Soon). */}
+      <LocationGate />
     </View>
   );
 }

@@ -7,9 +7,10 @@ import Animated, { useAnimatedStyle, FadeIn } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../lib/theme';
-import { Serif, TextBody, Tap } from './ui';
+import { Serif, TextBody, TextMed, Tap } from './ui';
 import { navHidden } from '../lib/navVisibility';
 import { useCart } from '../store/cart';
+import { useUserLocation } from '../lib/userLocation';
 
 /** Time-of-day greeting (incl. a playful late-night line). */
 function greetingFor(name: string): string {
@@ -31,6 +32,8 @@ export function HomeHeader({ firstName }: { firstName: string }) {
   const router = useRouter();
   const initial = (firstName?.trim()?.[0] ?? 'P').toUpperCase();
   const cartCount = useCart((s) => s.lines.reduce((n, l) => n + l.qty, 0));
+  const city = useUserLocation((s) => s.loc?.city ?? null);
+  const openPicker = useUserLocation((s) => s.setPickerOpen);
   const hideStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -navHidden.value * (insets.top + 96) }],
     opacity: 1 - navHidden.value,
@@ -44,10 +47,13 @@ export function HomeHeader({ firstName }: { firstName: string }) {
           {/* PARAG sun logo · brand presence, top left */}
           <Image source={require('../assets/parag-logo.png')} style={{ width: 38, height: 38 }} contentFit="contain" />
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.blue }} />
-              <TextBody style={{ fontSize: 12, letterSpacing: 0.2 }}>Morning delivery · 5–7:30 AM</TextBody>
-            </View>
+            <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="location" size={13} color={colors.flameDeep} />
+                <TextMed style={{ fontSize: 12.5, letterSpacing: 0.1 }} numberOfLines={1} color={colors.ink}>{city ? `Deliver to ${city}` : 'Set your location'}</TextMed>
+                <Ionicons name="chevron-down" size={13} color={colors.flameDeep} />
+              </View>
+            </Tap>
             <Serif style={{ fontSize: 21, lineHeight: 26, letterSpacing: -0.3 }} numberOfLines={1}>{greetingFor(firstName)}</Serif>
           </View>
         </View>

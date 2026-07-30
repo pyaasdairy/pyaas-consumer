@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextSemi, Tap } from './ui';
 import { useServiceability, joinWaitlist } from '../lib/serviceability';
+import { useUserLocation } from '../lib/userLocation';
 import { useAuth } from '../lib/auth';
 
 const LOGO = require('../assets/pyaas-logo.png');
@@ -26,6 +27,8 @@ export function ComingSoon() {
   const lat = useServiceability((s) => s.lat);
   const lng = useServiceability((s) => s.lng);
   const pincode = useServiceability((s) => s.pincode);
+  const city = useUserLocation((s) => s.loc?.city ?? null);
+  const openPicker = useUserLocation((s) => s.setPickerOpen);
 
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -121,6 +124,14 @@ export function ComingSoon() {
               )}
             </>
           )}
+        </Animated.View>
+
+        {/* Wrong place? Change the delivery location (search / GPS / city). */}
+        <Animated.View entering={FadeInDown.duration(480).delay(220)} style={{ width: '100%', maxWidth: 380, alignItems: 'center' }}>
+          <Tap haptic={false} onPress={() => openPicker(true)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 }}>
+            <Ionicons name="navigate-outline" size={16} color={colors.flameDeep} />
+            <TextSemi color={colors.flameDeep} style={{ fontSize: 14 }}>{city ? `Not in ${city}? Change location` : 'Change location'}</TextSemi>
+          </Tap>
         </Animated.View>
       </ScrollView>
     </View>

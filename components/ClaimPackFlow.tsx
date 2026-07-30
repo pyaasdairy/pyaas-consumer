@@ -13,6 +13,7 @@ import { claimFreePack, shouldShowFreePack, snoozeFreePack, FREE_PACK_DAILY_PRIC
 import { minWalletToStart, MIN_SUB_DAYS_COVER } from '../lib/subscriptions';
 import { formatDeliveryWindow } from '../lib/dates';
 import { useAuth } from '../lib/auth';
+import { useUserLocation } from '../lib/userLocation';
 import { useWallet } from '../store/wallet';
 
 const TAAZA = require('../assets/products/pyaas-toned-pouch.png');
@@ -375,6 +376,10 @@ export function ClaimPackGate() {
   const router = useRouter();
   const phone = profile?.phone ?? '';
   const [visible, setVisible] = useState(false);
+  // Wait for the delivery location to be set first — the location gate owns the
+  // screen on first launch, so the trial must not stack on top of it.
+  const hasLocation = useUserLocation((s) => !!s.loc);
+  const pickerOpen = useUserLocation((s) => s.pickerOpen);
 
   useEffect(() => {
     let on = true;
@@ -388,7 +393,7 @@ export function ClaimPackGate() {
   function close() { void snoozeFreePack(); setVisible(false); }
   // "Start shopping" deterministically lands on the Shop tab (a no-op if already there).
   function startShopping() { close(); router.replace('/(tabs)'); }
-  return <ClaimPackFlow visible={visible} onClose={close} onStartShopping={startShopping} />;
+  return <ClaimPackFlow visible={visible && hasLocation && !pickerOpen} onClose={close} onStartShopping={startShopping} />;
 }
 
 function PrimaryButton({ title, onPress, disabled, loading }: { title: string; onPress: () => void; disabled?: boolean; loading?: boolean }) {

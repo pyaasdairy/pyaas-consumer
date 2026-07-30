@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { api, isBackendConfigured } from './apiClient';
 import { getRows } from './localStore';
 import { getUserId } from './session';
-import { getDeviceCoords, DEFAULT_REGION } from './location';
+import { DEFAULT_REGION } from './location';
+import { currentUserLoc } from './userLocation';
 import type { Address } from './api';
 
 /**
@@ -107,6 +108,11 @@ async function resolvePoint(): Promise<Required<CheckPoint> & { signature: strin
   let lng: number | null = null;
   let pincode: string | null = null;
 
+  // 1) The member's explicitly chosen delivery location (a GPS fix or a city
+  //    picked in the location gate on Home) is the source of truth.
+  const ul = currentUserLoc();
+  if (ul) { lat = ul.coords.lat; lng = ul.coords.lng; }
+
   const uid = await getUserId();
   if (uid) {
     try {
@@ -114,14 +120,14 @@ async function resolvePoint(): Promise<Required<CheckPoint> & { signature: strin
       const def = rows.find((a) => a.is_default) ?? rows[0];
       if (def) {
         pincode = def.pincode || null;
-        if (def.lat != null && def.lng != null) { lat = def.lat; lng = def.lng; }
+        // 2) Fall back to a saved delivery-address coordinate (returning member).
+        if ((lat == null || lng == null) && def.lat != null && def.lng != null) { lat = def.lat; lng = def.lng; }
       }
-    } catch { /* fall through to device / default */ }
+    } catch { /* fall through to default */ }
   }
-  if (lat == null || lng == null) {
-    const dev = await getDeviceCoords();
-    if (dev) { lat = dev.lat; lng = dev.lng; }
-  }
+  // 3) Last resort — the default region. GPS is requested ONLY via the location
+  //    gate (explicit "Use my location"), never silently here, so the shop never
+  //    nags for permission on every Home focus.
   if (lat == null || lng == null) { lat = DEFAULT_REGION.lat; lng = DEFAULT_REGION.lng; }
 
   return { lat, lng, pincode: pincode ?? '', signature: `${lat},${lng},${pincode ?? ''}` };

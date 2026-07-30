@@ -2,7 +2,7 @@
   "expo": {
     "name": "PYAAS",
     "slug": "pyaas-app",
-    "version": "1.3.4",
+    "version": "1.3.5",
     "scheme": [
       "pyaas",
       "parag"
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 17,
+      "versionCode": 18,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
