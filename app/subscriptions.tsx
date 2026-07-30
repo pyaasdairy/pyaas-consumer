@@ -10,7 +10,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackButton } from '../components/ui';
 import { SkeletonBlock } from '../components/Skeleton';
 import { PRODUCTS, getProduct } from '../constants/products';
-import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, listVacations, upcomingDeliveries, type Subscription, type Frequency } from '../lib/subscriptions';
+import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
 
@@ -63,13 +63,21 @@ export default function Subscriptions() {
     if (!p) return;
     setBusy(true); setErr('');
     try {
-      // The wallet must cover at least the first delivery.
+      // Same prepaid floor as the product/claim flows: the wallet must cover at
+      // least 2 days before a subscription can start; otherwise route to recharge.
       await refreshWallet();
-      const cost = p.price * qty;
+      const need = minWalletToStart(p.price * qty);
       const bal = useWallet.getState().balance;
-      if (bal < cost) {
-        setErr(`Your wallet has ${rupee(bal)}. Add ${rupee(cost - bal)} to start this subscription.`);
+      if (bal < need) {
+        setAdding(false);
         setBusy(false);
+        const qs = new URLSearchParams({
+          min: String(Math.ceil(need - bal)),
+          amount: String(Math.max(100, Math.ceil((need - bal) / 50) * 50)),
+          returnTo: '/subscriptions',
+          reason: 'to start your subscription',
+        }).toString();
+        router.push(`/recharge?${qs}`);
         return;
       }
       await createSubscription({ productId: p.id, variant: p.variant, qty, unitPrice: p.price, frequency: freq });
@@ -156,7 +164,7 @@ export default function Subscriptions() {
             <Ionicons name="infinite-outline" size={40} color={colors.inkMute} />
             <TextBody>No active subscription.</TextBody>
             <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkMute}>
-              Start your subscription on the home screen — pay 3 days, get 3 FREE, then it continues daily from your wallet.
+              Start your subscription on the home screen: pay 2 days, get 2 FREE, then it continues daily from your wallet.
             </TextBody>
             <Button title="Start your subscription" small style={{ marginTop: 4, paddingHorizontal: 24 }} onPress={() => router.replace('/(tabs)')} />
           </View>

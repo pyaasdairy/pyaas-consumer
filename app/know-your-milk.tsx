@@ -116,10 +116,27 @@ function BatchPassport({ batch }: { batch: MilkBatch }) {
             <TextMed color={colors.white} style={{ fontSize: 13, flex: 1 }}>
               {passed} quality and safety tests passed
             </TextMed>
-            {batch.verified ? <Pill label="VERIFIED" bg="rgba(255,255,255,0.22)" color={colors.white} /> : null}
+            {batch.recalled ? (
+              <Pill label="RECALLED" bg={colors.danger} color={colors.white} />
+            ) : batch.verified ? (
+              <Pill label="VERIFIED" bg="rgba(255,255,255,0.22)" color={colors.white} />
+            ) : null}
           </View>
         </View>
       </Animated.View>
+
+      {/* RECALL warning — overrides the verified framing when the batch is recalled */}
+      {batch.recalled ? (
+        <Animated.View entering={enterUp(20)} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: colors.danger, borderRadius: radius.lg, padding: spacing.md }}>
+          <Ionicons name="warning" size={22} color={colors.white} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>This batch has been recalled</TextSemi>
+            <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 12.5 }}>
+              {batch.recall_notice || 'Please do not consume this pack. Contact PYAAS support for a replacement or refund.'}
+            </TextBody>
+          </View>
+        </Animated.View>
+      ) : null}
 
       {/* Federation framing */}
       <Animated.View entering={enterUp(40)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.cream, borderRadius: radius.lg, padding: spacing.md }}>

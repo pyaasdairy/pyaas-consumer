@@ -77,7 +77,7 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
         </View>
         <View style={{ flex: 1, gap: 1 }}>
           <TextSemi style={{ fontSize: 14 }}>Start your subscription</TextSemi>
-          <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>Pay 3 days, get 3 FREE 🎉 · fresh milk every morning</TextBody>
+          <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>Pay 2 days, get 2 FREE 🎉 · fresh milk every morning</TextBody>
         </View>
         <Ionicons name="chevron-forward" size={16} color={colors.flameDeep} />
       </Tap>

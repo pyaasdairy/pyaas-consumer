@@ -81,9 +81,15 @@ export const useCart = create<CartState>()(
             // Unavailable when the SKU is gone from the live catalog (hidden/
             // removed) or the catalog flags it out of stock.
             const oos = !p || !!p.outOfStock;
-            if (oos === !!l.outOfStock) return l;
+            // Re-sync price/name/variant from the live overlay so a store-manager
+            // reprice is reflected in the bill — the line snapshots these at
+            // add-time and would otherwise charge a stale price.
+            const price = p ? p.price : l.price;
+            const name = p ? p.name : l.name;
+            const variant = p ? p.variant : l.variant;
+            if (oos === !!l.outOfStock && price === l.price && name === l.name && variant === l.variant) return l;
             changed = true;
-            return { ...l, outOfStock: oos };
+            return { ...l, outOfStock: oos, price, name, variant };
           });
           return changed ? { lines } : s;
         }),

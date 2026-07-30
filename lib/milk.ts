@@ -65,6 +65,10 @@ export type MilkBatch = {
   tests: QualityTest[];
   /** True once the batch is verified against the federation's QA records. */
   verified: boolean;
+  /** True when the batch has been RECALLED — overrides verified in the UI. */
+  recalled?: boolean;
+  /** Human recall notice shown to the consumer when recalled. */
+  recall_notice?: string;
 };
 
 /** A row in the per-user scan history (parag:milk_scans:<uid>). */

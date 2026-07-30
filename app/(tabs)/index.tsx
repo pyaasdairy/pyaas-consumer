@@ -118,6 +118,9 @@ export default function Shop() {
   // FRESH user = no active/paused subscription AND has never redeemed the 2+2
   // trial. Only these members see the middle "start your subscription" strip.
   const [freshUser, setFreshUser] = useState(false);
+  // Whether the member has an active/paused subscription — gates the low-wallet
+  // "tomorrow's delivery may pause" nudge (never nag a fresh 0-wallet user).
+  const [hasSub, setHasSub] = useState(false);
   const phone = profile?.phone ?? '';
 
   const recheckClaim = useCallback(() => {
@@ -132,11 +135,12 @@ export default function Shop() {
   const recheckFresh = useCallback(() => {
     Promise.all([listSubscriptions(), getTrial()])
       .then(([subs, trial]) => {
-        const hasSub = subs.some((s) => s.status === 'active' || s.status === 'paused');
+        const active = subs.some((s) => s.status === 'active' || s.status === 'paused');
         const redeemed = trial.phase !== 'none' || !!trial.startDate;
-        setFreshUser(!hasSub && !redeemed);
+        setHasSub(active);
+        setFreshUser(!active && !redeemed);
       })
-      .catch(() => setFreshUser(false));
+      .catch(() => { setHasSub(false); setFreshUser(false); });
   }, []);
 
   // Active orders drive the "Track your order" strip. Refetched whenever the
@@ -254,8 +258,9 @@ export default function Shop() {
               <DeliveryModeToggle instant={instant} instantServed={instantServed !== false} />
             </Animated.View>
 
-            {/* Low-wallet nudge · only when balance is low */}
-            {lowBalance ? (
+            {/* Low-wallet nudge · only when the wallet is low AND there is a
+                subscription whose delivery could pause (never nag a fresh 0-wallet user) */}
+            {lowBalance && hasSub ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
                 <Tap onPress={() => router.push('/recharge')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
                   <Ionicons name="wallet" size={18} color={colors.gold} />
@@ -268,8 +273,9 @@ export default function Shop() {
             {/* Subscription starter · shown ONLY to a fresh member (no active/paused
                 subscription and the 2+2 trial not yet redeemed). Tapping opens the
                 claim / subscribe flow. Existing or already-redeemed members render
-                nothing here. */}
-            {freshUser ? (
+                nothing here. Also requires claimEligible so the tap never opens a
+                dead-end "already used" claim on a device that spent its free trial. */}
+            {freshUser && claimEligible ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
                 <Tap onPress={() => setClaimOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.flame, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
                   <Ionicons name="gift" size={18} color={colors.flameDeep} />
