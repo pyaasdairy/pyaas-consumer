@@ -24,10 +24,16 @@ export type Serviceability = {
   serviceable: boolean;
   /** Standard morning (5–7:30 AM) lane available at this point. */
   standard: boolean;
-  /** ⚡ Instant (~20 min) lane available at this point. */
+  /** ⚡ Instant (~20 min) lane available at this point (false when shut for the night). */
   instant: boolean;
   /** Name of the store that would serve this point (nice-to-have, may be null). */
   storeName: string | null;
+  /** Monsoon surcharge (₹) the serving store charges on INSTANT orders (0 = none). */
+  monsoonRupees: number;
+  /** Instant is shut right now (store hours / manual close) — show the resume note. */
+  instantClosed: boolean;
+  /** Human "resumes …" note (IST, backend-computed), e.g. "tomorrow at 7:00 AM". */
+  instantResumesLabel: string | null;
 };
 
 // Loosely-typed backend payload: we normalise a range of field names so a
@@ -38,6 +44,8 @@ type RawServiceability = {
   standard?: boolean; morning?: boolean;
   instant?: boolean; instant_available?: boolean;
   storeName?: string | null; store_name?: string | null;
+  monsoonEnabled?: boolean; monsoonRupees?: number;
+  instantClosed?: boolean; instantResumesLabel?: string | null;
 };
 
 function normalize(raw: RawServiceability | null | undefined): Serviceability {
@@ -53,6 +61,9 @@ function normalize(raw: RawServiceability | null | undefined): Serviceability {
     // explicit `false` disables it.
     instant: r.instant ?? r.instant_available ?? true,
     storeName: r.storeName ?? r.store_name ?? null,
+    monsoonRupees: r.monsoonEnabled ? (r.monsoonRupees ?? 0) : 0,
+    instantClosed: r.instantClosed ?? false,
+    instantResumesLabel: r.instantResumesLabel ?? null,
   };
 }
 
@@ -64,7 +75,7 @@ export type CheckPoint = { lat?: number | null; lng?: number | null; pincode?: s
  */
 export async function getServiceability(point: CheckPoint): Promise<Serviceability> {
   if (!isBackendConfigured()) {
-    return { serviceable: true, standard: true, instant: true, storeName: null };
+    return { serviceable: true, standard: true, instant: true, storeName: null, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null };
   }
   const q = new URLSearchParams();
   if (point.lat != null) q.set('lat', String(point.lat));
@@ -120,8 +131,9 @@ async function resolvePoint(): Promise<Required<CheckPoint> & { signature: strin
 // A non-hook mirror of the last-known result so the data layer (placeOrder) can
 // guard checkout without pulling in React. `serviceable: null` = unknown → the
 // guard treats it as serviceable (fail-open).
-let snapshot: { serviceable: boolean | null; instant: boolean } = { serviceable: null, instant: true };
-export function getServiceabilitySnapshot(): { serviceable: boolean | null; instant: boolean } {
+type Snapshot = { serviceable: boolean | null; instant: boolean; monsoonRupees: number; instantClosed: boolean };
+let snapshot: Snapshot = { serviceable: null, instant: true, monsoonRupees: 0, instantClosed: false };
+export function getServiceabilitySnapshot(): Snapshot {
   return snapshot;
 }
 
@@ -133,6 +145,9 @@ type ServiceabilityState = {
   standard: boolean;
   instant: boolean;
   storeName: string | null;
+  monsoonRupees: number;
+  instantClosed: boolean;
+  instantResumesLabel: string | null;
   checkedAt: string | null;
   /** Coordinates/pincode the last check ran against (for the waitlist POST). */
   lat: number | null;
@@ -152,6 +167,9 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
   standard: true,
   instant: true,
   storeName: null,
+  monsoonRupees: 0,
+  instantClosed: false,
+  instantResumesLabel: null,
   checkedAt: null,
   lat: null,
   lng: null,
@@ -170,25 +188,31 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
       try {
         const s = await getServiceability(point);
         lastSignature = point.signature;
-        snapshot = { serviceable: s.serviceable, instant: s.instant };
+        snapshot = { serviceable: s.serviceable, instant: s.instant, monsoonRupees: s.monsoonRupees, instantClosed: s.instantClosed };
         set({
           loading: false,
           serviceable: s.serviceable,
           standard: s.standard,
           instant: s.instant,
           storeName: s.storeName,
+          monsoonRupees: s.monsoonRupees,
+          instantClosed: s.instantClosed,
+          instantResumesLabel: s.instantResumesLabel,
           checkedAt: new Date().toISOString(),
         });
       } catch {
         // FAIL-OPEN: a blip must never gate a paying user out. Treat as fully
         // serviceable, and DON'T cache the signature so the next check retries.
         lastSignature = null;
-        snapshot = { serviceable: true, instant: true };
+        snapshot = { serviceable: true, instant: true, monsoonRupees: 0, instantClosed: false };
         set({
           loading: false,
           serviceable: true,
           standard: true,
           instant: true,
+          monsoonRupees: 0,
+          instantClosed: false,
+          instantResumesLabel: null,
           checkedAt: new Date().toISOString(),
         });
       }

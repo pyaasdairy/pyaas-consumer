@@ -60,6 +60,8 @@ export type Order = {
   status: OrderStatus;
   subtotal: number;
   delivery_fee: number;
+  // Monsoon surcharge (₹) on INSTANT orders (store-manager set, backend-authoritative).
+  monsoon_fee?: number;
   total: number;
   payment_method: string;
   address_label: string;
@@ -177,21 +179,28 @@ export async function placeOrder(params: {
   // Defensive: the Instant toggle is disabled in the UI when instant isn't served
   // here, but re-guard so a stale in-flight cart can't slip an instant order past
   // a store that doesn't run the express lane.
+  if (params.lane === 'instant' && svc.instantClosed) {
+    throw new Error('Instant delivery is closed right now. Please choose the morning slot.');
+  }
   if (params.lane === 'instant' && svc.instant === false) {
     throw new Error("Instant delivery isn't available at your address yet. Please choose the morning slot.");
   }
 
+  // Instant lane (one-time express; a subscription always rides the morning route).
+  const isInstant = params.lane === 'instant' && (params.orderType ?? 'instant') !== 'subscription';
   const { subtotal } = cartTotals(lines);
   const delivery_fee = deliveryFeeFor(subtotal);
-  const total = Math.max(0, subtotal - couponDiscount) + delivery_fee;
+  // Monsoon surcharge: INSTANT orders only, read from the serving store's zone
+  // (via serviceability). The backend re-applies it authoritatively on create.
+  const monsoon_fee = isInstant ? (svc.monsoonRupees || 0) : 0;
+  const total = Math.max(0, subtotal - couponDiscount) + delivery_fee + monsoon_fee;
   const address_text = [address.line1, address.line2, address.city, address.pincode]
     .filter(Boolean)
     .join(', ');
 
   // Delivery lane. Instant is a one-time-order express lane only — a
   // subscription always rides the morning route, whatever the caller passed.
-  const lane: 'instant' | 'morning' =
-    params.lane === 'instant' && (params.orderType ?? 'instant') !== 'subscription' ? 'instant' : 'morning';
+  const lane: 'instant' | 'morning' = isInstant ? 'instant' : 'morning';
   const placedAt = new Date();
   // instant → 'by HH:MM' (now + 20 min, local); morning / picked date → the
   // 5–7:30 AM slot (a picked date also carries delivery_date below).
@@ -204,6 +213,7 @@ export async function placeOrder(params: {
     status: 'placed',
     subtotal,
     delivery_fee,
+    monsoon_fee,
     total,
     payment_method: paymentMethod,
     address_label: address.label,

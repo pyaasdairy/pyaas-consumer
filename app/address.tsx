@@ -36,17 +36,23 @@ export default function AddAddress() {
   const [pickedSuggestion, setPickedSuggestion] = useState(false); // suppress refetch after a pick
   const sessionToken = useRef(newSessionToken());
   const abortRef = useRef<AbortController | null>(null);
+  const pickedRef = useRef(false); // synchronous "a suggestion was just picked" flag
+  const reqRef = useRef(0);        // monotonic id so a superseded response can't apply
 
   useEffect(() => {
     if (!isPlacesEnabled()) return;
-    if (pickedSuggestion) { setPickedSuggestion(false); return; }
+    if (pickedSuggestion) { setPickedSuggestion(false); pickedRef.current = false; return; }
     const q = line1.trim();
     if (q.length < 3) { setSuggestions([]); return; }
     const t = setTimeout(async () => {
       abortRef.current?.abort();
       const ctrl = new AbortController();
       abortRef.current = ctrl;
+      const myReq = ++reqRef.current;
       const res = await placesAutocomplete(q, { signal: ctrl.signal, sessionToken: sessionToken.current });
+      // Drop a superseded/late response (a newer keystroke, or a suggestion was
+      // picked mid-flight) so it can never re-open the dropdown over a chosen address.
+      if (myReq !== reqRef.current || pickedRef.current) return;
       setSuggestions(res);
     }, 250);
     return () => clearTimeout(t);
@@ -54,6 +60,11 @@ export default function AddAddress() {
   }, [line1]);
 
   async function chooseSuggestion(s: PlaceSuggestion) {
+    // Supersede + cancel any in-flight/pending autocomplete so a late response can
+    // never re-open the dropdown over the address we're about to fill.
+    pickedRef.current = true;
+    reqRef.current++;
+    abortRef.current?.abort();
     setPickedSuggestion(true);
     setSuggestions([]);
     const d = await placeDetails(s.placeId, { sessionToken: sessionToken.current });

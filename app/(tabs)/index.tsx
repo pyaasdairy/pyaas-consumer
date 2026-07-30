@@ -94,6 +94,8 @@ export default function Shop() {
   // skeleton); `false` = out of zone (show Coming Soon); `true` = shop as usual.
   const svcServiceable = useServiceability((s) => s.serviceable);
   const instantServed = useServiceability((s) => s.instant);
+  const instantClosed = useServiceability((s) => s.instantClosed);
+  const instantResumesLabel = useServiceability((s) => s.instantResumesLabel);
   const svcCheck = useServiceability((s) => s.check);
   // If the serving store doesn't run the ⚡ instant lane here, never leave the
   // member stranded on the (now disabled) Instant tab — fall back to Morning.
@@ -255,7 +257,7 @@ export default function Shop() {
           <View>
             {/* MORNING | INSTANT mode toggle · the very top of the feed */}
             <Animated.View entering={FadeInDown.duration(400)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-              <DeliveryModeToggle instant={instant} instantServed={instantServed !== false} />
+              <DeliveryModeToggle instant={instant} instantServed={instantServed !== false} instantClosed={instantClosed} resumesLabel={instantResumesLabel} />
             </Animated.View>
 
             {/* Low-wallet nudge · only when the wallet is low AND there is a
@@ -487,9 +489,10 @@ export default function Shop() {
  * carries a ⚡ 20-minute mini-badge. Writes the shared delivery-mode store so
  * the product page and checkout honour the same mode.
  */
-function DeliveryModeToggle({ instant, instantServed }: { instant: boolean; instantServed: boolean }) {
-  // When instant isn't served at this address, the Instant segment is disabled
-  // with a soft note. Morning always stays available.
+function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabel }: { instant: boolean; instantServed: boolean; instantClosed?: boolean; resumesLabel?: string | null }) {
+  // Instant segment disables when the address isn't served OR the store is shut
+  // for the night; the note below explains which. Morning always stays available.
+  const closedForNight = !!instantClosed;
   return (
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, padding: 4, gap: 4, ...shadow.soft }}>
@@ -508,13 +511,15 @@ function DeliveryModeToggle({ instant, instantServed }: { instant: boolean; inst
           icon="flash"
           label="Instant"
           badge="⚡ 20 मिनट/20 min"
-          a11yLabel={instantServed ? 'Instant delivery, 20 minutes' : 'Instant delivery not available at your address yet'}
+          a11yLabel={instantServed ? 'Instant delivery, 20 minutes' : closedForNight ? `Instant closed, resumes ${resumesLabel ?? 'soon'}` : 'Instant delivery not available at your address yet'}
         />
       </View>
       {!instantServed ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 }}>
-          <Ionicons name="information-circle-outline" size={13} color={colors.inkMute} />
-          <TextMed style={{ fontSize: 11, flex: 1 }} color={colors.inkMute}>Instant not available at your address yet</TextMed>
+          <Ionicons name={closedForNight ? 'moon-outline' : 'information-circle-outline'} size={13} color={closedForNight ? colors.flameDeep : colors.inkMute} />
+          <TextMed style={{ fontSize: 11, flex: 1 }} color={closedForNight ? colors.flameDeep : colors.inkMute}>
+            {closedForNight ? `⚡ Instant resumes ${resumesLabel ?? 'soon'}` : 'Instant not available at your address yet'}
+          </TextMed>
         </View>
       ) : null}
     </View>

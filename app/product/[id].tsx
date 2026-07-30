@@ -18,6 +18,7 @@ import { useCatalog, groupProducts, physicalAttributes } from '../../lib/catalog
 import { VariantSelector } from '../../components/VariantSelector';
 import { SubscribeSheet, type SubscribeResult } from '../../components/SubscribeSheet';
 import { createSubscription, type Frequency } from '../../lib/subscriptions';
+import { useServiceability } from '../../lib/serviceability';
 import { placeOrder, listAddresses } from '../../lib/api';
 import { captureRestockLead } from '../../lib/leads';
 import { isBackendConfigured } from '../../lib/apiClient';
@@ -115,6 +116,8 @@ export default function ProductDetail() {
   const [payMethod, setPayMethod] = useState<'wallet' | 'cod'>('wallet');
   const [gstin, setGstin] = useState('');
   const refreshWallet = useWallet((s) => s.refresh);
+  // Monsoon surcharge (₹) the serving store charges on INSTANT orders (0 = none).
+  const monsoonRupees = useServiceability((s) => s.monsoonRupees);
 
   // Changing qty/frequency/variant changes the cost, so re-arm the wallet gate.
   useEffect(() => { setShortfall(0); setErr(''); }, [qty, freq, selectedId]);
@@ -145,6 +148,8 @@ export default function ProductDetail() {
   // today (~20 min); the morning slot lands tomorrow 5–7:30 AM; a picked date
   // lands that morning. Subscriptions ignore this and use startDate.
   const laneSel: DeliveryMode = isInstant ? deliverBy : 'morning';
+  // Monsoon surcharge applies to the INSTANT lane only (store-manager controlled).
+  const monsoonFee = laneSel === 'instant' ? (monsoonRupees || 0) : 0;
   const oneTimeDate = laneSel === 'scheduled' ? pickedDate : laneSel === 'instant' ? todayISO() : tomorrowISO();
   const instantEta = hhmmTo12(instantEtaHHMM()) ?? instantEtaHHMM();
   // GSTIN is optional; only attach it to the bill when it is a well-formed
@@ -444,7 +449,7 @@ export default function ProductDetail() {
                 <Ionicons name={deliverBy === 'instant' ? 'flash' : 'sunny-outline'} size={18} color={deliverBy === 'instant' ? colors.flameDeep : colors.blue} />
                 <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.ink}>
                   {deliverBy === 'instant'
-                    ? `Arriving by ${instantEta} · ⚡ Instant express from your nearest PYAAS store.`
+                    ? `Arriving by ${instantEta} · ⚡ Instant express from your nearest PYAAS store.${monsoonFee > 0 ? ` A ₹${monsoonFee} monsoon fee applies.` : ''}`
                     : deliverBy === 'scheduled'
                       ? `Delivered ${formatShort(pickedDate)}, in the 5–7:30 AM morning slot.`
                       : 'Delivered tomorrow morning, 5–7:30 AM. Fresh off the dawn route.'}

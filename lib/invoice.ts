@@ -147,6 +147,7 @@ export type Invoice = {
   discount: number;
   coupon: string | null;
   delivery_charge: number;
+  monsoon_charge: number;
   packaging_charge: number;
   round_off: number;
   grand_total: number;
@@ -265,6 +266,7 @@ export function buildInvoice(
 
   const discount = round2(opts?.discount ?? 0);
   const delivery_charge = round2(order.delivery_fee ?? 0);
+  const monsoon_charge = round2(order.monsoon_fee ?? 0);
   const packaging_charge = round2(opts?.packaging_charge ?? 0);
 
   // Grand total mirrors what the customer paid: order.total (already net of any
@@ -298,6 +300,7 @@ export function buildInvoice(
     discount,
     coupon: opts?.coupon ?? null,
     delivery_charge,
+    monsoon_charge,
     packaging_charge,
     round_off,
     grand_total,
@@ -321,6 +324,7 @@ export function invoiceSummaryRows(inv: Invoice): DisplayRow[] {
   }
   if (inv.discount > 0) rows.push({ label: `Discount${inv.coupon ? ` (${inv.coupon})` : ''}`, value: '-' + inr(inv.discount) });
   rows.push({ label: 'Delivery charge', value: inv.delivery_charge > 0 ? inr(inv.delivery_charge) : 'Free' });
+  if (inv.monsoon_charge > 0) rows.push({ label: 'Monsoon fee', value: inr(inv.monsoon_charge) });
   if (inv.packaging_charge > 0) rows.push({ label: 'Packaging charge', value: inr(inv.packaging_charge) });
   if (Math.abs(inv.round_off) >= 0.01) rows.push({ label: 'Round off', value: (inv.round_off >= 0 ? '+' : '') + inr(inv.round_off) });
   rows.push({ label: 'Grand total', value: '₹' + inv.grand_total.toLocaleString('en-IN'), strong: true });
