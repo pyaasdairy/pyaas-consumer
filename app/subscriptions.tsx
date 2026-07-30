@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,7 +10,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackButton } from '../components/ui';
 import { SkeletonBlock } from '../components/Skeleton';
 import { PRODUCTS, getProduct } from '../constants/products';
-import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, type Subscription, type Frequency } from '../lib/subscriptions';
+import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
 
@@ -31,6 +31,7 @@ export default function Subscriptions() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [lowBalance, setLowBalance] = useState(false);
+  const [detailSub, setDetailSub] = useState<Subscription | null>(null);
   const refreshWallet = useWallet((s) => s.refresh);
 
   // new-subscription form
@@ -184,14 +185,18 @@ export default function Subscriptions() {
                   exiting={FadeOutUp.duration(180)}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 12, ...shadow.soft }}
                 >
-                  <View style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
-                    {p ? <Image source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <TextSemi style={{ fontSize: 14.5 }}>{s.qty} × {p?.name ?? s.product_id}</TextSemi>
-                    <TextBody style={{ fontSize: 12.5, ...tabular }}>{FREQS.find((f) => f.key === s.frequency)?.label} · {rupee(s.unit_price * s.qty)}/delivery</TextBody>
-                    <Pill label={s.status === 'active' ? 'ACTIVE' : 'PAUSED'} bg={s.status === 'active' ? colors.blueSoft : colors.cream} color={s.status === 'active' ? colors.blue : colors.inkMute} />
-                  </View>
+                  {/* Tapping the card opens the detail/manage sheet (status, resume,
+                      recharge-if-low, cancel). The pause/resume icon stays a shortcut. */}
+                  <Tap onPress={() => setDetailSub(s)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
+                      {p ? <Image source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
+                    </View>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <TextSemi style={{ fontSize: 14.5 }}>{s.qty} × {p?.name ?? s.product_id}</TextSemi>
+                      <TextBody style={{ fontSize: 12.5, ...tabular }}>{FREQS.find((f) => f.key === s.frequency)?.label} · {rupee(s.unit_price * s.qty)}/delivery</TextBody>
+                      <Pill label={s.status === 'active' ? 'ACTIVE' : 'PAUSED'} bg={s.status === 'active' ? colors.blueSoft : colors.cream} color={s.status === 'active' ? colors.blue : colors.inkMute} />
+                    </View>
+                  </Tap>
                   <Tap onPress={() => toggle(s)} disabled={busy} style={{ padding: 8 }}>
                     <Ionicons name={s.status === 'active' ? 'pause-circle' : 'play-circle'} size={30} color={colors.flameDeep} />
                   </Tap>
@@ -252,6 +257,91 @@ export default function Subscriptions() {
           <Button title="+ New subscription" variant="outline" onPress={() => setAdding(true)} />
         )}
       </ScrollView>
+
+      {/* Subscription detail / manage sheet — opens on card tap so the row is never
+          a dead end. Shows ACTIVE, or PAUSED with the right reason (low wallet ->
+          recharge, else -> resume), plus vacation + cancel. */}
+      {detailSub ? (() => {
+        const d = detailSub;
+        const p = getProduct(d.product_id);
+        const cost = perDeliveryCost(d);
+        const bal = useWallet.getState().balance;
+        const underfunded = d.status === 'paused' && bal < cost;
+        const close = () => setDetailSub(null);
+        const goRecharge = () => {
+          close();
+          const need = minWalletToStart(cost);
+          const short = Math.max(cost, need) - bal;
+          const qs = new URLSearchParams({
+            min: String(Math.ceil(Math.max(cost, short))),
+            amount: String(Math.max(100, Math.ceil(short / 50) * 50)),
+            returnTo: '/subscriptions',
+            reason: 'to resume your subscription',
+          }).toString();
+          router.push(`/recharge?${qs}`);
+        };
+        const cancelSub = async () => {
+          close(); setBusy(true); setErr('');
+          try { await setSubscriptionStatus(d.id, 'cancelled'); await load(); }
+          catch (e: any) { setErr(e?.message ?? 'Could not cancel the subscription.'); }
+          finally { setBusy(false); }
+        };
+        return (
+          <Modal visible transparent animationType="slide" onRequestClose={close}>
+            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+              <Tap haptic={false} onPress={close} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }}><View /></Tap>
+              <View style={{ backgroundColor: colors.milk, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: insets.bottom + spacing.lg, gap: spacing.md }}>
+                <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.line, marginBottom: 2 }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 54, height: 54, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
+                    {p ? <Image source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Serif style={{ fontSize: 20 }}>{p?.name ?? d.product_id}</Serif>
+                    <TextBody style={{ fontSize: 12.5 }} color={colors.inkSoft}>{d.qty} × {p?.variant ?? ''} · {FREQS.find((f) => f.key === d.frequency)?.label} · {rupee(d.unit_price * d.qty)}/delivery</TextBody>
+                  </View>
+                </View>
+
+                {/* Status + reason */}
+                {d.status === 'active' ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.blueSoft, borderRadius: radius.md, padding: 12 }}>
+                    <Ionicons name="checkmark-circle" size={20} color={colors.blue} />
+                    <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.blue}>Active. Fresh milk arrives every morning, paid from your wallet.</TextMed>
+                  </View>
+                ) : underfunded ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 12, borderWidth: 1, borderColor: colors.flameDeep }}>
+                    <Ionicons name="alert-circle" size={20} color={colors.flameDeep} />
+                    <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.flameDeep}>Paused. Your wallet ({rupee(bal)}) is too low for a {rupee(cost)} delivery. Add money to resume.</TextMed>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.cream, borderRadius: radius.md, padding: 12 }}>
+                    <Ionicons name="pause-circle" size={20} color={colors.inkSoft} />
+                    <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.inkSoft}>Paused. Resume whenever you are ready.</TextMed>
+                  </View>
+                )}
+
+                {/* Primary action */}
+                {d.status === 'active' ? (
+                  <Button title="Pause deliveries" variant="outline" loading={busy} onPress={() => { close(); toggle(d); }} />
+                ) : underfunded ? (
+                  <Button title={`Add money to resume`} loading={busy} onPress={goRecharge} />
+                ) : (
+                  <Button title="Resume deliveries" loading={busy} onPress={() => { close(); toggle(d); }} />
+                )}
+
+                <Tap onPress={() => { close(); router.push('/vacations'); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
+                  <Ionicons name="airplane-outline" size={18} color={colors.flameDeep} />
+                  <TextMed style={{ flex: 1, fontSize: 14 }}>Set a vacation</TextMed>
+                  <Ionicons name="chevron-forward" size={16} color={colors.inkMute} />
+                </Tap>
+                <Tap onPress={cancelSub} style={{ alignItems: 'center', paddingVertical: 6 }}>
+                  <TextMed color={colors.danger} style={{ fontSize: 13.5 }}>Cancel subscription</TextMed>
+                </Tap>
+              </View>
+            </View>
+          </Modal>
+        );
+      })() : null}
     </View>
   );
 }
