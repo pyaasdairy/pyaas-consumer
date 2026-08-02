@@ -155,6 +155,15 @@ export async function setSubscriptionStatus(id: string, status: Subscription['st
   await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
 }
 
+/** Edit a live subscription's plan (quantity / frequency / delivery slot). */
+export async function updateSubscription(
+  id: string,
+  patch: Partial<Pick<Subscription, 'qty' | 'frequency' | 'delivery_slot'>>,
+): Promise<void> {
+  const uid = await requireUserId();
+  await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, patch);
+}
+
 /**
  * Reactivate a paused subscription with a fresh schedule anchor: back to
  * 'active' AND start/next-delivery reset to `startDate` (deliveries resume

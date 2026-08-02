@@ -10,7 +10,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackButton } from '../components/ui';
 import { SkeletonBlock } from '../components/Skeleton';
 import { PRODUCTS, getProduct } from '../constants/products';
-import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, NEEDS_EXACT_LOCATION, type Subscription, type Frequency } from '../lib/subscriptions';
+import { listSubscriptions, createSubscription, setSubscriptionStatus, updateSubscription, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, NEEDS_EXACT_LOCATION, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
 
@@ -305,6 +305,20 @@ export default function Subscriptions() {
           catch (e: any) { setErr(e?.message ?? 'Could not cancel the subscription.'); }
           finally { setBusy(false); }
         };
+        const editQty = async (n: number) => {
+          if (n < 1 || n > 10 || n === d.qty) return;
+          setBusy(true); setErr('');
+          try { await updateSubscription(d.id, { qty: n }); await load(); setDetailSub({ ...d, qty: n }); }
+          catch (e: any) { setErr(e?.message ?? 'Could not update the plan.'); }
+          finally { setBusy(false); }
+        };
+        const editFreq = async (f: Frequency) => {
+          if (f === d.frequency) return;
+          setBusy(true); setErr('');
+          try { await updateSubscription(d.id, { frequency: f }); await load(); setDetailSub({ ...d, frequency: f }); }
+          catch (e: any) { setErr(e?.message ?? 'Could not update the plan.'); }
+          finally { setBusy(false); }
+        };
         return (
           <Modal visible transparent animationType="slide" onRequestClose={close}>
             <View style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -338,6 +352,27 @@ export default function Subscriptions() {
                     <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.inkSoft}>Paused. Resume whenever you are ready.</TextMed>
                   </View>
                 )}
+
+                {/* Change plan — quantity + frequency (edit a live subscription) */}
+                <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <TextSemi style={{ fontSize: 14 }}>Quantity per delivery</TextSemi>
+                    <Stepper qty={d.qty} onChange={editQty} min={1} max={10} />
+                  </View>
+                  <View style={{ gap: 8 }}>
+                    <TextSemi style={{ fontSize: 14 }}>Frequency</TextSemi>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {FREQS.map((f) => {
+                        const on = d.frequency === f.key;
+                        return (
+                          <Tap key={f.key} onPress={() => editFreq(f.key)} style={{ flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: radius.md, borderWidth: 1.5, borderColor: on ? colors.flameDeep : colors.line, backgroundColor: on ? colors.flameSoft : colors.white }}>
+                            <TextMed style={{ fontSize: 12.5 }} color={on ? colors.flameDeep : colors.ink}>{f.label}</TextMed>
+                          </Tap>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </View>
 
                 {/* Primary action */}
                 {d.status === 'active' ? (
