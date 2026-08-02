@@ -155,6 +155,18 @@ export default function Shop() {
       .catch(() => { setHasSub(false); setFreshUser(false); });
   }, []);
 
+  // Auto-open the 2-day-free claim popup ONCE per app launch for an eligible
+  // (fresh, unclaimed) member — so it greets them on the home screen each time they
+  // open/reopen the app, not only when they tap the banner. Existing subscribers /
+  // already-claimed members are not "fresh", so they never see it.
+  const autoOpenedClaim = React.useRef(false);
+  useEffect(() => {
+    if (!autoOpenedClaim.current && freshUser && claimEligible) {
+      autoOpenedClaim.current = true;
+      setClaimOpen(true);
+    }
+  }, [freshUser, claimEligible]);
+
   // Active orders drive the "Track your order" strip. Refetched whenever the
   // home tab regains focus; renders nothing gracefully when there are none.
   useFocusEffect(
