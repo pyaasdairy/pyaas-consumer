@@ -27,6 +27,9 @@ export function ComingSoon() {
   const lat = useServiceability((s) => s.lat);
   const lng = useServiceability((s) => s.lng);
   const pincode = useServiceability((s) => s.pincode);
+  const reason = useServiceability((s) => s.reason);
+  const storeName = useServiceability((s) => s.storeName);
+  const distanceKm = useServiceability((s) => s.distanceKm);
   const city = useUserLocation((s) => s.loc?.city ?? null);
   const openPicker = useUserLocation((s) => s.setPickerOpen);
 
@@ -81,10 +84,17 @@ export function ComingSoon() {
             Coming Soon to{'\n'}Your Area! 🐄
           </Serif>
           <TextBody style={{ fontSize: 14.5, lineHeight: 21, textAlign: 'center', maxWidth: 320 }} color={colors.inkSoft}>
-            We're not delivering fresh PYAAS milk to your doorstep just yet, but
-            we're expanding fast. Leave your number and you'll be the first to know
-            the moment we launch near you.
+            {reason ??
+              "We're not delivering fresh PYAAS milk to your doorstep just yet, but we're expanding fast. Leave your number and you'll be the first to know the moment we launch near you."}
           </TextBody>
+          {storeName && distanceKm ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.flameSoft, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6 }}>
+              <Ionicons name="storefront-outline" size={13} color={colors.flameDeep} />
+              <TextBody style={{ fontSize: 12 }} color={colors.flameDeep}>
+                Nearest store · {storeName} · ~{distanceKm} km
+              </TextBody>
+            </View>
+          ) : null}
         </Animated.View>
 
         {/* CTA / success */}

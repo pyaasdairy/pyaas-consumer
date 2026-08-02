@@ -8,7 +8,7 @@ import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, Button, Field, Tap } from '../components/ui';
 import { addAddress } from '../lib/api';
 import { setAddressCoords, type Coords } from '../lib/location';
-import { cityFromCoords } from '../lib/userLocation';
+import { geoAddress } from '../lib/userLocation';
 import MapPicker from '../components/MapPicker';
 import {
   placesAutocomplete,
@@ -92,10 +92,11 @@ export default function AddAddress() {
     setMapOpen(false);
     setError('');
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (!city.trim()) {
-      const name = await cityFromCoords(c);
-      if (name) setCity(name);
-    }
+    // Auto-fill City + Pincode from the pinned point (only fields the member hasn't
+    // typed), so they just add their flat / area / landmark.
+    const g = await geoAddress(c);
+    if (g.city && !city.trim()) setCity(g.city);
+    if (g.pincode && !pincode.trim()) setPincode(g.pincode);
   }
 
   async function save() {

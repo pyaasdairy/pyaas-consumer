@@ -163,6 +163,9 @@ type ServiceabilityState = {
   monsoonRupees: number;
   instantClosed: boolean;
   instantResumesLabel: string | null;
+  /** Natural "why we don't serve here yet" line + distance for the Coming-Soon screen. */
+  reason: string | null;
+  distanceKm: number | null;
   checkedAt: string | null;
   /** Coordinates/pincode the last check ran against (for the waitlist POST). */
   lat: number | null;
@@ -185,6 +188,8 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
   monsoonRupees: 0,
   instantClosed: false,
   instantResumesLabel: null,
+  reason: null,
+  distanceKm: null,
   checkedAt: null,
   lat: null,
   lng: null,
@@ -213,6 +218,8 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
           monsoonRupees: s.monsoonRupees,
           instantClosed: s.instantClosed,
           instantResumesLabel: s.instantResumesLabel,
+          reason: s.reason,
+          distanceKm: s.distanceKm,
           checkedAt: new Date().toISOString(),
         });
       } catch {
@@ -228,6 +235,8 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
           monsoonRupees: 0,
           instantClosed: false,
           instantResumesLabel: null,
+          reason: null,
+          distanceKm: null,
           checkedAt: new Date().toISOString(),
         });
       }

@@ -63,6 +63,23 @@ export async function cityFromCoords(c: Coords): Promise<string | null> {
   }
 }
 
+/**
+ * Reverse-geocode a coordinate to { city, pincode } (OS geocoder, no key) so the
+ * address form can AUTO-FILL both from a map tap — the member types only their
+ * flat/area/landmark. Best-effort; either field may come back null.
+ */
+export async function geoAddress(c: Coords): Promise<{ city: string | null; pincode: string | null }> {
+  try {
+    const res = await Location.reverseGeocodeAsync({ latitude: c.lat, longitude: c.lng });
+    const r = res?.[0];
+    const city = r?.city || (r as { subregion?: string } | undefined)?.subregion || r?.region || null;
+    const pincode = r?.postalCode || null;
+    return { city, pincode };
+  } catch {
+    return { city: null, pincode: null };
+  }
+}
+
 type State = {
   loc: UserLoc | null;
   /** true once hydrate() has run (home waits for this before prompting). */
