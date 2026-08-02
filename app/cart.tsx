@@ -14,7 +14,14 @@ import { useWallet } from '../store/wallet';
 import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER } from '../lib/api';
 import { refreshCatalog, getMergedProducts } from '../lib/catalog';
 import { useServiceability, joinWaitlist } from '../lib/serviceability';
+import { useDeliveryMode } from '../lib/deliveryMode';
 import { useAuth } from '../lib/auth';
+
+// Fees we SHOW (for transparency, like a quick-commerce bill) but WAIVE — so the
+// amount payable stays item-total + delivery. Handling + small-cart are on us.
+const HANDLING_FEE = 9;
+const SMALL_CART_UNDER = 199;
+const SMALL_CART_FEE = 20;
 
 /**
  * CART → WALLET-FIRST CHECKOUT
@@ -42,6 +49,10 @@ export default function Cart() {
 
   const serviceable = useServiceability((s) => s.serviceable);
   const checkSvc = useServiceability((s) => s.check);
+  // The user's chosen lane (⚡ instant 20-min vs morning slot) drives dispatch:
+  // instant orders broadcast to riders, morning ride the subscription route.
+  const mode = useDeliveryMode();
+  const lane = mode === 'instant' ? 'instant' : 'morning';
 
   const [placing, setPlacing] = useState(false);
   const [err, setErr] = useState('');
@@ -65,6 +76,10 @@ export default function Cart() {
   const total = subtotal + delivery;
   const short = Math.max(0, total - balance);
   const blocked = serviceable === false;
+  // Handling + small-cart fees are SHOWN then waived (on us), so the payable total
+  // is unchanged. Small-cart applies under ₹199 (like a quick-commerce bill).
+  const smallCart = subtotal > 0 && subtotal < SMALL_CART_UNDER ? SMALL_CART_FEE : 0;
+  const feesSaved = HANDLING_FEE + smallCart;
 
   function goRecharge() {
     haptics.press();
@@ -132,7 +147,7 @@ export default function Cart() {
         address,
         paymentMethod: 'wallet',
         orderType: 'instant',
-        lane: 'morning',
+        lane,
       });
       clear();
       haptics.confirm();
@@ -226,19 +241,42 @@ export default function Cart() {
           <TextSemi style={{ fontSize: 15, marginBottom: 2 }}>Bill summary</TextSemi>
           <Row label={`Item total (${orderable.reduce((n, l) => n + l.qty, 0)})`} value={rupee(subtotal)} />
           <Row
-            label="Delivery fee"
+            label="Delivery charge"
             value={delivery === 0 ? 'FREE' : rupee(delivery)}
             valueColor={delivery === 0 ? colors.blue : colors.ink}
-            hint={delivery > 0 ? `Free over ${rupee(FREE_DELIVERY_OVER)}` : undefined}
+            hint={delivery > 0 ? `No charge over ${rupee(FREE_DELIVERY_OVER)}` : undefined}
           />
+          <Row label="Handling charge" value="FREE" valueColor={colors.blue} strike={rupee(HANDLING_FEE)} />
+          {smallCart > 0 ? (
+            <Row label="Small cart fee" value="FREE" valueColor={colors.blue} strike={rupee(smallCart)} hint={`No charge over ${rupee(SMALL_CART_UNDER)}`} />
+          ) : null}
           <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 4 }} />
           <Row label="To pay" value={rupee(total)} bold />
+          {feesSaved > 0 ? (
+            <Row label="Saved on fees" value={`− ${rupee(feesSaved)}`} valueColor={colors.blue} />
+          ) : null}
           <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 4 }} />
           <Row label="PYAAS Wallet balance" value={rupee(balance)} valueColor={colors.inkSoft} />
           <Row label="To pay from wallet" value={rupee(total)} valueColor={colors.flameDeep} bold />
+
+          {/* Charged-after-delivery reassurance (our backend debits on delivery). */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.cream, borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 }}>
+            <Ionicons name="time-outline" size={14} color={colors.flameDeep} />
+            <TextBody style={{ fontSize: 11.5, flex: 1 }}>Held on your wallet now, charged only after the order is delivered.</TextBody>
+          </View>
         </View>
 
         {err ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{err}</TextBody> : null}
+
+        {/* Cancellation policy + disclaimer (quick-commerce bill footer) */}
+        <Policy
+          title="Cancellation policy"
+          body="Orders once placed cannot be cancelled after a rider has picked them up. If it's cancelled at our end for any operational reason, any amount held is released back to your PYAAS Wallet."
+        />
+        <Policy
+          title="Disclaimer"
+          body="Fresh dairy weights can vary slightly pack to pack; you're only charged for what's delivered. Delivery timings are best-effort and may shift with weather or traffic."
+        />
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 2 }}>
           <Ionicons name="shield-checkmark" size={14} color={colors.inkMute} />
@@ -280,18 +318,30 @@ function Header({ insetsTop }: { insetsTop: number }) {
   );
 }
 
-function Row({ label, value, valueColor, bold, hint }: { label: string; value: string; valueColor?: string; bold?: boolean; hint?: string }) {
+function Row({ label, value, valueColor, bold, hint, strike }: { label: string; value: string; valueColor?: string; bold?: boolean; hint?: string; strike?: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flex: 1, paddingRight: 8 }}>
         {bold ? <TextSemi style={{ fontSize: 15 }}>{label}</TextSemi> : <TextBody style={{ fontSize: 13.5 }}>{label}</TextBody>}
         {hint ? <TextBody color={colors.inkMute} style={{ fontSize: 11 }}>{hint}</TextBody> : null}
       </View>
-      {bold ? (
-        <TextSemi style={{ fontSize: 16, ...tabular }} color={valueColor ?? colors.ink}>{value}</TextSemi>
-      ) : (
-        <TextMed style={{ fontSize: 14, ...tabular, fontFamily: fonts.sansMed }} color={valueColor ?? colors.ink}>{value}</TextMed>
-      )}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+        {strike ? <TextBody style={{ fontSize: 12.5, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute}>{strike}</TextBody> : null}
+        {bold ? (
+          <TextSemi style={{ fontSize: 16, ...tabular }} color={valueColor ?? colors.ink}>{value}</TextSemi>
+        ) : (
+          <TextMed style={{ fontSize: 14, ...tabular, fontFamily: fonts.sansMed }} color={valueColor ?? colors.ink}>{value}</TextMed>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function Policy({ title, body }: { title: string; body: string }) {
+  return (
+    <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 4, ...shadow.soft }}>
+      <TextSemi style={{ fontSize: 13.5 }}>{title}</TextSemi>
+      <TextBody style={{ fontSize: 12, lineHeight: 18 }} color={colors.inkSoft}>{body}</TextBody>
     </View>
   );
 }
