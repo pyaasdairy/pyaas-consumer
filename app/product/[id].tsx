@@ -25,6 +25,7 @@ import { isBackendConfigured } from '../../lib/apiClient';
 import { todayISO, tomorrowISO, addDaysISO, parseISO, formatShort } from '../../lib/dates';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12, type DeliveryMode } from '../../lib/deliveryMode';
 import { useWallet } from '../../store/wallet';
+import { useCart } from '../../store/cart';
 
 const GOLD = '#C9A24B';
 const GOLD_BRIGHT = '#F4D061';
@@ -119,6 +120,7 @@ export default function ProductDetail() {
   // funnel. Optional company GSTIN (printed on the proforma bill).
   const [gstin, setGstin] = useState('');
   const refreshWallet = useWallet((s) => s.refresh);
+  const addToCart = useCart((s) => s.add);
   // Monsoon surcharge (₹) the serving store charges on INSTANT orders (0 = none).
   const monsoonRupees = useServiceability((s) => s.monsoonRupees);
 
@@ -324,7 +326,12 @@ export default function ProductDetail() {
       setShowSubscribe(true);
       return;
     }
-    proceed();
+    // One-time / instant → ADD TO CART and review the CD-style bill (no direct
+    // order). The chosen lane (instant vs morning) rides the shared delivery mode,
+    // and the cart runs the wallet-first + serviceability gate before placing.
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    addToCart(product, qty);
+    router.push('/cart');
   }
 
   // The sheet already created the subscription (+ trial anchor + mandate seam);
@@ -679,7 +686,7 @@ export default function ProductDetail() {
             <ProceedButton title="Add money to wallet" loading={false} onPress={() => goRecharge(shortfall)} />
           ) : (
             <ProceedButton
-              title={product.subscribable && freq !== 'one_time' ? 'Subscribe' : 'Proceed'}
+              title={product.subscribable && freq !== 'one_time' ? 'Subscribe' : 'Add to cart'}
               loading={busy}
               onPress={onPrimary}
             />
