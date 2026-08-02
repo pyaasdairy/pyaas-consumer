@@ -345,11 +345,14 @@ export async function reviewOrder(id: string, rating: number, comment: string): 
 }
 
 /**
- * RIDER BACKDOOR (demo): simulates the future rider app claiming this order and
- * heading out for delivery, so you can see the "connected with your rider" UI
- * end to end. When parag-api is live this calls POST /orders/:id/simulate-rider.
+ * RIDER BACKDOOR (demo): moves the order OUT FOR DELIVERY and attaches a rider, so
+ * you can see the full "order placed → delivery partner assigned" loop end to end.
+ * In backend mode this hits the live dev endpoint POST /orders/:id/advance (gated
+ * server-side by OTP dev mode) which assigns a demo rider; in local mode it writes
+ * the mock order. Either way the tracking screen then shows the assigned rider.
  */
 export async function simulateRiderAssignment(orderId: string): Promise<void> {
+  if (isBackendConfigured()) { await api.post(`/orders/${orderId}/advance`, { status: 'out_for_delivery' }); return; }
   const uid = await requireUserId();
   const rows = await getRows<Order>('orders', uid);
   const next = rows.map((o) =>
@@ -358,10 +361,12 @@ export async function simulateRiderAssignment(orderId: string): Promise<void> {
   await setRows<Order>('orders', uid, next);
 }
 
-/** DEMO (local mode only): mark an order delivered so the review-after-delivery
- *  flow is testable without the rider app. With a real backend, delivery comes
- *  from the rider's /deliver call instead. */
+/** DEMO: mark an order delivered so the review-after-delivery flow is testable
+ *  without the operator/rider app. Backend mode uses the same dev /advance
+ *  endpoint; local mode writes the mock order. (In real production the rider's
+ *  own /deliver call owns this transition.) */
 export async function simulateDelivered(orderId: string): Promise<void> {
+  if (isBackendConfigured()) { await api.post(`/orders/${orderId}/advance`, { status: 'delivered' }); return; }
   const uid = await requireUserId();
   await updateRows<Order>('orders', uid, (o) => o.id === orderId, { status: 'delivered', can_review: true });
 }

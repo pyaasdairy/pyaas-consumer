@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, Modal, TextInput, Keyboard } from 'react-native';
+import { View, StyleSheet, Dimensions, Modal, TextInput, Keyboard, Linking } from 'react-native';
 import { CameraView, useCameraPermissions, type BarcodeType } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -99,7 +99,12 @@ export default function Traceability() {
         </View>
         <Serif style={{ fontSize: 25, textAlign: 'center' }}>Know your milk</Serif>
         <TextBody style={{ textAlign: 'center' }}>Scan the QR or barcode on your pack, or type the batch code printed on it, to see the member dairy union and the quality tests behind it.</TextBody>
-        <Button title="Allow camera" onPress={requestPermission} style={{ alignSelf: 'stretch' }} />
+        {permission && !permission.granted && permission.canAskAgain === false ? (
+          // Permanently denied — requestPermission() would no-op, so send them to Settings.
+          <Button title="Open settings to allow camera" onPress={() => Linking.openSettings()} style={{ alignSelf: 'stretch' }} />
+        ) : (
+          <Button title="Allow camera" onPress={requestPermission} style={{ alignSelf: 'stretch' }} />
+        )}
         <Tap haptic={false} onPress={() => setManual(true)}>
           <TextMed color={colors.flameDeep} style={{ fontSize: 14 }}>Enter the batch code instead</TextMed>
         </Tap>

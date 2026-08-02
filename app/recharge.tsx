@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, Modal, TextInput } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { View, ScrollView, ActivityIndicator, Modal, TextInput, Alert, Linking, BackHandler } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { ShineSweep } from '../components/Fx';
 import { useWallet } from '../store/wallet';
 import { useAuth } from '../lib/auth';
 import { rechargeBonus } from '../lib/pricing';
+import { PREPAID_TARGET } from '../lib/prepaid';
 import { rechargeWallet } from '../lib/walletApi';
 import { reconcileWithBalance } from '../lib/subscriptions';
 import {
@@ -34,6 +35,22 @@ function snapUp(min: number): number {
   const hit = PACKS.find((p) => p >= min);
   if (hit) return hit;
   return Math.ceil(min / 100) * 100; // above the grid → next ₹100
+}
+
+/**
+ * WebView navigation gate. When the member picks a UPI app (PhonePe / GPay / Paytm
+ * / any UPI app) inside Razorpay's checkout, Razorpay navigates to a `upi:` /
+ * `intent:` / app-scheme deep link. With `originWhitelist={['*']}` the WebView would
+ * try to load that non-http URL INTERNALLY (it stalls / shows a blank), so the UPI
+ * app never opens. Here we hand every non-http(s) scheme to the OS via Linking so
+ * the chosen app launches, and keep http(s)/about/data/blob in the WebView (those
+ * are Razorpay's own checkout pages + assets).
+ */
+function handleCheckoutNavigation(req: { url?: string }): boolean {
+  const url = req?.url ?? '';
+  if (!url || /^(https?:|about:|data:|blob:)/i.test(url)) return true;
+  Linking.openURL(url).catch(() => { /* no UPI app for this scheme — stay in sheet */ });
+  return false;
 }
 
 /**
@@ -77,10 +94,32 @@ export default function Recharge() {
   const belowMin = min > 0 && value < min;
 
   const [busy, setBusy] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
   const [checkout, setCheckout] = useState<string | null>(null);
   const method = React.useRef('upi');
+  // Synchronous re-entrancy guard: setBusy only disables the CTA after a re-render,
+  // so a fast double-tap could enter recharge() twice and mint two Razorpay orders.
+  const inFlight = React.useRef(false);
+  // Track mount so the floating post-payment verify never setStates after unmount.
+  const mounted = React.useRef(true);
+  // Reason of the last in-sheet payment failure, surfaced only if the member then
+  // backs out (we keep the sheet open so Razorpay's own retry screen can be used).
+  const lastFail = React.useRef('');
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  // Swallow Android hardware-back while a payment is opening/verifying (busy) so it
+  // can't tear the screen out mid-flight. While the checkout modal is open busy is
+  // false and the modal's own onRequestClose (confirm-cancel) handles back instead.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => busy);
+    return () => sub.remove();
+  }, [busy]);
 
   function pick(v: number) {
     haptics.select();
@@ -94,11 +133,13 @@ export default function Recharge() {
   // payment id so the ledger row carries the receipt (idempotent per payment).
   async function creditFromPayment(r: CheckoutResult) {
     setBusy(true);
+    setVerifying(true);
     setError('');
+    lastFail.current = '';
     try {
       const v = await verifyTopup(r);
       if (!v.verified) {
-        setError('We could not verify that payment. If money was debited it will be refunded.');
+        if (mounted.current) setError('We could not verify that payment. If money was debited it will be refunded.');
         return;
       }
       if (!creditIsServerSide()) {
@@ -108,13 +149,14 @@ export default function Recharge() {
       // Topping up may re-fund subscriptions paused for low balance.
       try { await reconcileWithBalance(useWallet.getState().balance); } catch { /* non-fatal */ }
       haptics.confirm();
+      if (!mounted.current) return; // screen already left — don't navigate/setState
       // Checkout-when-short: hop straight back to finish the pending action.
       if (returnTo) { router.replace(returnTo as never); return; }
       setDone(true);
     } catch (e: any) {
-      setError(e?.message || 'Could not add money. Please try again.');
+      if (mounted.current) setError(e?.message || 'Could not add money. Please try again.');
     } finally {
-      setBusy(false);
+      if (mounted.current) { setBusy(false); setVerifying(false); }
     }
   }
 
@@ -122,6 +164,9 @@ export default function Recharge() {
     haptics.press();
     setError('');
     if (value <= 0 || belowMin) return;
+    if (inFlight.current) return; // synchronous double-tap guard (no duplicate orders)
+    inFlight.current = true;
+    lastFail.current = ''; // fresh attempt — don't carry a prior failure's reason
 
     // TEST mode: credit directly, no gateway (dev before payments are wired).
     if (WALLET_TEST_TOPUP) {
@@ -137,6 +182,7 @@ export default function Recharge() {
         setError(e?.message || 'Could not add test money. Please try again.');
       } finally {
         setBusy(false);
+        inFlight.current = false;
       }
       return;
     }
@@ -160,10 +206,16 @@ export default function Recharge() {
           prefill,
           themeColor: colors.flameDeep,
         });
-        setBusy(false);
-        if (outcome.status === 'success') { void creditFromPayment(outcome.result); }
-        else if (outcome.status === 'failed') { setError(outcome.error); }
-        // cancelled → do nothing (retryable, no charge)
+        if (outcome.status === 'success') {
+          // AWAIT so recharge()'s finally (which clears inFlight/busy) runs only
+          // AFTER crediting — otherwise it clobbers creditFromPayment's own
+          // busy/verifying state and re-enables the CTA mid-verify (double-charge).
+          await creditFromPayment(outcome.result);
+        } else {
+          setBusy(false);
+          if (outcome.status === 'failed') setError(outcome.error);
+          // cancelled → do nothing (retryable, no charge)
+        }
         return;
       }
 
@@ -182,7 +234,21 @@ export default function Recharge() {
       setError(e?.message || 'Could not start the payment. Please try again.');
     } finally {
       setBusy(false);
+      inFlight.current = false;
     }
+  }
+
+  // Cancelling the in-progress payment: confirm first (a stray back tap shouldn't
+  // silently abandon a payment the member may be mid-way through in a UPI app).
+  function confirmCancelPayment() {
+    Alert.alert(
+      'Cancel this payment?',
+      'Your recharge is not complete yet. If you cancel now, no money will be deducted.',
+      [
+        { text: 'Keep paying', style: 'cancel' },
+        { text: 'Cancel payment', style: 'destructive', onPress: () => { setCheckout(null); setBusy(false); lastFail.current = ''; } },
+      ],
+    );
   }
 
   function onCheckoutMessage(e: WebViewMessageEvent) {
@@ -196,10 +262,14 @@ export default function Recharge() {
         razorpay_signature: msg.razorpay_signature,
       });
     } else if (msg?.type === 'failed') {
-      setCheckout(null);
-      setError(typeof msg.error === 'string' ? msg.error : 'Payment failed. Please try again.');
+      // Keep the sheet mounted so Razorpay's own in-sheet retry (default
+      // retry:enabled) still works — a recoverable failure (wrong UPI PIN, low
+      // balance, declined card) shouldn't nuke the checkout. Stash the reason and
+      // surface it only if the member then backs out instead of retrying.
+      lastFail.current = typeof msg.error === 'string' ? msg.error : 'Payment failed. Please try again.';
     } else if (msg?.type === 'dismiss') {
-      setCheckout(null); // user backed out — retryable, no charge
+      setCheckout(null); setBusy(false); // user backed out — retryable, no charge
+      if (lastFail.current) { setError(lastFail.current); lastFail.current = ''; }
     }
   }
 
@@ -251,6 +321,7 @@ export default function Recharge() {
               const on = !custom.trim() && selected === p;
               const b = rechargeBonus(p);
               const disabled = min > 0 && p < min;
+              const recommended = p === PREPAID_TARGET;
               return (
                 <Tap
                   key={p}
@@ -262,13 +333,18 @@ export default function Recharge() {
                     backgroundColor: on ? colors.flameSoft : colors.white,
                     borderRadius: radius.md,
                     borderWidth: 1.5,
-                    borderColor: on ? colors.flameDeep : colors.line,
+                    borderColor: on || recommended ? colors.flameDeep : colors.line,
                     paddingVertical: 16,
                     paddingHorizontal: 14,
                     gap: 2,
                     ...shadow.soft,
                   }}
                 >
+                  {recommended ? (
+                    <View style={{ position: 'absolute', top: -9, right: 10, backgroundColor: colors.flameDeep, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <TextSemi color={colors.white} style={{ fontSize: 9, letterSpacing: 0.6 }}>RECOMMENDED</TextSemi>
+                    </View>
+                  ) : null}
                   <TextSemi style={{ fontSize: 20, ...tabular }} color={on ? colors.flameDeep : colors.ink}>{rupee(p)}</TextSemi>
                   {b ? (
                     <TextBody style={{ fontSize: 11.5, ...tabular }} color={colors.blue}>+{rupee(b.bonus)} {b.kind === 'cashback' ? 'cashback' : 'free'}</TextBody>
@@ -303,16 +379,17 @@ export default function Recharge() {
           ) : null}
         </Animated.View>
 
-        {/* To be credited */}
-        <View style={{ flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, ...shadow.soft }}>
+        {/* Recharge summary — Amount to pay · Cashback · To be credited (the wallet
+            is credited the full amount + bonus). */}
+        <View style={{ flexDirection: 'row', backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.flame, overflow: 'hidden', ...shadow.soft }}>
           {[
-            { l: 'You pay', v: rupee(value), c: colors.ink },
-            { l: bonus?.kind === 'cashback' ? 'Cashback' : 'Bonus', v: rupee(bonus?.bonus ?? 0), c: colors.flameDeep },
-            { l: 'To be credited', v: rupee(credited), c: colors.blue },
+            { l: 'Amount to pay', v: rupee(value), c: colors.ink },
+            { l: bonus?.kind === 'cashback' ? 'Cashback' : 'Bonus', v: bonus ? `+${rupee(bonus.bonus)}` : '—', c: bonus ? colors.flameDeep : colors.inkMute },
+            { l: 'To be credited', v: rupee(credited), c: colors.blue, bold: true },
           ].map((s, i) => (
-            <View key={s.l} style={{ flex: 1, alignItems: 'center', paddingVertical: 16, borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: colors.line }}>
+            <View key={s.l} style={{ flex: 1, alignItems: 'center', paddingVertical: 16, borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: colors.line, backgroundColor: s.bold ? colors.blueSoft : 'transparent' }}>
               <TextBody style={{ fontSize: 11.5 }}>{s.l}</TextBody>
-              <TextSemi style={{ fontSize: 17, ...tabular }} color={s.c}>{s.v}</TextSemi>
+              <TextSemi style={{ fontSize: s.bold ? 19 : 17, ...tabular }} color={s.c}>{s.v}</TextSemi>
             </View>
           ))}
         </View>
@@ -332,18 +409,19 @@ export default function Recharge() {
         <Tap onPress={recharge} disabled={busy || value <= 0 || belowMin}>
           <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: colors.flameDeep, height: 54, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: value <= 0 || belowMin ? 0.5 : 1, ...shadow.card }}>
             {busy ? <ActivityIndicator color={colors.white} /> : null}
-            <TextSemi color={colors.white} style={{ fontSize: 16.5, ...tabular }}>{busy ? 'Opening payment…' : `Recharge ${rupee(value)}`}</TextSemi>
+            <TextSemi color={colors.white} style={{ fontSize: 16.5, ...tabular }}>{busy ? (verifying ? 'Verifying payment…' : 'Opening payment…') : `Recharge ${rupee(value)}`}</TextSemi>
             {!busy ? <ShineSweep dur={2400} travel={320} bandWidth={70} angle="16deg" delay={400} /> : null}
           </View>
         </Tap>
       </View>
 
       {/* Razorpay WebView Standard Checkout overlay (fallback path) */}
-      <Modal visible={!!checkout} animationType="slide" onRequestClose={() => setCheckout(null)} presentationStyle="fullScreen">
+      <Modal visible={!!checkout} animationType="slide" onRequestClose={confirmCancelPayment} presentationStyle="fullScreen">
         <View style={{ flex: 1, backgroundColor: colors.cream }}>
           <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.milk, borderBottomWidth: 1, borderBottomColor: colors.line }}>
-            <Tap onPress={() => setCheckout(null)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-              <Ionicons name="close" size={22} color={colors.ink} />
+            {/* Back = cancel (with confirm), top-left. */}
+            <Tap onPress={confirmCancelPayment} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+              <Ionicons name="arrow-back" size={22} color={colors.ink} />
             </Tap>
             <Serif style={{ fontSize: 20, flex: 1 }}>Secure payment</Serif>
             <Ionicons name="lock-closed" size={16} color={colors.inkSoft} />
@@ -352,13 +430,16 @@ export default function Recharge() {
             <WebView
               source={{ html: checkout, baseUrl: 'https://checkout.razorpay.com' }}
               originWhitelist={['*']}
+              onShouldStartLoadWithRequest={handleCheckoutNavigation}
               javaScriptEnabled
               domStorageEnabled
               onMessage={onCheckoutMessage}
               startInLoadingState
               renderLoading={() => (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream }}>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream, gap: 12 }}>
                   <ActivityIndicator color={colors.flameDeep} size="large" />
+                  <TextBody style={{ fontSize: 13 }} color={colors.inkSoft}>Loading secure payment…</TextBody>
+                  <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>Use Back (top-left) to cancel anytime.</TextBody>
                 </View>
               )}
               style={{ flex: 1, backgroundColor: colors.cream }}

@@ -2,7 +2,7 @@
   "expo": {
     "name": "PYAAS",
     "slug": "pyaas-app",
-    "version": "1.3.5",
+    "version": "1.3.11",
     "scheme": [
       "pyaas",
       "parag"
@@ -27,11 +27,10 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 18,
+      "versionCode": 24,
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "READ_PHONE_NUMBERS"
+        "ACCESS_COARSE_LOCATION"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",

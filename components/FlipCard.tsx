@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { colors, radius, shadow, spacing } from '../lib/theme';
@@ -170,6 +171,29 @@ export function PackBack({ product }: { product: Product }) {
       <TextBody numberOfLines={1} style={{ fontSize: 8.5, letterSpacing: 0.2, marginTop: 4 }} color={colors.inkMute}>
         {c.manufacturer} · {c.countryOfOrigin}
       </TextBody>
+    </Tap>
+  );
+}
+
+/**
+ * Real BACK-OF-PACK photo face for the flip (used when we actually shot the pack's
+ * reverse — see backImageFor). The photo is already rotated upright; the FlipCard
+ * rests the back face at identity so it shows un-mirrored. A caption strip names
+ * the pack and what the back carries. Tapping opens the product, like the front.
+ */
+export function PackBackPhoto({ product, source }: { product: Product; source: number }) {
+  const router = useRouter();
+  return (
+    <Tap
+      haptic={false}
+      onPress={() => router.push(`/product/${product.id}`)}
+      style={{ flex: 1, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.soft }}
+    >
+      <Image source={source} style={{ flex: 1, width: '100%' }} contentFit="contain" transition={150} />
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20,20,20,0.62)', paddingHorizontal: 10, paddingVertical: 7 }}>
+        <TextSemi numberOfLines={1} color={colors.white} style={{ fontSize: 12 }}>{product.name}</TextSemi>
+        <TextBody numberOfLines={1} color="rgba(255,255,255,0.85)" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>Back of pack · nutrition, ingredients &amp; FSSAI</TextBody>
+      </View>
     </Tap>
   );
 }

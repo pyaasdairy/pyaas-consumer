@@ -347,13 +347,18 @@ export async function getSpendSummary(): Promise<{ dailyBurn: number; daysRemain
  */
 export async function rechargeWallet(amount: number, method?: string, ref?: string): Promise<number> {
   const uid = await requireUserId();
-  await ensureBootstrapped(uid);
+  const rows = await ensureBootstrapped(uid);
   const amt = money(amount);
-  if (amt <= 0) return (await getBalances()).available;
+  if (amt <= 0) return settledAvailable(rows);
   const bonus = money(rechargeBonus(amt)?.bonus ?? 0);
   // Use the verified payment reference (razorpay_payment_id) as the receipt so
   // the ledger row carries the PSP receipt and stays idempotent per payment.
   const receipt = ref ?? newId('rcpt');
+  // Idempotent per payment: a duplicated verified success (same razorpay_payment_id
+  // delivered twice) must NOT append a second credit+bonus pair. Mirrors the guard
+  // in refundToWallet / addPromoCredit. Only dedups when a real PSP ref is present
+  // (a fresh newId receipt has nothing to collide with).
+  if (ref && hasEntryFor(rows, receipt)) return settledAvailable(rows);
   const drafts: LedgerDraft[] = [
     {
       type: 'credit',

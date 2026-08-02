@@ -18,7 +18,13 @@ import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Divider } from '
 import { getOrder, cancelOrder, simulateRiderAssignment, simulateDelivered, reviewOrder, type Order } from '../../lib/api';
 import { STATUS_FLOW, STATUS_LABEL, STATUS_SUB, statusIndex } from '../../lib/orderStatus';
 import { isBackendConfigured } from '../../lib/apiClient';
+import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
 import { debitWallet } from '../../lib/walletApi';
+
+// Demo E2E tools (order → rider → delivered) are shown in local mode always, and
+// in backend mode only for a PILOT build (EXPO_PUBLIC_WALLET_TEST_TOPUP=true) — the
+// live dev endpoint /orders/:id/advance backs them. A real prod build hides them.
+const DEMO_TOOLS = WALLET_TEST_TOPUP || !isBackendConfigured();
 import { useWallet } from '../../store/wallet';
 import { haptics } from '../../lib/haptics';
 
@@ -65,8 +71,13 @@ export default function OrderTracking() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // >0 when this delivered order couldn't be charged (wallet too low) — surfaced so
+  // the member can settle it instead of the charge being silently lost.
+  const [owed, setOwed] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshWallet = useWallet((s) => s.refresh);
+  // Subscribe to the balance so an owed delivery re-attempts its debit after a top-up.
+  const walletBalance = useWallet((s) => s.balance);
   const [reviewStars, setReviewStars] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -107,13 +118,22 @@ export default function OrderTracking() {
   );
 
   // Debit-on-delivery: when a backend-owned order becomes delivered, charge the
-  // local prepaid wallet exactly once (idempotent by ref), per the delivery note.
+  // prepaid wallet exactly once (idempotent by ref), per the delivery note. If the
+  // wallet can't cover it (a rare race — no reservation exists at placement yet),
+  // we SURFACE the shortfall (owed banner + recharge) instead of silently losing
+  // the charge, and allow a retry after the member tops up.
+  // NOTE(backend): the durable fix is to RESERVE funds at POST /orders (available→held)
+  // and settle held→spent on delivery, so a delivery can never outrun the balance.
   useEffect(() => {
     if (order?.status === 'delivered' && isBackendConfigured() && order.payment_method !== 'cod' && !debitedRef.current) {
       debitedRef.current = true;
-      debitWallet(order.total, 'delivery', order.id).then(() => refreshWallet()).catch(() => { /* insufficient funds is non-fatal in the demo */ });
+      debitWallet(order.total, 'delivery', order.id)
+        .then(() => { setOwed(0); refreshWallet(); })
+        .catch(() => { debitedRef.current = false; setOwed(order.total); });
     }
-  }, [order?.status, order?.id, order?.total, order?.payment_method, refreshWallet]);
+    // walletBalance is a dep so that returning from a top-up (balance changed) with
+    // debitedRef reset re-fires the delivery debit and clears the owed banner.
+  }, [order?.status, order?.id, order?.total, order?.payment_method, walletBalance, refreshWallet]);
 
   async function submitReview() {
     if (!order) return;
@@ -157,7 +177,7 @@ export default function OrderTracking() {
       <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center', padding: spacing.lg, gap: 12 }}>
         <TextBody style={{ textAlign: 'center' }}>{error || 'Order not found.'}</TextBody>
         {error ? <Button title="Try again" onPress={() => { setLoading(true); load(); }} /> : null}
-        <Button title="Back" onPress={() => router.back()} />
+        <Button title="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/orders'))} />
       </View>
     );
   }
@@ -196,13 +216,23 @@ export default function OrderTracking() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Tap onPress={() => router.back()} style={iconBtn}>
+        <Tap onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/orders'))} style={iconBtn}>
           <Ionicons name="chevron-back" size={22} color={colors.ink} />
         </Tap>
         <Serif style={{ fontSize: 24 }}>Track order</Serif>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+        {/* Unpaid-delivery notice — this order was delivered but the wallet couldn't
+            cover it. Surface it (never silently lose the charge) + offer to settle. */}
+        {owed > 0 ? (
+          <Tap onPress={() => router.push(`/recharge?amount=${Math.max(100, Math.ceil(owed / 50) * 50)}&min=${Math.ceil(owed)}&returnTo=${encodeURIComponent(`/order/${order.id}`)}&reason=to settle this delivery`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12, ...shadow.soft }}>
+            <Ionicons name="alert-circle" size={20} color={colors.white} />
+            <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.white}>This delivery couldn't be charged — balance was low. Add {rupee(owed)} to settle it.</TextMed>
+            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.85)" />
+          </Tap>
+        ) : null}
+
         {/* Status hero */}
         <View
           style={{
@@ -427,17 +457,18 @@ export default function OrderTracking() {
         <Button title="View bill" variant="outline" onPress={() => router.push(`/invoice/${order.id}`)} />
         {canCancel ? <Button title="Cancel order" variant="outline" onPress={onCancel} loading={busy} /> : null}
 
-        {/* RIDER BACKDOOR (demo, local mode only): the real Saathi rider app
-            drives these when the shared backend is configured. */}
-        {canSimulate && !isBackendConfigured() ? (
+        {/* RIDER BACKDOOR (demo): drives the full order → delivery-partner-assigned
+            → delivered loop for testing. The real operator/rider app owns these
+            transitions in production; hidden in a non-pilot prod build. */}
+        {canSimulate && DEMO_TOOLS ? (
           <View style={{ gap: 8 }}>
             <Button title="Simulate rider pickup (demo)" variant="sage" onPress={onSimulate} loading={busy} />
             <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>
-              Demo only. The rider app will trigger this for real. Hidden once a real rider claims the order.
+              Demo only — assigns a delivery partner so you can test tracking. The rider app does this for real; hidden once a real rider claims the order.
             </TextBody>
           </View>
         ) : null}
-        {order.status === 'out_for_delivery' && !isBackendConfigured() ? (
+        {order.status === 'out_for_delivery' && DEMO_TOOLS ? (
           <Button title="Simulate delivered (demo)" variant="sage" onPress={onSimulateDelivered} loading={busy} />
         ) : null}
       </ScrollView>

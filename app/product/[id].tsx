@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, ScrollView, Text, TextInput } from 'react-native';
 import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -17,9 +17,9 @@ import { discountPct, complianceFor, getReviews } from '../../constants/products
 import { useCatalog, groupProducts, physicalAttributes } from '../../lib/catalog';
 import { VariantSelector } from '../../components/VariantSelector';
 import { SubscribeSheet, type SubscribeResult } from '../../components/SubscribeSheet';
-import { createSubscription, type Frequency } from '../../lib/subscriptions';
+import { createSubscription, NEEDS_EXACT_LOCATION, type Frequency } from '../../lib/subscriptions';
 import { useServiceability } from '../../lib/serviceability';
-import { placeOrder, listAddresses } from '../../lib/api';
+import { placeOrder, listAddresses, deliveryFeeFor } from '../../lib/api';
 import { captureRestockLead } from '../../lib/leads';
 import { isBackendConfigured } from '../../lib/apiClient';
 import { todayISO, tomorrowISO, addDaysISO, parseISO, formatShort } from '../../lib/dates';
@@ -71,7 +71,7 @@ function SubTypeCard({ label, sub, active, onPress, index }: { label: string; su
 }
 
 export default function ProductDetail() {
-  const { id, start } = useLocalSearchParams<{ id: string; start?: string }>();
+  const { id, start, qty: qtyParam, freq: freqParam, lane: laneParam, subscribe: subscribeParam } = useLocalSearchParams<{ id: string; start?: string; qty?: string; freq?: string; lane?: string; subscribe?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // Read the live merged catalog so a store-manager price/stock change is
@@ -89,10 +89,12 @@ export default function ProductDetail() {
     return group?.variants ?? [product];
   }, [products, product]);
 
-  const [qty, setQty] = useState(1);
+  // qty/freq/lane can be restored from params (e.g. after a recharge round-trip) so
+  // a funded order resumes with the member's original choices instead of resetting.
+  const [qty, setQty] = useState(() => { const n = Number(qtyParam); return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1; });
   // Milk defaults to a Daily subscription; non-subscribable items (ghee) are a
   // one-time order · both go through the same Proceed → order flow (no cart).
-  const [freq, setFreq] = useState<Frequency>(product?.subscribable === false ? 'one_time' : 'daily');
+  const [freq, setFreq] = useState<Frequency>((freqParam as Frequency) || (product?.subscribable === false ? 'one_time' : 'daily'));
   // Honour a start date passed in (e.g. the day chosen in the home delivery strip),
   // but never earlier than tomorrow.
   const [startDate, setStartDate] = useState(start && start > tomorrowISO() ? start : tomorrowISO());
@@ -101,19 +103,20 @@ export default function ProductDetail() {
   // (home strip) — instant ~20 min · morning 5–7:30 AM slot · a picked date.
   // Subscriptions always ride the morning route (no instant lane).
   const sharedMode = useDeliveryMode();
-  const [deliverBy, setDeliverBy] = useState<DeliveryMode>(sharedMode);
+  const [deliverBy, setDeliverBy] = useState<DeliveryMode>((laneParam as DeliveryMode) || sharedMode);
   const [pickedDate, setPickedDate] = useState(start && start >= tomorrowISO() ? start : tomorrowISO());
   const [busy, setBusy] = useState(false);
+  // Synchronous double-tap guard (setBusy only disables after a re-render, so a fast
+  // double-tap could run proceed() — and placeOrder — twice).
+  const busyRef = useRef(false);
   const [err, setErr] = useState('');
   const [shortfall, setShortfall] = useState(0);
   const [notified, setNotified] = useState(false);
   // The polished subscribe bottom sheet (recurring milk). One-time / instant
   // orders keep the direct Proceed flow below.
   const [showSubscribe, setShowSubscribe] = useState(false);
-  // Payment method: subscriptions (recurring) are WALLET-only; a one-time
-  // INSTANT delivery may also be Cash on Delivery. Optional company GSTIN
-  // (printed on the proforma bill).
-  const [payMethod, setPayMethod] = useState<'wallet' | 'cod'>('wallet');
+  // All orders are WALLET-first (prepaid), no cash on delivery — the money-first
+  // funnel. Optional company GSTIN (printed on the proforma bill).
   const [gstin, setGstin] = useState('');
   const refreshWallet = useWallet((s) => s.refresh);
   // Monsoon surcharge (₹) the serving store charges on INSTANT orders (0 = none).
@@ -121,6 +124,36 @@ export default function ProductDetail() {
 
   // Changing qty/frequency/variant changes the cost, so re-arm the wallet gate.
   useEffect(() => { setShortfall(0); setErr(''); }, [qty, freq, selectedId]);
+
+  // Resuming a subscription checkout after a wallet top-up (returnTo carried
+  // &subscribe=1): re-open the subscribe sheet once, seeded with the restored
+  // qty/freq/start, so a funded member finishes where they left off.
+  const didAutoOpen = useRef(false);
+  useEffect(() => {
+    if (!didAutoOpen.current && subscribeParam === '1' && product) {
+      didAutoOpen.current = true;
+      setShowSubscribe(true);
+    }
+  }, [subscribeParam, product]);
+
+  // The wallet-first gate stores a one-shot `shortfall` that flips the CTA to
+  // "Add money to wallet". If the member funds the wallet by ANY route and returns
+  // here, re-check the live balance on focus and restore the Proceed CTA once it
+  // covers the order — so that state can never get stuck.
+  useFocusEffect(
+    React.useCallback(() => {
+      let alive = true;
+      (async () => {
+        await refreshWallet();
+        if (!alive || !product) return;
+        const t = product.price * qty;
+        const laneNow: DeliveryMode = freq === 'one_time' ? deliverBy : 'morning';
+        const need = t + deliveryFeeFor(t) + (laneNow === 'instant' ? (monsoonRupees || 0) : 0);
+        if (useWallet.getState().balance >= need) setShortfall(0);
+      })();
+      return () => { alive = false; };
+    }, [product, qty, freq, deliverBy, monsoonRupees, refreshWallet]),
+  );
 
   if (!product) {
     return (
@@ -141,15 +174,17 @@ export default function ProductDetail() {
   const headlineColor = colors.flameDeep;
   const subscribable = product.subscribable;
   const isInstant = freq === 'one_time'; // one-off delivery vs recurring subscription
-  // COD is only ever offered on an INSTANT one-off delivery; a subscription is
-  // always paid from the wallet. Keep the effective method consistent.
-  const effectiveMethod: 'wallet' | 'cod' = isInstant ? payMethod : 'wallet';
   // Effective delivery lane + landing date for a one-time order. Instant lands
   // today (~20 min); the morning slot lands tomorrow 5–7:30 AM; a picked date
   // lands that morning. Subscriptions ignore this and use startDate.
   const laneSel: DeliveryMode = isInstant ? deliverBy : 'morning';
   // Monsoon surcharge applies to the INSTANT lane only (store-manager controlled).
   const monsoonFee = laneSel === 'instant' ? (monsoonRupees || 0) : 0;
+  // Delivery fee (₹15 under the free-delivery threshold). The wallet-first gate must
+  // use the FULL charge (items + delivery + monsoon), not the bare item total, or a
+  // delivery can be left unfunded by the fee.
+  const deliveryFee = deliveryFeeFor(total);
+  const chargeTotal = total + deliveryFee + monsoonFee;
   const oneTimeDate = laneSel === 'scheduled' ? pickedDate : laneSel === 'instant' ? todayISO() : tomorrowISO();
   const instantEta = hhmmTo12(instantEtaHHMM()) ?? instantEtaHHMM();
   // GSTIN is optional; only attach it to the bill when it is a well-formed
@@ -180,23 +215,34 @@ export default function ProductDetail() {
     } finally { setBusy(false); }
   }
 
+  // Route to the wallet recharge screen preloaded with this order's shortfall,
+  // carrying qty/freq/lane/start so the funded order resumes on a fresh mount here.
+  function goRecharge(shortRupees: number) {
+    if (!product) return;
+    const shortAmt = Math.max(1, Math.ceil(shortRupees));
+    const amount = Math.max(100, Math.ceil(shortAmt / 50) * 50);
+    const rt = `/product/${product.id}?qty=${qty}&freq=${freq}&lane=${deliverBy}&start=${isInstant ? oneTimeDate : startDate}`;
+    router.push(`/recharge?min=${shortAmt}&amount=${amount}&returnTo=${encodeURIComponent(rt)}&reason=${encodeURIComponent('to place this order')}`);
+  }
+
   async function proceed() {
     if (!product) return;
+    if (busyRef.current) return; // synchronous double-tap guard (no duplicate orders)
     // Not orderable while out of stock (the CTA is also swapped out below -
     // this is the belt-and-braces guard).
     if (product.outOfStock) { setErr('This product is currently out of stock.'); return; }
+    busyRef.current = true;
     setBusy(true); setErr('');
     try {
-      // Deliveries are paid from the prepaid wallet, so the wallet must cover
-      // this order before it can be placed.
+      // WALLET-FIRST, BOTH MODES, NO COD ESCAPE: an order is never placed unless the
+      // prepaid wallet covers the FULL charge (items + delivery + monsoon fees). If
+      // short, route to recharge — preserving qty/freq/start/lane so the funded order
+      // resumes with the member's original choices — and STOP; the order is not sent.
       await refreshWallet();
       const bal = useWallet.getState().balance;
-      // Local mode keeps the prepaid gate — but COD never touches the wallet, so
-      // it bypasses the affordability check. With a shared backend the wallet is
-      // debited ON DELIVERY, so no upfront funds are required to place the order.
-      if (effectiveMethod !== 'cod' && !isBackendConfigured() && bal < total) {
-        setShortfall(total - bal);
-        setErr(`Your wallet has ${rupee(bal)}. Add ${rupee(total - bal)} to place this order.`);
+      if (bal < chargeTotal) {
+        setShortfall(chargeTotal - bal);
+        goRecharge(chargeTotal - bal);
         return;
       }
 
@@ -220,7 +266,7 @@ export default function ProductDetail() {
           orderId = await placeOrder({
             lines: [{ id: product.id, name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
             address,
-            paymentMethod: effectiveMethod === 'cod' ? 'cod' : 'prepaid',
+            paymentMethod: 'prepaid',
             priority: 'normal',
             orderType: isInstant ? 'instant' : 'subscription',
             buyerGstin: gstinValid ? gstin : null,
@@ -233,23 +279,37 @@ export default function ProductDetail() {
           setErr(e?.message ?? 'Could not place your order. Please try again.');
           return;
         }
-        // Order placed → record the subscription (non-fatal: the order stands
-        // even if this local write hiccups).
-        await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: isInstant ? oneTimeDate : startDate }).catch(() => { /* order already placed */ });
+        // Recurring order → record the subscription (non-fatal). A ONE-TIME / instant
+        // buy must NOT become a subscription: it would show a false "Subscription LIVE"
+        // card and (being active) permanently hide the 2+2 starter funnel.
+        if (!isInstant) {
+          await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: startDate }).catch(() => { /* order already placed */ });
+        }
         router.replace(`/order/${orderId}`);
         return;
       }
 
-      // Local mode (no backend): the subscription is the record of intent.
-      await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: isInstant ? oneTimeDate : startDate });
+      // Local mode (no backend): a RECURRING order is recorded as a subscription; a
+      // one-time buy is not (see above) — it just shows the order-confirmed screen.
+      if (!isInstant) {
+        await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: startDate });
+      }
       // The order-confirmed screen fires the strong confirmation haptic on mount.
       router.push({
         pathname: '/order-confirmed',
         params: { id: product.id, qty: String(qty), freq, start: isInstant ? oneTimeDate : startDate, total: String(total), saved: String(savedPer * qty) },
       });
     } catch (e: any) {
+      // No exact delivery point yet → route to add one on the map (address screen)
+      // rather than showing the raw gate code; they can retry after.
+      if (e?.code === NEEDS_EXACT_LOCATION || e?.message === NEEDS_EXACT_LOCATION) {
+        setErr('Set your delivery location on the map first.');
+        router.push('/address');
+        return;
+      }
       setErr(e?.message ?? 'Could not set up your subscription. Please try again.');
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -280,7 +340,7 @@ export default function ProductDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 210 }}>
         <DeliveryBanner topInset={insets.top} />
 
         {/* Image header */}
@@ -474,34 +534,15 @@ export default function ProductDetail() {
 
           <Divider />
 
-          {/* Payment method — COD only on an instant one-off; subscriptions are wallet-only */}
+          {/* Payment — always the prepaid PYAAS Wallet (money-first funnel, no COD). */}
           <Animated.View entering={FadeInDown.duration(420).delay(135)} style={{ gap: 8 }}>
             <TextSemi style={{ fontSize: 16 }}>Payment</TextSemi>
-            {isInstant ? (
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                {([
-                  { key: 'wallet', label: 'PYAAS Wallet', sub: 'Pay from balance' },
-                  { key: 'cod', label: 'Cash on delivery', sub: 'Pay the rider' },
-                ] as const).map((m) => {
-                  const active = payMethod === m.key;
-                  return (
-                    <Tap key={m.key} onPress={() => setPayMethod(m.key)} style={{ flex: 1 }}>
-                      <View style={{ borderRadius: radius.lg, borderWidth: 1.5, borderColor: active ? colors.flameDeep : colors.line, backgroundColor: active ? colors.flameSoft : colors.white, paddingVertical: 12, paddingHorizontal: 12, gap: 3 }}>
-                        <TextSemi style={{ fontSize: 14 }} color={active ? colors.flameDeep : colors.ink}>{m.label}</TextSemi>
-                        <TextBody style={{ fontSize: 11 }}>{m.sub}</TextBody>
-                      </View>
-                    </Tap>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.cream, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Ionicons name="wallet-outline" size={18} color={colors.flameDeep} />
-                <TextBody style={{ fontSize: 13, flex: 1 }}>
-                  Subscriptions are paid from your PYAAS Wallet. Cash on delivery is available on instant one-time orders.
-                </TextBody>
-              </View>
-            )}
+            <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.cream, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons name="wallet-outline" size={18} color={colors.flameDeep} />
+              <TextBody style={{ fontSize: 13, flex: 1 }}>
+                Paid from your PYAAS Wallet. If your balance is short, we'll top it up first — quick, secure, and your delivery is never held up.
+              </TextBody>
+            </View>
           </Animated.View>
 
           {/* Optional company GSTIN → printed on the proforma bill */}
@@ -635,7 +676,7 @@ export default function ProductDetail() {
               <ProceedButton title="Notify me" loading={busy} onPress={notifyMe} />
             )
           ) : shortfall > 0 ? (
-            <ProceedButton title="Add money to wallet" loading={false} onPress={() => router.push('/(tabs)/wallet')} />
+            <ProceedButton title="Add money to wallet" loading={false} onPress={() => goRecharge(shortfall)} />
           ) : (
             <ProceedButton
               title={product.subscribable && freq !== 'one_time' ? 'Subscribe' : 'Proceed'}
@@ -663,6 +704,7 @@ export default function ProductDetail() {
         savedPer={savedPer}
         initialQty={qty}
         initialFreq={freq === 'one_time' ? 'daily' : freq}
+        initialStartDate={startDate}
         onClose={() => setShowSubscribe(false)}
         onConfirmed={onSubscribed}
       />

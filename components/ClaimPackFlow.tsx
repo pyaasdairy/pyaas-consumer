@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Modal, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Modal, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, AppState } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -7,7 +7,9 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts, rupee } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
-import { getDeviceCoords, setAddressCoords } from '../lib/location';
+import { setAddressCoords, type Coords } from '../lib/location';
+import { cityFromCoords } from '../lib/userLocation';
+import MapPicker from './MapPicker';
 import { addAddress } from '../lib/api';
 import { claimFreePack, shouldShowFreePack, snoozeFreePack, FREE_PACK_DAILY_PRICE, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
 import { minWalletToStart, MIN_SUB_DAYS_COVER } from '../lib/subscriptions';
@@ -30,10 +32,10 @@ const MIN_START_BALANCE = minWalletToStart(FREE_PACK_DAILY_PRICE);
 /**
  * "Start your subscription" onboarding: the 2 + 2 trial funnel. Claiming
  * auto-starts a daily taaza-500ml subscription from tomorrow and opens the
- * six-day trial: days 1–3 are PAID (₹29/day from the wallet), days 4–6 are
+ * four-day trial: days 1–2 are PAID (₹29/day from the wallet), days 3–4 are
  * FREE, and from then on it CONTINUES at ₹29/day until paused/cancelled. The
- * sheet copy says exactly that — pay 3, get 3 free, no surprise charges. Walks
- * the user from an intro card -> delivery address (typed or from GPS) -> a
+ * sheet copy says exactly that — pay 2, get 2 free, no surprise charges. Walks
+ * the user from an intro card -> delivery address (typed + an EXACT map pin) -> a
  * confirmation box -> a delivery-window promise. Fires on first launch
  * (ClaimPackGate), from the home claim card and when a member starts their
  * PYAAS Plus trial. All money movement is in lib/freePack (idempotent).
@@ -46,8 +48,8 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   const [line1, setLine1] = useState('');
   const [city, setCity] = useState('');
   const [pincode, setPincode] = useState('');
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locBusy, setLocBusy] = useState(false);
+  const [coords, setCoords] = useState<Coords | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Synchronous re-entry guard: setBusy only disables the button after a
   // re-render, so a fast double-tap would run confirm() twice without this ref.
@@ -78,6 +80,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
       setCity('');
       setPincode('');
       setCoords(null);
+      setMapOpen(false);
       setSubStarted(false);
       setBlockReason('');
       setNavHidden(false);
@@ -86,16 +89,21 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
     }
   }, [visible]);
 
-  const canContinue = line1.trim().length >= 4 && pincode.trim().replace(/\D/g, '').length >= 6;
+  // The EXACT delivery spot is REQUIRED before a subscription can start — no more
+  // subscriptions created without a precise location.
+  const canContinue = line1.trim().length >= 4 && pincode.trim().replace(/\D/g, '').length >= 6 && coords != null;
 
-  async function useMyLocation() {
-    setLocBusy(true); setErr('');
-    const c = await getDeviceCoords();
-    setLocBusy(false);
-    if (!c) { setErr('Location is off. Allow it in settings, or just type your address below.'); return; }
+  // Exact spot chosen on the map (draggable pin); fill the city from the point if
+  // the member has not typed one. No "GPS" wording, no raw coordinates shown.
+  async function onMapConfirm(c: Coords) {
     setCoords(c);
-    if (!city) setCity('Detected from GPS');
+    setMapOpen(false);
+    setErr('');
     haptics.success();
+    if (!city.trim()) {
+      const name = await cityFromCoords(c);
+      if (name) setCity(name);
+    }
   }
 
   // STEP 1 (confirm): capture the delivery address, then GATE on wallet funds.
@@ -216,7 +224,8 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   }
 
   return (
-    <Modal visible={visible && !navHidden} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
+    <>
+    <Modal visible={visible && !navHidden && !mapOpen} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg }}>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, overflow: 'hidden', maxHeight: '88%', ...shadow.card }}>
@@ -241,8 +250,8 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             </Serif>
             <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
               {step === 'ineligible' || step === 'signin'
-                ? 'PYAAS Taaza · 500 ml fresh every morning'
-                : `PYAAS Taaza · 500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} free`}
+                ? 'Parag Taaza · 500 ml fresh every morning'
+                : `Parag Taaza · 500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} free`}
             </TextBody>
           </View>
 
@@ -269,10 +278,15 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             {step === 'address' ? (
               <Animated.View entering={FadeInDown.duration(260)} style={{ gap: spacing.sm }}>
                 <TextSemi style={{ fontSize: 16 }}>Where should we deliver it?</TextSemi>
-                <Tap onPress={useMyLocation} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: coords ? colors.blueSoft : colors.cream, borderRadius: radius.md, borderWidth: 1, borderColor: coords ? colors.blue : colors.line, paddingHorizontal: 14, paddingVertical: 12 }}>
-                  {locBusy ? <ActivityIndicator color={colors.flameDeep} /> : <Ionicons name={coords ? 'checkmark-circle' : 'locate'} size={18} color={coords ? colors.blue : colors.flameDeep} />}
-                  <TextMed style={{ flex: 1, fontSize: 14 }} color={colors.ink}>{coords ? 'Location captured' : 'Use my current location'}</TextMed>
-                  {!coords ? <Ionicons name="chevron-forward" size={16} color={colors.inkMute} /> : null}
+                {/* EXACT spot on a draggable-pin map is REQUIRED so the rider finds
+                    the right door — no subscription starts without it. */}
+                <Tap onPress={() => setMapOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: coords ? colors.blueSoft : colors.flameSoft, borderRadius: radius.md, borderWidth: 1.5, borderColor: coords ? colors.blue : colors.flameDeep, paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <Ionicons name={coords ? 'checkmark-circle' : 'map'} size={19} color={coords ? colors.blue : colors.flameDeep} />
+                  <View style={{ flex: 1 }}>
+                    <TextMed style={{ fontSize: 14 }} color={colors.ink}>{coords ? 'Delivery location set' : 'Set delivery location on map'}</TextMed>
+                    <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>{coords ? 'Tap to adjust the pin' : 'Required · drag the pin to your exact door'}</TextBody>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.inkMute} />
                 </Tap>
                 <Field label="Flat / house, area" value={line1} onChangeText={setLine1} placeholder="e.g. 12 Green Park, Gomti Nagar" />
                 <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -288,7 +302,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
               <Animated.View entering={FadeInDown.duration(260)} style={{ gap: spacing.md }}>
                 <TextSemi style={{ fontSize: 16 }}>Confirm your subscription</TextSemi>
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
-                  <Row icon="cube" label="PYAAS Taaza Toned Milk" value={`500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} FREE`} />
+                  <Row icon="cube" label="Parag Taaza Toned Milk" value={`500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} FREE`} />
                   <Row icon="location" label="Delivering to" value={`${line1.trim()}${city ? ', ' + city.trim() : ''}${pincode ? ' - ' + pincode.trim().replace(/\D/g, '') : ''}`} />
                   <Row icon="time" label="First pack arrives tomorrow" value={formatDeliveryWindow(DELIVERY_WINDOW)} highlight />
                   <Row icon="wallet" label="Billing" value={`Pay ${TRIAL_PAID_DAYS} days · next ${TRIAL_FREE_DAYS} days FREE · then ${rupee(FREE_PACK_DAILY_PRICE)}/day · pause anytime`} />
@@ -326,8 +340,8 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
                   {subStarted
-                    ? `Congrats! Your PYAAS Taaza subscription is live. Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} free, then ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet. Pause anytime. Your first pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow.`
-                    : `Your first PYAAS Taaza pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow. We will notify you when the rider sets off.`}
+                    ? `Congrats! Your Parag Taaza subscription is live. Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} free, then ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet. Pause anytime. Your first pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow.`
+                    : `Your first Parag Taaza pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow. We will notify you when the rider sets off.`}
                 </TextBody>
                 <PrimaryButton title="Start shopping" onPress={startShopping} />
               </Animated.View>
@@ -340,7 +354,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="gift-outline" size={30} color={colors.flameDeep} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  {blockReason} You can still get PYAAS Taaza every morning — a daily subscription is just {rupee(FREE_PACK_DAILY_PRICE)}/day, pause anytime.
+                  {blockReason} You can still get Parag Taaza every morning — a daily subscription is just {rupee(FREE_PACK_DAILY_PRICE)}/day, pause anytime.
                 </TextBody>
                 <PrimaryButton title="Start shopping" onPress={startShopping} />
               </Animated.View>
@@ -366,31 +380,58 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    <MapPicker visible={mapOpen} initial={coords} onClose={() => setMapOpen(false)} onConfirm={onMapConfirm} />
+    </>
   );
 }
 
-/** Launch trigger: shows the claim flow once per device to an eligible member,
- *  reusing the free-pack gate (shouldShowFreePack / markSeen). */
+/** Launch trigger: shows the claim flow to an eligible member and RE-ARMS it on
+ *  every app open + screen focus + claim change, so it re-appears each session
+ *  until the member claims or snoozes it away (shouldShowFreePack is per-USER and
+ *  honours the "Maybe later" snooze, so re-checking freely self-suppresses). */
 export function ClaimPackGate() {
   const { profile } = useAuth();
   const router = useRouter();
   const phone = profile?.phone ?? '';
   const [visible, setVisible] = useState(false);
+  // Once the flow is on screen it stays until the MEMBER dismisses it (close()).
+  // A re-check must never yank an OPEN flow shut — claiming fires
+  // notifyFreePackChanged() from inside doClaimFreePack BEFORE the 'done' congrats
+  // screen renders, so without this guard the modal would close mid-claim and the
+  // member would never see the success screen.
+  const openedRef = useRef(false);
   // Wait for the delivery location to be set first — the location gate owns the
   // screen on first launch, so the trial must not stack on top of it.
   const hasLocation = useUserLocation((s) => !!s.loc);
   const pickerOpen = useUserLocation((s) => s.pickerOpen);
 
-  useEffect(() => {
-    let on = true;
-    if (phone) shouldShowFreePack(phone).then((show) => { if (on) setVisible(show); });
-    return () => { on = false; };
+  // Re-check show-eligibility. Returns a cleanup that cancels the in-flight check,
+  // so it doubles as the effect / focus cleanup below.
+  const recheck = useCallback(() => {
+    if (openedRef.current) return () => {}; // already open — never hide it mid-flow
+    if (!phone) { setVisible(false); return () => {}; }
+    let cancelled = false;
+    shouldShowFreePack(phone)
+      .then((show) => { if (cancelled) return; setVisible(show); if (show) openedRef.current = true; })
+      .catch(() => { /* signed out / offline — leave hidden */ });
+    return () => { cancelled = true; };
   }, [phone]);
 
-  // "Maybe later" / X: SNOOZE (re-offer next session) instead of losing the
-  // free pack forever. A successful claim marks it seen internally, so a claimed
-  // pack still never re-offers.
-  function close() { void snoozeFreePack(); setVisible(false); }
+  // On mount + whenever the signed-in phone changes (a new account is a fresh
+  // first-time user, so the pop-up re-arms for them).
+  useEffect(() => recheck(), [recheck]);
+  // On screen focus (navigating back to the tab that hosts the gate).
+  useFocusEffect(recheck);
+  // On app FOREGROUND — the core "close app + open again → see it again" case.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') recheck(); });
+    return () => sub.remove();
+  }, [recheck]);
+
+  // "Maybe later" / X / "Start shopping": SNOOZE (re-offer next session) instead of
+  // losing the free pack forever, and release the open-guard so the gate can re-arm
+  // next session. A successful claim marks it seen internally, so it never re-offers.
+  function close() { void snoozeFreePack(); openedRef.current = false; setVisible(false); }
   // "Start shopping" deterministically lands on the Shop tab (a no-op if already there).
   function startShopping() { close(); router.replace('/(tabs)'); }
   return <ClaimPackFlow visible={visible && hasLocation && !pickerOpen} onClose={close} onStartShopping={startShopping} />;

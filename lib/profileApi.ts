@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requireUserId, getProfile, saveProfile, signOut, type Profile } from './session';
+import { api, isBackendConfigured } from './apiClient';
 
 /**
  * Extended profile + avatar. Runs against the on-device store; when parag-api is
@@ -41,11 +42,17 @@ function toFull(p: Profile | null): FullProfile | null {
   };
 }
 
-/** Permanently delete the signed-in user's local account + data, then sign out.
+/** Permanently delete the signed-in user's account + data, then sign out.
  * (App Store / Play require an in-app deletion path for apps with accounts.)
- * When parag-api is live this calls DELETE /users/me. */
+ * In backend mode this erases the SERVER account first (POST /me/erasure →
+ * cascade delete) so the promise — wallet closed, subscriptions removed, details
+ * erased — is real. If that call fails we surface the error and DON'T wipe local
+ * state (so the user isn't left signed-out over a still-live server account). */
 export async function deleteMyAccount(): Promise<void> {
   const uid = await requireUserId();
+  if (isBackendConfigured()) {
+    await api.post('/me/erasure', {});
+  }
   const keys = await AsyncStorage.getAllKeys();
   const mine = keys.filter((k) => k.startsWith('parag:') && k.endsWith(`:${uid}`));
   if (mine.length) await AsyncStorage.multiRemove(mine);

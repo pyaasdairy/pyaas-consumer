@@ -1,4 +1,4 @@
-import { Platform, NativeModules, NativeEventEmitter, PermissionsAndroid } from 'react-native';
+import { Platform, NativeModules, NativeEventEmitter } from 'react-native';
 
 /**
  * Native "hyper-convenience" seams for the phone-OTP flow, backed by the native
@@ -20,30 +20,6 @@ const Native: any = NativeModules?.RNPhoneNumberHint ?? null;
 /** True when the native phone-hint / SMS-retriever module is present in this build. */
 export function hasNativeConvenience(): boolean {
   return Platform.OS === 'android' && !!Native;
-}
-
-/**
- * Ask for READ_PHONE_NUMBERS at runtime (shows the system permission prompt). The
- * one-tap hint chooser technically works without it, but requesting it lets the
- * user opt in and improves the number the hint surfaces on some OEMs. Best-effort:
- * never throws; returns whether it's granted. No-op (false) off Android.
- */
-export async function ensurePhoneNumberPermission(): Promise<boolean> {
-  if (Platform.OS !== 'android') return false;
-  try {
-    const perm = (PermissionsAndroid.PERMISSIONS as any).READ_PHONE_NUMBERS;
-    if (!perm) return false;
-    if (await PermissionsAndroid.check(perm)) return true;
-    const res = await PermissionsAndroid.request(perm, {
-      title: 'Use your number',
-      message: 'Allow PYAAS to suggest your phone number so you can sign in with one tap.',
-      buttonPositive: 'Allow',
-      buttonNegative: 'Not now',
-    });
-    return res === PermissionsAndroid.RESULTS.GRANTED;
-  } catch {
-    return false;
-  }
 }
 
 /**

@@ -41,7 +41,7 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
         try {
           const list = await listSubscriptions();
           let next: string | null = null;
-          const active = list.filter((s) => s.status === 'active');
+          const active = list.filter((s) => s.status === 'active' && s.frequency !== 'one_time');
           if (active.length) {
             const vacs = await listVacations().catch(() => []);
             next = upcomingDeliveries(active, vacs, todayISO(), 14)[0]?.date ?? null;
@@ -61,8 +61,8 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
   // when an older subscription is also live.
   const byNewest = (a: Subscription, b: Subscription) =>
     String(b.created_at ?? b.start_date ?? '').localeCompare(String(a.created_at ?? a.start_date ?? ''));
-  const active = subs.filter((s) => s.status === 'active').sort(byNewest);
-  const paused = subs.filter((s) => s.status === 'paused').sort(byNewest);
+  const active = subs.filter((s) => s.status === 'active' && s.frequency !== 'one_time').sort(byNewest);
+  const paused = subs.filter((s) => s.status === 'paused' && s.frequency !== 'one_time').sort(byNewest);
 
   // ── No subscription at all ─────────────────────────────────────────────────
   if (!active.length && !paused.length) {
@@ -124,9 +124,11 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
           <TextSemi numberOfLines={1} style={{ fontSize: 14 }}>
             {s.qty} × {p?.name ?? s.product_id}{active.length > 1 ? `  +${active.length - 1} more` : ''}
           </TextSemi>
-          {trial.active ? (
-            /* 3+3 trial phase, driven by lib/trial: "Day 2 of 3 · paid" (blue) /
-               "Day 5 of 6 · FREE 🎉" (green). Paid days still carry the ₹/day. */
+          {trial.active && /^taaza-/.test(s.product_id) ? (
+            /* 2+2 trial phase, driven by lib/trial: "Day 2 of 2 · paid" (blue) /
+               "Day 3 of 4 · FREE 🎉" (green). Paid days still carry the ₹/day.
+               Taaza SKUs ONLY — the trial never advances for other products, so the
+               chip must not imply free days that will never arrive on Gold/Shakti/etc. */
             <TextSemi style={{ fontSize: 12, ...tabular }} color={trial.phase === 'free' ? LIVE_GREEN : colors.blue}>
               {trialLabel(trial)}{trial.phase === 'paid' ? ` · ${rupee(daily)}/day` : ''}
             </TextSemi>

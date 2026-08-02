@@ -8,9 +8,10 @@ import { colors, radius, spacing, shadow, fonts } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from '../../components/ui';
 import { ShineSweep } from '../../components/Fx';
 import { enterUp } from '../../lib/motion';
-import { signInWithPhone, DEMO_OTP } from '../../lib/session';
+import { signInWithPhone, saveProfile, DEMO_OTP } from '../../lib/session';
 import { api, isBackendConfigured, setTokens } from '../../lib/apiClient';
-import { requestPhoneHint, startSmsRetriever, ensurePhoneNumberPermission } from '../../lib/nativeConvenience';
+import { requestPhoneHint, startSmsRetriever } from '../../lib/nativeConvenience';
+import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
 
 /**
  * Phone OTP sign-in. In this build the code is verified on-device (demo /
@@ -35,6 +36,8 @@ export default function OtpLogin() {
   // Test OTP echoed by the backend in dev (OTP_DEV_MODE) so we can sign in
   // without SMS. Shown below the code input; the real SMS API lands later.
   const [devOtp, setDevOtp] = useState('');
+  // Seconds until "Resend code" re-enables (0 = ready).
+  const [resendIn, setResendIn] = useState(0);
   // In-flight guard so a burst of focus events doesn't launch the hint twice.
   const hintBusy = useRef(false);
 
@@ -60,7 +63,9 @@ export default function OtpLogin() {
     if (hintBusy.current || digits().length >= 10) return;
     hintBusy.current = true;
     try {
-      await ensurePhoneNumberPermission(); // system permission prompt (first time only)
+      // Google's phone-number Hint Picker (Identity Services, getPhoneNumberHintIntent)
+      // shows a "Choose a number" sheet with NO runtime permission — so we NEVER ask
+      // for READ_PHONE_NUMBERS ("make and manage phone calls"), which scared users off.
       const hinted = await requestPhoneHint();
       if (hinted && digits().length < 10) setPhone(hinted);
     } finally {
@@ -103,10 +108,26 @@ export default function OtpLogin() {
         setDevOtp(r.dev_otp ?? '');
       }
       setStep('code');
+      setResendIn(30); // start the resend cooldown
     } catch (e: any) {
       setError(friendly(e, 'Could not send the code. Please try again.'));
     } finally { setLoading(false); }
   }
+
+  // Resend the OTP without leaving the code step or clearing typed digits beyond a
+  // reset. Gated by a 30s cooldown (set in sendCode) to avoid SMS spam.
+  function resend() {
+    if (resendIn > 0 || loading) return;
+    setCode(''); setError('');
+    void sendCode();
+  }
+
+  // Tick the resend cooldown down to 0.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   async function verify(codeArg?: string) {
     const c = (codeArg ?? code).replace(/\D/g, '');
@@ -116,10 +137,15 @@ export default function OtpLogin() {
       if (isBackendConfigured()) {
         // Real backend: verify → JWT tokens; also set the local session uid the
         // FE data layer reads (requireUserId) so both stay in sync.
-        const pair = await api.post<{ access_token: string; refresh_token: string; profile: { id: string } }>(
+        const pair = await api.post<{ access_token: string; refresh_token: string; profile?: { id: string; full_name?: string | null } }>(
           '/auth/otp/verify', { phone: digits(), code: c });
         await setTokens(pair.access_token, pair.refresh_token);
         await signInWithPhone(digits());
+        // RETURNING user: hydrate their saved name so the router's complete-profile
+        // gate (needs full_name) passes and they land straight in the app instead of
+        // being forced back through profile setup on every reinstall / new device.
+        const nm = pair.profile?.full_name;
+        if (nm && nm.trim()) await saveProfile({ full_name: nm });
       } else {
         if (c !== DEMO_OTP) { setError('That code is not right. Try again.'); return; }
         await signInWithPhone(digits()); // offline demo
@@ -134,9 +160,14 @@ export default function OtpLogin() {
       <View style={{ flex: 1, backgroundColor: colors.flameDeep }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, overflow: 'hidden' }}>
-            <Tap haptic={false} onPress={() => (step === 'code' ? setStep('phone') : router.back())} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="chevron-back" size={20} color={colors.white} />
-            </Tap>
+            {step === 'code' || router.canGoBack() ? (
+              <Tap haptic={false} onPress={() => (step === 'code' ? setStep('phone') : router.back())} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="chevron-back" size={20} color={colors.white} />
+              </Tap>
+            ) : (
+              // Signed-out entry point — nowhere to go back to; keep header spacing.
+              <View style={{ width: 38, height: 38 }} />
+            )}
             {kbUp ? (
               // Keyboard open: collapse the logo so the input + button clear it.
               <View style={{ height: spacing.sm }} />
@@ -169,35 +200,32 @@ export default function OtpLogin() {
                 <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Sent to +91 {digits()}. <TextMed color={colors.flameDeep} onPress={() => setStep('phone')}>Change</TextMed></TextBody>
                 <OtpBoxes value={code} error={!!error} onChange={setCode} onComplete={(c) => { if (!loading) verify(c); }} />
                 {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
-                {devOtp ? (
+                {/* The "enter 123456" hint is LOCAL-mode only (no backend) — a real
+                    backend build (live OR pilot) must NEVER tell users to type 123456.
+                    The pilot flask box shows the backend-echoed test OTP only when this
+                    is a WALLET_TEST_TOPUP build; a live build shows neither. */}
+                {!isBackendConfigured() ? (
+                  <TextBody style={{ fontSize: 12.5, marginTop: 10 }}>Demo build: enter {DEMO_OTP} to continue.</TextBody>
+                ) : devOtp && WALLET_TEST_TOPUP ? (
                   <View style={{ marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.flameSoft, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Ionicons name="flask-outline" size={16} color={colors.flameDeep} />
                     <TextBody style={{ fontSize: 13, flex: 1 }}>Test OTP: <TextSemi color={colors.flameDeep} style={{ fontSize: 15, letterSpacing: 2 }}>{devOtp}</TextSemi>  ·  shown for testing (SMS later)</TextBody>
                   </View>
-                ) : (
-                  <TextBody style={{ fontSize: 12.5, marginTop: 10 }}>Demo build: enter {DEMO_OTP} to continue.</TextBody>
-                )}
-                <SolidBtn label="Verify & sign in" loading={loading} onPress={verify} />
+                ) : null}
+                <SolidBtn label="Verify & sign in" loading={loading} onPress={() => verify()} />
+                {isBackendConfigured() ? (
+                  <Tap haptic={false} onPress={resend} style={{ alignItems: 'center', paddingVertical: 8 }}>
+                    <TextMed color={resendIn > 0 ? colors.inkMute : colors.flameDeep} style={{ fontSize: 13.5 }}>
+                      {resendIn > 0 ? `Resend code in ${resendIn}s` : "Didn't get the code? Resend"}
+                    </TextMed>
+                  </Tap>
+                ) : null}
                 <Tap haptic={false} onPress={() => setStep('phone')} style={{ alignItems: 'center', paddingVertical: 10 }}>
                   <TextMed color={colors.flameDeep} style={{ fontSize: 13.5 }}>Change number</TextMed>
                 </Tap>
               </>
             )}
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: spacing.lg }}>
-              <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
-              <TextBody style={{ fontSize: 12 }}>or</TextBody>
-              <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 18 }}>
-              <Tap haptic={false} onPress={() => router.replace('/(auth)/sign-in')}>
-                <TextSemi color={colors.flameDeep} style={{ fontSize: 14 }}>Use email</TextSemi>
-              </Tap>
-              <TextBody style={{ fontSize: 14 }}>·</TextBody>
-              <Tap haptic={false} onPress={() => router.replace('/(auth)/sign-up')}>
-                <TextSemi color={colors.flameDeep} style={{ fontSize: 14 }}>Create account</TextSemi>
-              </Tap>
-            </View>
+            {/* Phone OTP is the only sign-in path (email / create-account removed). */}
           </Animated.View>
         </ScrollView>
       </View>

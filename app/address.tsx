@@ -7,7 +7,9 @@ import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, Button, Field, Tap } from '../components/ui';
 import { addAddress } from '../lib/api';
-import { getDeviceCoords, setAddressCoords, type Coords } from '../lib/location';
+import { setAddressCoords, type Coords } from '../lib/location';
+import { cityFromCoords } from '../lib/userLocation';
+import MapPicker from '../components/MapPicker';
 import {
   placesAutocomplete,
   placeDetails,
@@ -27,7 +29,7 @@ export default function AddAddress() {
   const [city, setCity] = useState('');
   const [pincode, setPincode] = useState('');
   const [coords, setCoords] = useState<Coords | null>(null);
-  const [pinning, setPinning] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -83,12 +85,17 @@ export default function AddAddress() {
     Haptics.selectionAsync();
   }
 
-  async function pinLocation() {
-    setPinning(true); setError('');
-    const c = await getDeviceCoords();
-    setPinning(false);
-    if (c) { setCoords(c); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
-    else setError('Location permission denied. You can still save the address.');
+  // Exact spot chosen on the map (draggable pin). Fill the city from the point if
+  // the member has not typed one yet — no raw coordinates ever shown in the UI.
+  async function onMapConfirm(c: Coords) {
+    setCoords(c);
+    setMapOpen(false);
+    setError('');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (!city.trim()) {
+      const name = await cityFromCoords(c);
+      if (name) setCity(name);
+    }
   }
 
   async function save() {
@@ -168,18 +175,22 @@ export default function AddAddress() {
         <Field label="City" value={city} onChangeText={setCity} placeholder="Lucknow" autoComplete="postal-address-locality" textContentType="addressCity" />
         <Field label="Pincode" value={pincode} onChangeText={setPincode} placeholder="226001" keyboardType="number-pad" maxLength={6} autoComplete="postal-code" textContentType="postalCode" />
 
-        {/* Location backdoor: pin precise GPS so the rider has exact coordinates */}
-        <Tap haptic={false} onPress={pinLocation} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: coords ? colors.blue : colors.line, padding: spacing.md }}>
-          <Ionicons name={coords ? 'checkmark-circle' : 'navigate-circle-outline'} size={22} color={coords ? colors.blue : colors.flameDeep} />
+        {/* Set the exact delivery spot on a map with a draggable pin, so the rider
+            reaches the right door. No coordinates or "GPS" wording shown. */}
+        <Tap haptic={false} onPress={() => setMapOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: coords ? colors.blue : colors.line, padding: spacing.md }}>
+          <Ionicons name={coords ? 'checkmark-circle' : 'map-outline'} size={22} color={coords ? colors.blue : colors.flameDeep} />
           <View style={{ flex: 1 }}>
-            <TextMed style={{ fontSize: 14 }}>{coords ? 'Location pinned' : pinning ? 'Getting location…' : 'Pin my current location'}</TextMed>
-            <TextBody style={{ fontSize: 12 }}>{coords ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)} · helps your rider reach the exact door` : 'Optional · gives your rider precise coordinates'}</TextBody>
+            <TextMed style={{ fontSize: 14 }}>{coords ? 'Location set on map' : 'Set location on map'}</TextMed>
+            <TextBody style={{ fontSize: 12 }}>{coords ? 'Tap to adjust the pin · helps your rider reach the exact door' : 'Drag the pin to your exact door for accurate delivery'}</TextBody>
           </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.inkMute} />
         </Tap>
 
         {error ? <TextBody color={colors.flameDeep} style={{ fontSize: 13.5 }}>{error}</TextBody> : null}
         <Button title="Save address" onPress={save} loading={saving} style={{ marginTop: 6 }} />
       </ScrollView>
+
+      <MapPicker visible={mapOpen} initial={coords} onClose={() => setMapOpen(false)} onConfirm={onMapConfirm} />
     </KeyboardAvoidingView>
   );
 }

@@ -32,18 +32,21 @@ export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
  *       tops the wallet up ₹200 via the test path so the paid days demonstrably
  *       charge cleanly.
  *
- * It can be claimed exactly ONCE, gated on THREE layers so no one can
- * reinstall their way to infinite free milk:
+ * It can be claimed exactly ONCE PER NUMBER, gated on two layers so no one can
+ * reinstall their way to infinite free milk — while every new sign-up is still a
+ * fresh first-time user (so the funnel shows + is testable):
  *   1. Per PHONE  - `addPromoCredit` is idempotent on ref_id `trial_2plus2:<phone>`,
- *      and the device-global claims table rejects a second claim by the same phone.
- *   2. Per DEVICE - a device-global claims table (shared across every account on
- *      the device) allows only ONE trial per device, so switching numbers on
- *      the same phone does not mint more trials.
- *   3. Server (the hard gate, when the Go backend is live) - a `free_pack_claims`
+ *      and the claims table rejects a second claim by the same number. (We no
+ *      longer cap by DEVICE — that suppressed the offer for every later account
+ *      on a shared/test device; phone-uniqueness is the honest gate.)
+ *   2. Server (the hard gate, when the Go backend is live) - a `free_pack_claims`
  *      table with UNIQUE(phone) plus a device fingerprint; a device that claims
  *      more than a small number of phones is flagged and denied. Local storage
  *      can be cleared by a reinstall, but the server's phone-uniqueness stands.
  *   TODO(api): POST /consumer/trial/claim { phone, device_id } -> server enforces uniqueness.
+ *
+ * The SHOW state (seen / snooze) is keyed PER USER (uid), not per device, so the
+ * banner + pop-up re-arm for each account and re-appear on reopen until claimed.
  */
 
 export const FREE_PACK_PRODUCT_ID = 'taaza-500ml';
@@ -56,13 +59,11 @@ const TEST_TOPUP_AMOUNT = 200;
 const DEVICE_ID_KEY = 'parag_device_id';
 const CLAIMS_TABLE = 'free_pack_claims'; // device-global (ownerId = 'device')
 const DEVICE_OWNER = 'device';
-const SEEN_TABLE = 'free_pack_seen';     // device-global: popup permanently dismissed
-const SNOOZE_TABLE = 'free_pack_snooze'; // device-global: soft "Maybe later" state
-const MAX_CLAIMS_PER_DEVICE = 1;
-// "Maybe later" re-offers the pack next session instead of losing it forever,
-// up to this many soft dismissals before it stops nagging.
-const MAX_SNOOZES = 3;
-const SNOOZE_HOURS = 6; // don't re-nag within the same session; re-offer later
+const SEEN_TABLE = 'free_pack_seen';     // PER-USER (keyed by uid): popup permanently dismissed
+const SNOOZE_TABLE = 'free_pack_snooze'; // PER-USER (keyed by uid): soft "Maybe later" state
+// "Maybe later" re-offers the pack next session and NEVER gives up permanently
+// (only a claim / a real subscription stops it) — the relentless money-first funnel.
+const SNOOZE_HOURS = 6; // don't re-nag within the same session; re-offer next session
 
 type Claim = { phone: string; device_id: string; claimed_at: string; user_id: string };
 
@@ -83,13 +84,13 @@ function normPhone(phone: string): string {
 
 /** Whether this account is eligible to claim (phone not used, device under cap). */
 export async function freePackEligible(phone: string): Promise<{ eligible: boolean; reason?: string }> {
-  const deviceId = await getDeviceId();
   const p = normPhone(phone);
   const claims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
+  // Phone-uniqueness is the real gate (the server enforces it hard). We no longer
+  // block by device count — one trial PER NUMBER — so every new sign-up is a fresh
+  // first-time user (and the funnel is testable), while a re-claim by the same
+  // number is still refused.
   if (claims.some((c) => normPhone(c.phone) === p)) return { eligible: false, reason: 'This number has already started its trial.' };
-  if (claims.filter((c) => c.device_id === deviceId).length >= MAX_CLAIMS_PER_DEVICE) {
-    return { eligible: false, reason: 'A trial has already been started on this device.' };
-  }
   return { eligible: true };
 }
 
@@ -200,38 +201,65 @@ function notifyFreePackChanged() {
 type Snooze = { dismissals: number; snoozed_until: string };
 
 /**
- * Show the popup while still eligible, unless it was permanently dismissed
- * (claimed, or "Maybe later" tapped MAX_SNOOZES times) or is currently snoozed
- * from a recent "Maybe later". This is why a "Maybe later" no longer loses the
- * free pack — it re-offers next session instead.
+ * SHOW-eligibility for the BANNER: a trial candidate who has NOT claimed and has
+ * NOT permanently dismissed the offer. Per-USER (keyed by uid), so every new
+ * sign-in is a fresh first-time user — never suppressed by a prior account on the
+ * same device. Ignores the soft snooze (the banner stays; only the pop-up snoozes).
  */
-export async function shouldShowFreePack(phone: string): Promise<boolean> {
-  const seen = await getSingle<{ seen: boolean }>(SEEN_TABLE, DEVICE_OWNER);
+export async function freePackShowEligible(phone: string): Promise<boolean> {
+  const uid = await requireUserId().catch(() => null);
+  if (!uid) return false;
+  const seen = await getSingle<{ seen: boolean }>(SEEN_TABLE, uid);
   if (seen?.seen) return false;
-  const snooze = await getSingle<Snooze>(SNOOZE_TABLE, DEVICE_OWNER);
-  if (snooze?.snoozed_until && Date.now() < Date.parse(snooze.snoozed_until)) return false;
+  // Already subscribed (via ANY path, not just the 2+2 claim) → they are not a
+  // "start your subscription" candidate, so the trial banner/pop-up must NOT nag
+  // them. (Fixes the case where a member who subscribed from a product page keeps
+  // seeing the trial funnel because they never tripped the per-user 'seen' flag.)
+  try {
+    const subs = await listSubscriptions();
+    // Exclude one-time orders — only a RECURRING active/paused sub disqualifies the
+    // 2+2 offer (matches the same filter in index.tsx / PromoGate / SubscriptionStatusCard).
+    if (subs.some((s) => (s.status === 'active' || s.status === 'paused') && s.frequency !== 'one_time')) return false;
+  } catch { /* offline — fall through to the claim gate */ }
   const gate = await freePackEligible(phone);
   return gate.eligible;
 }
 
 /**
- * "Maybe later": snooze the offer instead of killing it. Re-offers after
- * SNOOZE_HOURS (next session), up to MAX_SNOOZES — after which it stops nagging.
+ * Show the POP-UP: show-eligible AND not currently snoozed from a recent "Maybe
+ * later". Per-user, so it re-arms for each account and re-shows on reopen until
+ * the member claims or snoozes it away.
+ */
+export async function shouldShowFreePack(phone: string): Promise<boolean> {
+  if (!(await freePackShowEligible(phone))) return false;
+  const uid = await requireUserId().catch(() => null);
+  if (!uid) return false;
+  const snooze = await getSingle<Snooze>(SNOOZE_TABLE, uid);
+  if (snooze?.snoozed_until && Date.now() < Date.parse(snooze.snoozed_until)) return false;
+  return true;
+}
+
+/**
+ * "Maybe later": RELENTLESS money-first funnel — a dismissal only SNOOZES the
+ * offer for SNOOZE_HOURS; it NEVER permanently gives up. The 2+2 keeps coming back
+ * every session until the member either CLAIMS it or starts a subscription (both
+ * of which flip freePackShowEligible off). It stays session-dismissible (no
+ * user-trapping interstitial), so it forces the decision without bricking the app.
  */
 export async function snoozeFreePack(): Promise<void> {
-  const prev = await getSingle<Snooze>(SNOOZE_TABLE, DEVICE_OWNER);
+  const uid = await requireUserId().catch(() => null);
+  if (!uid) return;
+  const prev = await getSingle<Snooze>(SNOOZE_TABLE, uid);
   const dismissals = (prev?.dismissals ?? 0) + 1;
-  if (dismissals >= MAX_SNOOZES) {
-    await markSeen();
-    return;
-  }
-  await putSingle<Snooze>(SNOOZE_TABLE, DEVICE_OWNER, {
+  await putSingle<Snooze>(SNOOZE_TABLE, uid, {
     dismissals,
     snoozed_until: new Date(Date.now() + SNOOZE_HOURS * 3600_000).toISOString(),
   });
 }
 
-/** Mark the popup as permanently dismissed (claimed / snooze cap reached). */
+/** Mark the popup as permanently dismissed for THIS user (claimed / snooze cap). */
 export async function markSeen(): Promise<void> {
-  await putSingle<{ seen: boolean }>(SEEN_TABLE, DEVICE_OWNER, { seen: true });
+  const uid = await requireUserId().catch(() => null);
+  if (!uid) return;
+  await putSingle<{ seen: boolean }>(SEEN_TABLE, uid, { seen: true });
 }

@@ -16,8 +16,11 @@ const {
  *      app/src/main/java/<package>/nativeconvenience/,
  *   2. the Play Services deps (Identity phone-hint + SMS-retriever) in
  *      app/build.gradle,
- *   3. the READ_PHONE_NUMBERS permission in the manifest,
- *   4. the PyaasConveniencePackage registration in MainApplication.kt.
+ *   3. the PyaasConveniencePackage registration in MainApplication.kt.
+ *
+ * NOTE: the phone-number hint uses Play Services `getPhoneNumberHintIntent`, which
+ * needs NO runtime permission — so we DON'T request READ_PHONE_NUMBERS (that shows
+ * the scary "make and manage phone calls" prompt). SMS Retriever is permission-free too.
  *
  * Without this, the hand-added android/ files are dropped by a clean prebuild.
  * The JS side (lib/nativeConvenience.ts) looks the module up on
@@ -35,8 +38,8 @@ const GRADLE_DEPS = [
 const REGISTER_LINE =
   '          add(`in`.pyaasdairy.app.nativeconvenience.PyaasConveniencePackage())';
 
-// READ_PHONE_NUMBERS is declared in app.json's android.permissions (Expo adds it);
-// SMS Retriever needs no permission — so this plugin only injects the native code.
+// No phone/SMS permission is requested: the number hint (getPhoneNumberHintIntent)
+// and SMS Retriever are both permission-free — so this plugin only injects native code.
 
 // Play Services deps in app/build.gradle (idempotent).
 function withGradleDeps(config) {

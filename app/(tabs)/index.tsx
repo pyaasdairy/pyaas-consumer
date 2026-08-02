@@ -6,10 +6,11 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useHideTabBarOnScroll } from '../../lib/navVisibility';
-import { colors, radius, spacing, shadow } from '../../lib/theme';
+import { colors, radius, spacing, shadow, rupee } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../../components/ui';
 import { ProductCard } from '../../components/ProductCard';
-import { FlipCard, PackBack } from '../../components/FlipCard';
+import { FlipCard, PackBack, PackBackPhoto } from '../../components/FlipCard';
+import { backImageFor } from '../../constants/products';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
 import { ClaimPackFlow } from '../../components/ClaimPackFlow';
 import { ShopSkeleton } from '../../components/Skeleton';
@@ -26,9 +27,9 @@ import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
-import { freePackEligible, onFreePackChanged, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
+import { freePackShowEligible, onFreePackChanged, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
+import { PREPAID_TARGET, prepaidTier } from '../../lib/prepaid';
 import { listSubscriptions } from '../../lib/subscriptions';
-import { getTrial } from '../../lib/trial';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
 import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
@@ -75,6 +76,7 @@ export default function Shop() {
   const { profile } = useAuth();
   const refreshWallet = useWallet((s) => s.refresh);
   const lowBalance = useWallet((s) => s.lowBalance);
+  const balance = useWallet((s) => s.balance);
   const refreshFavs = useFavorites((s) => s.refresh);
   const favIds = useFavorites((s) => s.ids);
   const headerH = useHomeHeaderHeight();
@@ -127,20 +129,28 @@ export default function Shop() {
 
   const recheckClaim = useCallback(() => {
     if (!phone) { setClaimEligible(false); return; }
-    freePackEligible(phone)
-      .then((g) => setClaimEligible(g.eligible))
+    // PER-USER show eligibility (not the device-capped claim gate) so a brand-new
+    // sign-in on any device sees the trial banner/card until THEY claim it.
+    freePackShowEligible(phone)
+      .then((show) => setClaimEligible(show))
       .catch(() => setClaimEligible(false));
   }, [phone]);
 
-  // A member is "fresh" (a candidate for the 2+2 subscription starter) only when
-  // they hold NO active/paused subscription AND have not started the trial yet.
+  // A member is "fresh" (a candidate for the 2+2 subscription starter) when they
+  // hold NO active/paused subscription. We deliberately do NOT read the backend
+  // trial ledger here: GET /consumer/trial/me upserts phase='paid' for EVERY
+  // consumer on first read, so keying "redeemed" off it made freshUser always
+  // false and hid the whole Home trial funnel. Whether they've actually redeemed
+  // the 2+2 is encoded in `claimEligible` (freePackShowEligible → false once the
+  // pack is claimed), which gates the render sites alongside freshUser.
   const recheckFresh = useCallback(() => {
-    Promise.all([listSubscriptions(), getTrial()])
-      .then(([subs, trial]) => {
-        const active = subs.some((s) => s.status === 'active' || s.status === 'paused');
-        const redeemed = trial.phase !== 'none' || !!trial.startDate;
+    listSubscriptions()
+      .then((subs) => {
+        // A one-time order is NOT an ongoing subscription — exclude it so a single
+        // instant buy never flips the member out of the "fresh" 2+2 funnel.
+        const active = subs.some((s) => (s.status === 'active' || s.status === 'paused') && s.frequency !== 'one_time');
         setHasSub(active);
-        setFreshUser(!active && !redeemed);
+        setFreshUser(!active);
       })
       .catch(() => { setHasSub(false); setFreshUser(false); });
   }, []);
@@ -260,15 +270,25 @@ export default function Shop() {
               <DeliveryModeToggle instant={instant} instantServed={instantServed !== false} instantClosed={instantClosed} resumesLabel={instantResumesLabel} />
             </Animated.View>
 
-            {/* Low-wallet nudge · only when the wallet is low AND there is a
-                subscription whose delivery could pause (never nag a fresh 0-wallet user) */}
-            {lowBalance && hasSub ? (
+            {/* PREPAID FUNNEL BANNER · shown to an EXISTING subscriber whose prepaid
+                balance is below the target. Critically-low (delivery could pause) is
+                an urgent red strip; otherwise the pink "go prepaid + bonus" upsell.
+                Never nags a fresh 0-wallet, no-subscription user (they see the trial). */}
+            {hasSub && balance < PREPAID_TARGET ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-                <Tap onPress={() => router.push('/recharge')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
-                  <Ionicons name="wallet" size={18} color={colors.gold} />
-                  <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.white}>Low wallet balance. Top up so tomorrow's delivery is not paused.</TextMed>
-                  <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.8)" />
-                </Tap>
+                {lowBalance ? (
+                  <Tap onPress={() => router.push(`/recharge?amount=${PREPAID_TARGET}&reason=go prepaid and get ${rupee(prepaidTier().bonus)} free`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
+                    <Ionicons name="wallet" size={18} color={colors.gold} />
+                    <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.white}>Low wallet. Add {rupee(PREPAID_TARGET)}, get {rupee(prepaidTier().bonus)} free — so tomorrow's delivery isn't paused.</TextMed>
+                    <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.8)" />
+                  </Tap>
+                ) : (
+                  <Tap onPress={() => router.push(`/recharge?amount=${PREPAID_TARGET}&reason=go prepaid and get ${rupee(prepaidTier().bonus)} free`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.flame, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
+                    <Ionicons name="wallet" size={18} color={colors.flameDeep} />
+                    <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.ink}>Go prepaid: add {rupee(PREPAID_TARGET)}, get {rupee(prepaidTier().bonus)} FREE 🎉 · one-tap mornings</TextMed>
+                    <Ionicons name="chevron-forward" size={16} color={colors.flameDeep} />
+                  </Tap>
+                )}
               </Animated.View>
             ) : null}
 
@@ -340,9 +360,10 @@ export default function Shop() {
               </Animated.View>
             )}
 
-            {/* Free-pack funnel · the selling point, punchy pink gradient card,
-                visible while this phone/device can still claim */}
-            {claimEligible ? (
+            {/* Free-pack funnel · the selling point, punchy pink gradient card.
+                Fresh members only (no active/paused subscription and the trial not
+                yet redeemed) — an existing subscriber is never nudged to "start". */}
+            {freshUser && claimEligible ? (
               <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
                 <Tap weight="medium" onPress={() => setClaimOpen(true)} style={{ borderRadius: radius.lg, overflow: 'hidden', ...shadow.card }}>
                   <LinearGradient colors={[colors.flameDeep, colors.blue]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14 }}>
@@ -408,15 +429,20 @@ export default function Shop() {
                   {/* Hero carousel cards auto-FLIP to the pack backside (nutrition,
                       ingredients, FSSAI…), staggered so they never flip in unison.
                       Grid/list cards below stay static (perf). */}
-                  {popular.map((p, i) => (
-                    <FlipCard
-                      key={p.id}
-                      index={i}
-                      style={{ width: 168 }}
-                      front={<ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />}
-                      back={<PackBack product={p} />}
-                    />
-                  ))}
+                  {popular.map((p, i) => {
+                    // Flip to the real back-of-pack PHOTO when we shot it; otherwise
+                    // fall back to the printed-back info card.
+                    const backPhoto = backImageFor(p);
+                    return (
+                      <FlipCard
+                        key={p.id}
+                        index={i}
+                        style={{ width: 168 }}
+                        front={<ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />}
+                        back={backPhoto != null ? <PackBackPhoto product={p} source={backPhoto} /> : <PackBack product={p} />}
+                      />
+                    );
+                  })}
                 </ScrollView>
               </Animated.View>
             ) : null}

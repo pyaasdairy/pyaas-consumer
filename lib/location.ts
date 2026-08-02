@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { getUserId } from './session';
-import { getRows, updateRows } from './localStore';
+import { getRows, updateRows, getSingle } from './localStore';
 import type { Address } from './api';
 
 /**
@@ -24,6 +24,24 @@ export async function getDeviceCoords(): Promise<Coords | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether the member has an EXACT delivery point on file — a saved address with
+ * coordinates, OR a delivery location they set precisely (map pin / device GPS).
+ * A subscription must never start without one, so the rider always has a door to
+ * reach. (A city picked from the list is NOT exact — it does not satisfy this.)
+ */
+export async function hasExactLocation(): Promise<boolean> {
+  const uid = await getUserId();
+  if (!uid) return false;
+  const addrs = await getRows<Address & { lat?: number | null; lng?: number | null }>('addresses', uid);
+  if (addrs.some((a) => a.lat != null && a.lng != null)) return true;
+  // A chosen delivery location counts as exact when it's a precise point (device
+  // GPS, a dropped map pin, or a geocoded SEARCHED address) — flagged `exact`.
+  // A city centroid picked from the list is NOT exact.
+  const row = await getSingle<{ loc: { exact?: boolean; coords?: Coords } | null }>('user_location', uid).catch(() => null);
+  return row?.loc?.exact === true && !!row?.loc?.coords;
 }
 
 /** Persist coordinates onto a saved address. */

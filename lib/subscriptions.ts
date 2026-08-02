@@ -2,6 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { parseISO, addDaysISO, todayISO } from './dates';
 import { requireUserId } from './session';
 import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore';
+import { hasExactLocation } from './location';
+
+/** Thrown by createSubscription when no exact delivery point is on file. */
+export const NEEDS_EXACT_LOCATION = 'NEEDS_EXACT_LOCATION';
 
 // Per-user so one account's auto-paused set never leaks into another account on
 // the same device (and it is removed by deleteMyAccount, which prunes parag:*:<uid>).
@@ -116,6 +120,14 @@ export async function createSubscription(params: {
   startDate?: string;
 }): Promise<string> {
   const uid = await requireUserId();
+  // HARD BACKSTOP: a subscription may never be created without an EXACT delivery
+  // point (map pin / GPS / an address with coordinates). Every subscribe path
+  // must capture the location first, so the rider always has a real door.
+  if (!(await hasExactLocation())) {
+    const e = new Error(NEEDS_EXACT_LOCATION) as Error & { code?: string };
+    e.code = NEEDS_EXACT_LOCATION;
+    throw e;
+  }
   // LOCAL calendar date (lib/dates), never toISOString(): UTC would be
   // yesterday between local midnight and 05:30 IST and phase-shift the cadence.
   const start = params.startDate ?? todayISO();

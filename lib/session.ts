@@ -144,6 +144,13 @@ export async function signInWithEmail(email: string, password: string): Promise<
 export async function signOut(): Promise<void> {
   await AsyncStorage.removeItem(UID_KEY);
   currentUid = null;
+  // Also wipe the JWT access/refresh tokens from SecureStore — otherwise they
+  // linger after sign-out and the next account on a shared device inherits the
+  // previous session. Dynamic import avoids a session↔apiClient require cycle.
+  try {
+    const { clearTokens } = await import('./apiClient');
+    await clearTokens();
+  } catch { /* best-effort — local session is already cleared above */ }
   emit();
 }
 
@@ -161,4 +168,8 @@ export async function saveProfile(patch: Partial<Profile>): Promise<void> {
     phone: null,
   };
   await putSingle<Profile>('profile', uid, { ...existing, ...patch, id: uid });
+  // Notify listeners (the root layout's complete-profile gate) AFTER the write, so
+  // a returning user whose full_name we just hydrated isn't routed through
+  // complete-profile off a stale (null) read from an earlier emit.
+  emit();
 }

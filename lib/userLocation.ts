@@ -6,17 +6,21 @@ import type { Coords } from './location';
 
 /**
  * The member's chosen DELIVERY LOCATION — the single source of truth the shop
- * (serviceability) checks against. It can come from three places:
+ * (serviceability) checks against. It can come from four places:
  *   - 'gps'     : device GPS, once the member allows location
+ *   - 'map'     : an exact point the member dropped a pin on (MapPicker)
  *   - 'manual'  : a city picked from the list below (used when GPS is denied)
  *   - 'address' : seeded from a saved delivery address (returning members)
  *
- * Location permission is OPTIONAL: if the member declines, they pick a city
- * manually instead — the app never dead-ends on a denied permission.
+ * Location permission is OPTIONAL: if the member declines, they pick their spot
+ * on the map or a city manually — the app never dead-ends on a denied permission.
  */
 
-export type LocSource = 'gps' | 'manual' | 'address';
-export type UserLoc = { coords: Coords; city: string; source: LocSource };
+export type LocSource = 'gps' | 'map' | 'manual' | 'address';
+// `exact` = the coordinate is a real, precise point (device GPS, a dropped map
+// pin, or a geocoded searched address) — NOT a city centroid. The subscription
+// exact-location gate (lib/location.hasExactLocation) trusts this flag.
+export type UserLoc = { coords: Coords; city: string; source: LocSource; exact: boolean };
 
 /** Curated serviceable cities (PARAG's UP footprint) for the manual picker. */
 export const CITIES: { name: string; coords: Coords }[] = [
@@ -73,7 +77,10 @@ type State = {
   /** Ask for location permission (re-prompts every call) and set a GPS fix. */
   useMyLocation: () => Promise<boolean>;
   setCity: (name: string) => Promise<void>;
-  setFromAddress: (city: string, coords: Coords) => Promise<void>;
+  /** `exact` = a precise geocoded point (a searched address) vs a city centroid. */
+  setFromAddress: (city: string, coords: Coords, exact?: boolean) => Promise<void>;
+  /** Set an EXACT delivery point from a dropped map pin (reverse-geocodes a label). */
+  setFromPin: (coords: Coords) => Promise<void>;
 };
 
 export const useUserLocation = create<State>((set) => ({
@@ -102,8 +109,8 @@ export const useUserLocation = create<State>((set) => ({
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      const city = (await cityFromCoords(coords)) ?? 'your area';
-      const loc: UserLoc = { coords, city, source: 'gps' };
+      const city = (await cityFromCoords(coords)) ?? 'your location';
+      const loc: UserLoc = { coords, city, source: 'gps', exact: true };
       set({ loc, permissionDenied: false, locating: false });
       await persist(loc);
       return true;
@@ -115,13 +122,20 @@ export const useUserLocation = create<State>((set) => ({
   setCity: async (name) => {
     const c = CITIES.find((x) => x.name === name);
     if (!c) return;
-    const loc: UserLoc = { coords: c.coords, city: c.name, source: 'manual' };
+    // A city centroid is NOT an exact door — exact:false.
+    const loc: UserLoc = { coords: c.coords, city: c.name, source: 'manual', exact: false };
     set({ loc, permissionDenied: false });
     await persist(loc);
   },
-  setFromAddress: async (city, coords) => {
-    const loc: UserLoc = { coords, city, source: 'address' };
+  setFromAddress: async (city, coords, exact = false) => {
+    const loc: UserLoc = { coords, city, source: 'address', exact };
     set({ loc });
+    await persist(loc);
+  },
+  setFromPin: async (coords) => {
+    const city = (await cityFromCoords(coords)) ?? 'your pinned location';
+    const loc: UserLoc = { coords, city, source: 'map', exact: true };
+    set({ loc, permissionDenied: false });
     await persist(loc);
   },
 }));

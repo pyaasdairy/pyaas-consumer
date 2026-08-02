@@ -181,6 +181,36 @@ const IMG = {
   pyaasTonedPouch: require('../assets/products/pyaas-toned-pouch.png'),
 };
 
+// Real BACK-of-pack photos (rotated upright) for the flip on the Home hero shelf.
+// Only SKUs we actually photographed get a back; the rest fall back to the printed
+// PackBack card. Keyed to the SAME front image so it maps to every size of a line.
+const IMG_BACK = {
+  taaza: require('../assets/products/taaza-back.jpg'),
+  ghee: require('../assets/products/ghee-back.jpg'),
+  chaach: require('../assets/products/chaach-back.jpg'),
+  dahi: require('../assets/products/dahi-back.jpg'),
+};
+
+/** The real back-of-pack photo for a product, or null when we only have the front. */
+export function backImageFor(p: Product): number | null {
+  switch (p.image) {
+    case IMG.taaza:
+      return IMG_BACK.taaza;
+    case IMG.ghee:
+      return IMG_BACK.ghee;
+    case IMG.chaach:
+    case IMG.mattha:
+    case IMG.masalaMattha:
+      return IMG_BACK.chaach;
+    case IMG.dahiPouch:
+    case IMG.dahiCup:
+    case IMG.dahiBucket:
+      return IMG_BACK.dahi;
+    default:
+      return null;
+  }
+}
+
 /**
  * PYAAS product catalog, extracted from the live paragdairy.com storefront
  * (Pradeshik Cooperative Dairy Federation, UP). MRP equals offer price on

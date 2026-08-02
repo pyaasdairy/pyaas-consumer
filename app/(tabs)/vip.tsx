@@ -10,7 +10,7 @@
  * components/Fx primitives.
  */
 import React, { useCallback, useState } from 'react';
-import { View, Image, Text, Modal, ActivityIndicator } from 'react-native';
+import { View, Image, Text, Modal, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +39,7 @@ import {
   getVip,
   startTrial,
   purchaseMembership,
+  cancelVip,
   InsufficientWalletError,
   vipActive,
   vipDaysLeft,
@@ -308,7 +309,9 @@ export default function Vip() {
       setM(next);
       setShowBuy(false);
       haptics.success();
-      setMsg(`You're a PYAAS Plus member. ${rupee(PLUS_PRICE_MONTH)} was deducted from your wallet.`);
+      setMsg(next.charged
+        ? `You're a PYAAS Plus member. ${rupee(PLUS_PRICE_MONTH)} was deducted from your wallet.`
+        : `You're already a PYAAS Plus member for this month.`);
     } catch (e) {
       if (e instanceof InsufficientWalletError) {
         // Wallet-first shortfall → recharge, then land back on this tab.
@@ -327,6 +330,33 @@ export default function Vip() {
     } finally {
       setBuying(false);
     }
+  }
+
+  // Cancel — honours the "cancel anytime" promise. Perks run to the end of the
+  // paid/trial period (vipActive respects current_period_end), so it's a soft stop.
+  function confirmCancel() {
+    haptics.press();
+    Alert.alert(
+      'Cancel PYAAS Plus?',
+      `Your Plus perks stay active for the ${days} day${days === 1 ? '' : 's'} left in this period, then it won't renew. You can rejoin anytime.`,
+      [
+        { text: 'Keep Plus', style: 'cancel' },
+        {
+          text: 'Cancel membership',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const next = await cancelVip();
+              setM(next);
+              haptics.success();
+              setMsg(`Plus cancelled — you keep your perks for ${days} more day${days === 1 ? '' : 's'}.`);
+            } catch {
+              setMsg('Could not cancel just now. Please try again.');
+            }
+          },
+        },
+      ],
+    );
   }
 
   // What the card shows adapts to membership state.
@@ -354,7 +384,11 @@ export default function Vip() {
           <Animated.View entering={enterUp(140)} style={{ marginTop: 22, alignItems: 'center' }}>
             <TextSemi style={{ fontSize: 15, textAlign: 'center' }} color={INK}>
               {active
-                ? (onTrial ? `Your free trial is live, ${days} day${days === 1 ? '' : 's'} of Plus left.` : `You're a Plus member, renews in ${days} days.`)
+                ? (onTrial
+                    ? `Your free trial is live, ${days} day${days === 1 ? '' : 's'} of Plus left.`
+                    : m?.status === 'cancelled'
+                      ? `Plus cancelled — ${days} day${days === 1 ? '' : 's'} of perks left.`
+                      : `You're a Plus member — ${days} day${days === 1 ? '' : 's'} left this period.`)
                 : 'Join PYAAS Plus'}
             </TextSemi>
             {!active ? (
@@ -378,6 +412,26 @@ export default function Vip() {
             <TextBody style={{ fontSize: 12, textAlign: 'center' }}>
               No card needed. Cancel anytime.
             </TextBody>
+          </Animated.View>
+        ) : null}
+
+        {/* ACTIVE-member actions: renew early (extends the period; also where the
+            "Renew Plus" home nudge lands) + a real Cancel that honours "cancel anytime". */}
+        {active ? (
+          <Animated.View entering={enterUp(50)} style={{ gap: 10, marginTop: -8 }}>
+            {/* Renew only near expiry — it EXTENDS the period (adds a month on top of
+                the remaining days), so it's shown when it's actually useful, not to a
+                member with weeks left. */}
+            {!onTrial && days <= 7 ? (
+              <Tap onPress={openBuy} weight="medium">
+                <View style={{ height: 50, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flameDeep }}>
+                  <Text style={{ color: colors.flameDeep, fontSize: 15, fontFamily: fonts.sansBold }}>Renew now · +30 days · {rupee(PLUS_PRICE_MONTH)} from wallet</Text>
+                </View>
+              </Tap>
+            ) : null}
+            <Tap haptic={false} onPress={confirmCancel} style={{ alignItems: 'center', paddingVertical: 6 }}>
+              <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Cancel membership</TextMed>
+            </Tap>
           </Animated.View>
         ) : null}
 

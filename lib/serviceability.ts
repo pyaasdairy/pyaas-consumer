@@ -35,6 +35,10 @@ export type Serviceability = {
   instantClosed: boolean;
   /** Human "resumes …" note (IST, backend-computed), e.g. "tomorrow at 7:00 AM". */
   instantResumesLabel: string | null;
+  /** Natural "why we don't serve here yet" line for the Coming-Soon screen. */
+  reason: string | null;
+  /** Distance (km) to the nearest store — shown on the Coming-Soon screen. */
+  distanceKm: number | null;
 };
 
 // Loosely-typed backend payload: we normalise a range of field names so a
@@ -47,6 +51,7 @@ type RawServiceability = {
   storeName?: string | null; store_name?: string | null;
   monsoonEnabled?: boolean; monsoonRupees?: number;
   instantClosed?: boolean; instantResumesLabel?: string | null;
+  reason?: string | null; distanceKm?: number | null;
 };
 
 function normalize(raw: RawServiceability | null | undefined): Serviceability {
@@ -65,6 +70,8 @@ function normalize(raw: RawServiceability | null | undefined): Serviceability {
     monsoonRupees: r.monsoonEnabled ? (r.monsoonRupees ?? 0) : 0,
     instantClosed: r.instantClosed ?? false,
     instantResumesLabel: r.instantResumesLabel ?? null,
+    reason: r.reason ?? null,
+    distanceKm: r.distanceKm ?? null,
   };
 }
 
@@ -76,7 +83,7 @@ export type CheckPoint = { lat?: number | null; lng?: number | null; pincode?: s
  */
 export async function getServiceability(point: CheckPoint): Promise<Serviceability> {
   if (!isBackendConfigured()) {
-    return { serviceable: true, standard: true, instant: true, storeName: null, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null };
+    return { serviceable: true, standard: true, instant: true, storeName: null, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null };
   }
   const q = new URLSearchParams();
   if (point.lat != null) q.set('lat', String(point.lat));
@@ -118,10 +125,12 @@ async function resolvePoint(): Promise<Required<CheckPoint> & { signature: strin
     try {
       const rows = await getRows<Address & { lat?: number | null; lng?: number | null }>('addresses', uid);
       const def = rows.find((a) => a.is_default) ?? rows[0];
-      if (def) {
-        pincode = def.pincode || null;
-        // 2) Fall back to a saved delivery-address coordinate (returning member).
-        if ((lat == null || lng == null) && def.lat != null && def.lng != null) { lat = def.lat; lng = def.lng; }
+      // 2) Fall back to a saved delivery-address coordinate (returning member).
+      //    Only attach that address's pincode when we ALSO adopt its coordinates —
+      //    otherwise we'd send the chosen location's coords with an unrelated
+      //    address's pincode and mis-resolve serviceability.
+      if (def && (lat == null || lng == null) && def.lat != null && def.lng != null) {
+        lat = def.lat; lng = def.lng; pincode = def.pincode || null;
       }
     } catch { /* fall through to default */ }
   }

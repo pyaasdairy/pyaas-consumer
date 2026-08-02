@@ -10,7 +10,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackButton } from '../components/ui';
 import { SkeletonBlock } from '../components/Skeleton';
 import { PRODUCTS, getProduct } from '../constants/products';
-import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, type Subscription, type Frequency } from '../lib/subscriptions';
+import { listSubscriptions, createSubscription, setSubscriptionStatus, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, NEEDS_EXACT_LOCATION, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
 
@@ -85,7 +85,16 @@ export default function Subscriptions() {
       haptics.confirm();
       setAdding(false); setQty(1); setFreq('daily');
       await load();
-    } catch (e: any) { setErr(e?.message ?? 'Could not start the subscription. Please try again.'); }
+    } catch (e: any) {
+      // No exact delivery point yet → send them to add one on the map (address
+      // screen) instead of surfacing the raw gate code, then they can retry.
+      if (e?.code === NEEDS_EXACT_LOCATION || e?.message === NEEDS_EXACT_LOCATION) {
+        setErr('Set your delivery location on the map first.');
+        router.push('/address');
+      } else {
+        setErr(e?.message ?? 'Could not start the subscription. Please try again.');
+      }
+    }
     finally { setBusy(false); }
   }
 

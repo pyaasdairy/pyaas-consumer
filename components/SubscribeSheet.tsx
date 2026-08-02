@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap, Stepper } from './ui';
 import { haptics } from '../lib/haptics';
-import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, type Frequency } from '../lib/subscriptions';
-import { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/trial';
+import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
+import { hasExactLocation, type Coords } from '../lib/location';
+import { useUserLocation, currentUserLoc } from '../lib/userLocation';
+import MapPicker from './MapPicker';
 import { isBackendConfigured } from '../lib/apiClient';
 import { currentMandate, createMandate } from '../lib/autopay';
 import { tomorrowISO, addDaysISO, parseISO, formatShort } from '../lib/dates';
@@ -42,6 +44,7 @@ export function SubscribeSheet({
   savedPer = 0,
   initialQty = 1,
   initialFreq = 'daily',
+  initialStartDate,
   onClose,
   onConfirmed,
 }: {
@@ -51,15 +54,18 @@ export function SubscribeSheet({
   savedPer?: number;
   initialQty?: number;
   initialFreq?: Frequency;
+  initialStartDate?: string;
   onClose: () => void;
   onConfirmed: (r: SubscribeResult) => void;
 }) {
   const router = useRouter();
   const refreshWallet = useWallet((s) => s.refresh);
+  const setFromPin = useUserLocation((s) => s.setFromPin);
   const [freq, setFreq] = useState<Frequency>(initialFreq);
   const [qty, setQty] = useState(initialQty);
   const [startDate, setStartDate] = useState(tomorrowISO());
   const [busy, setBusy] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [err, setErr] = useState('');
   // Synchronous double-tap guard (setBusy only disables after a re-render).
   const busyRef = useRef(false);
@@ -69,10 +75,12 @@ export function SubscribeSheet({
     if (visible) {
       setFreq(initialFreq === 'one_time' || initialFreq === 'custom' ? 'daily' : initialFreq);
       setQty(Math.max(1, initialQty));
-      setStartDate(tomorrowISO());
+      // Honour the caller's picked start date (from the product page) instead of
+      // silently resetting it to tomorrow; fall back to tomorrow when none/invalid.
+      setStartDate(initialStartDate && initialStartDate >= tomorrowISO() ? initialStartDate : tomorrowISO());
       setErr('');
     }
-  }, [visible, initialFreq, initialQty]);
+  }, [visible, initialFreq, initialQty, initialStartDate]);
 
   const perDelivery = unitPrice * qty;
 
@@ -82,6 +90,14 @@ export function SubscribeSheet({
     setBusy(true);
     setErr('');
     try {
+      // EXACT-LOCATION GATE: never start a subscription without a precise delivery
+      // point. If we don't have one, drop the member onto the map (draggable pin)
+      // and resume the subscribe once they confirm it.
+      if (!(await hasExactLocation())) {
+        haptics.press();
+        setMapOpen(true);
+        return;
+      }
       // PREPAID START GATE (BOTH modes): a subscription can NEVER begin unless the
       // wallet already covers at least MIN_SUB_DAYS_COVER days of the per-delivery
       // charge. If it is short we create NOTHING and force the member to the wallet
@@ -92,12 +108,13 @@ export function SubscribeSheet({
       if (bal < need) {
         const short = Math.max(1, Math.ceil(need - bal));
         const amount = Math.max(100, Math.ceil(short / 50) * 50);
-        const qs = new URLSearchParams({
-          min: String(short),
-          amount: String(amount),
-          returnTo: `/product/${product.id}`,
-          reason: 'to start this subscription',
-        }).toString();
+        // Carry the member's chosen qty/frequency/start-date (and a flag to
+        // re-open this sheet) through the recharge round-trip, so a funded member
+        // resumes with their exact selections instead of a reset 1/daily/tomorrow.
+        const rt = `/product/${product.id}?qty=${qty}&freq=${freq}&start=${startDate}&subscribe=1`;
+        // Same encoding as product/[id].tsx goRecharge (encodeURIComponent → %20),
+        // so the returnTo + reason survive expo-router's param parser intact.
+        const qs = `min=${short}&amount=${amount}&returnTo=${encodeURIComponent(rt)}&reason=${encodeURIComponent('to start this subscription')}`;
         haptics.press();
         onClose();
         router.push(`/recharge?${qs}`);
@@ -126,6 +143,9 @@ export function SubscribeSheet({
       haptics.confirm();
       onConfirmed({ startDate, qty, freq, total: perDelivery, saved: savedPer * qty });
     } catch (e: any) {
+      // Defensive: if the backstop still fires (e.g. a race), open the map instead
+      // of showing a raw error.
+      if (e?.code === NEEDS_EXACT_LOCATION || e?.message === NEEDS_EXACT_LOCATION) { setMapOpen(true); return; }
       setErr(e?.message ?? 'Could not start your subscription. Please try again.');
     } finally {
       busyRef.current = false;
@@ -133,8 +153,17 @@ export function SubscribeSheet({
     }
   }
 
+  // Pin confirmed on the map → save it as the delivery location and resume the
+  // subscribe automatically.
+  async function onMapConfirm(c: Coords) {
+    setMapOpen(false);
+    await setFromPin(c);
+    void confirm();
+  }
+
   return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+    <>
+    <Modal visible={visible && !mapOpen} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' }}>
         {/* Tap-out backdrop */}
         <Tap haptic={false} onPress={onClose} style={{ flex: 1 }} scaleTo={1}>
@@ -218,16 +247,11 @@ export function SubscribeSheet({
               </ScrollView>
             </View>
 
-            {/* 3 paid → 3 free trial line */}
-            <Animated.View entering={FadeIn.duration(220)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.flame, padding: spacing.md }}>
-              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="sparkles" size={17} color={colors.white} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <TextSemi style={{ fontSize: 13.5 }} color={colors.flameDeep}>New members: pay {TRIAL_PAID_DAYS} days, get {TRIAL_FREE_DAYS} FREE 🎉</TextSemi>
-                <TextBody style={{ fontSize: 11.5, lineHeight: 15 }}>Days 1–{TRIAL_PAID_DAYS} paid, days {TRIAL_PAID_DAYS + 1}–{TRIAL_PAID_DAYS + TRIAL_FREE_DAYS} free, then it just continues. Pause anytime.</TextBody>
-              </View>
-            </Animated.View>
+            {/* The "pay 2, get 2 FREE" welcome trial is granted ONLY through the
+                dedicated claim funnel (the Home offer → ClaimPackFlow), which mints
+                the promo credit + anchors the trial. A plain subscribe here does NOT
+                grant free days, so we never promise them — that would be a false
+                money claim (the buyer would be charged full price for all 4 days). */}
 
             {/* Estimated first charge */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.wash, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 12 }}>
@@ -250,5 +274,7 @@ export function SubscribeSheet({
         </Animated.View>
       </View>
     </Modal>
+    <MapPicker visible={mapOpen} initial={currentUserLoc()?.coords ?? null} onClose={() => setMapOpen(false)} onConfirm={onMapConfirm} />
+    </>
   );
 }

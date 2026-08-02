@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
 import { Tap, TextBody, TextMed, TextSemi, Serif } from './ui';
 import { useUserLocation, CITIES, sameCity } from '../lib/userLocation';
-import { DEFAULT_REGION } from '../lib/location';
+import { DEFAULT_REGION, type Coords } from '../lib/location';
+import MapPicker from './MapPicker';
 import { useServiceability } from '../lib/serviceability';
 import { listAddresses, type Address } from '../lib/api';
 import { listSubscriptions } from '../lib/subscriptions';
@@ -35,7 +36,13 @@ export default function LocationGate() {
   const useMyLocation = useUserLocation((s) => s.useMyLocation);
   const setCity = useUserLocation((s) => s.setCity);
   const setFromAddress = useUserLocation((s) => s.setFromAddress);
+  const setFromPin = useUserLocation((s) => s.setFromPin);
   const forceCheck = useServiceability((s) => s.check);
+
+  // Map picker (draggable pin) + whether the search field has focus (so the sheet
+  // anchors to the TOP instead of hiding behind the keyboard while typing).
+  const [mapOpen, setMapOpen] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const [subCity, setSubCity] = useState<string | null>(null);
   const [subCoords, setSubCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -45,6 +52,7 @@ export default function LocationGate() {
   const [query, setQuery] = useState('');
   const [sugs, setSugs] = useState<PlaceSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState('');
   const sessionToken = useRef(newSessionToken());
   const abortRef = useRef<AbortController | null>(null);
   const reqRef = useRef(0);
@@ -59,8 +67,8 @@ export default function LocationGate() {
         const addrs = (await listAddresses()) as Addr[];
         const def = addrs.find((a) => a.is_default) ?? addrs[0];
         if (!def) return;
-        if (def.lat != null && def.lng != null) await setFromAddress(def.city || 'your area', { lat: def.lat, lng: def.lng });
-        else if (def.city) { const known = CITIES.find((c) => sameCity(c.name, def.city)); await setFromAddress(def.city, known?.coords ?? DEFAULT_REGION); }
+        if (def.lat != null && def.lng != null) await setFromAddress(def.city || 'your saved address', { lat: def.lat, lng: def.lng }, true);
+        else if (def.city) { const known = CITIES.find((c) => sameCity(c.name, def.city)); await setFromAddress(def.city, known?.coords ?? DEFAULT_REGION, false); }
       } catch { /* no address → the sheet prompts */ }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,7 +115,13 @@ export default function LocationGate() {
     return () => clearTimeout(t);
   }, [query, showPicker]);
 
-  const close = () => { setPickerOpen(false); setQuery(''); setSugs([]); };
+  const close = () => { setPickerOpen(false); setQuery(''); setSugs([]); setSearchFocused(false); };
+
+  async function onMapConfirm(c: Coords) {
+    setMapOpen(false);
+    await setFromPin(c);
+    close();
+  }
   // Never trap the member: hardware-back / "Skip for now" on first launch defaults
   // to a serviceable city — they can change it from the header chip anytime.
   const skipDefault = () => { void setCity(CITIES[0].name); close(); };
@@ -119,10 +133,17 @@ export default function LocationGate() {
     setQuery('');
     const d = await placeDetails(s.placeId, { sessionToken: sessionToken.current });
     sessionToken.current = newSessionToken();
-    const city = d?.city || s.primary || 'your area';
+    const city = d?.city || s.primary || 'your location';
     if (d && d.lat != null && d.lng != null) {
-      await setFromAddress(city, { lat: d.lat, lng: d.lng });
+      // A geocoded searched address IS an exact point → exact:true, so the
+      // subscription exact-location gate accepts it (no bounce to the map).
+      await setFromAddress(city, { lat: d.lat, lng: d.lng }, true);
       close();
+    } else {
+      // Place details came back without coordinates — don't silently swallow the
+      // tap; keep the query and tell the member to retry or use the map.
+      setQuery(s.primary);
+      setSearchErr("Couldn't pin that address. Try another, or set it on the map.");
     }
   }
 
@@ -130,10 +151,17 @@ export default function LocationGate() {
     !showPicker && !!loc && loc.source === 'gps' && !!subCity && !sameCity(loc.city, subCity) && !shiftHandled;
 
   if (showPicker) {
+    // Map open → show the full-screen draggable-pin picker instead of the sheet
+    // (avoids stacking two Modals); confirming drops the pin and closes both.
+    if (mapOpen) {
+      return <MapPicker visible initial={loc?.coords ?? null} onClose={() => setMapOpen(false)} onConfirm={onMapConfirm} />;
+    }
     return (
       <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={needsLocation ? skipDefault : close}>
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <View style={{ backgroundColor: colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.md, gap: spacing.md, maxHeight: '88%' }}>
+        {/* While typing, ANCHOR the sheet to the TOP so the keyboard never hides it
+            (it drops back to the bottom on blur — "sticks on top only when entering"). */}
+        <View style={{ flex: 1, justifyContent: searchFocused ? 'flex-start' : 'flex-end', paddingTop: searchFocused ? insets.top + spacing.sm : 0, backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <View style={{ backgroundColor: colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: searchFocused ? 28 : 0, borderBottomRightRadius: searchFocused ? 28 : 0, paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.md, gap: spacing.md, maxHeight: searchFocused ? '72%' : '88%' }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: spacing.lg, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Serif style={{ fontSize: 23 }}>{loc ? 'Change location' : 'Where should we deliver?'}</Serif>
@@ -150,11 +178,12 @@ export default function LocationGate() {
             <View style={{ paddingHorizontal: spacing.lg }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 14, height: 50, backgroundColor: colors.milk }}>
                 <Ionicons name="search" size={18} color={colors.inkMute} />
-                <TextInput value={query} onChangeText={setQuery} placeholder="Search area, colony, street…" placeholderTextColor={colors.inkMute} autoCorrect={false} style={{ flex: 1, fontFamily: fonts.sans, fontSize: 15, color: colors.ink }} />
+                <TextInput value={query} onChangeText={(t) => { setQuery(t); if (searchErr) setSearchErr(''); }} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} placeholder="Search area, colony, street…" placeholderTextColor={colors.inkMute} autoCorrect={false} style={{ flex: 1, fontFamily: fonts.sans, fontSize: 15, color: colors.ink }} />
                 {searching ? <ActivityIndicator size="small" color={colors.flameDeep} /> : query ? (
-                  <Tap haptic={false} onPress={() => { setQuery(''); setSugs([]); }}><Ionicons name="close-circle" size={18} color={colors.inkMute} /></Tap>
+                  <Tap haptic={false} onPress={() => { setQuery(''); setSugs([]); setSearchErr(''); }}><Ionicons name="close-circle" size={18} color={colors.inkMute} /></Tap>
                 ) : null}
               </View>
+              {searchErr ? <TextMed style={{ fontSize: 11.5, marginTop: 6 }} color={colors.flameDeep}>{searchErr}</TextMed> : null}
               {!isPlacesEnabled() ? <TextMed style={{ fontSize: 11, marginTop: 6 }} color={colors.inkMute}>Address search is unavailable — pick a city below.</TextMed> : null}
             </View>
 
@@ -173,6 +202,16 @@ export default function LocationGate() {
                 ))
               ) : (
                 <>
+                  <Tap onPress={() => { setSearchFocused(false); setMapOpen(true); }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.flameDeep, borderRadius: radius.md, paddingVertical: 13, paddingHorizontal: 14, ...shadow.soft }}>
+                      <Ionicons name="map" size={20} color={colors.white} />
+                      <View style={{ flex: 1 }}>
+                        <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>Set my exact location on the map</TextSemi>
+                        <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 11.5 }}>Drag the pin to your door</TextBody>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.white} />
+                    </View>
+                  </Tap>
                   <Tap onPress={() => { void useMyLocation().then((ok) => { if (ok) close(); }); }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.flameSoft, borderRadius: radius.md, paddingVertical: 13, paddingHorizontal: 14 }}>
                       <Ionicons name="locate" size={20} color={colors.flameDeep} />
@@ -220,7 +259,7 @@ export default function LocationGate() {
             <TextBody style={{ fontSize: 14 }}>
               You’re in <TextSemi>{loc!.city}</TextSemi>, but your subscription delivers to <TextSemi>{subCity}</TextSemi>. What would you like to do?
             </TextBody>
-            <Tap onPress={() => { if (subCoords) void setFromAddress(subCity!, subCoords); setShiftHandled(true); }}>
+            <Tap onPress={() => { if (subCoords) void setFromAddress(subCity!, subCoords, true); setShiftHandled(true); }}>
               <View style={{ height: 52, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
                 <TextSemi color={colors.white} style={{ fontSize: 15 }}>Keep delivering to {subCity}</TextSemi>
               </View>

@@ -28,6 +28,8 @@ export class InsufficientWalletError extends Error {
 export const PLUS_TRIAL_DAYS = 30;
 /** Monthly membership price in rupees (billing not wired in the demo build). */
 export const PLUS_PRICE_MONTH = 99;
+/** Nudge the member to top up so Plus renews when this many days (or fewer) remain. */
+export const VIP_EXPIRY_WARN_DAYS = 5;
 
 /**
  * Illustrative PYAAS Plus member price on milk, shown on the Plus comparison.
@@ -91,19 +93,29 @@ export async function startTrial(): Promise<VipMembership> {
  * (carrying the shortfall) when the wallet is short, so the caller can nudge a
  * recharge. On success the membership goes ACTIVE for PLUS_PERIOD_DAYS.
  */
-export async function purchaseMembership(): Promise<VipMembership> {
+export async function purchaseMembership(): Promise<VipMembership & { charged: boolean }> {
   const uid = await requireUserId();
-  const { available } = await getBalances();
-  if (available < PLUS_PRICE_MONTH) {
-    throw new InsufficientWalletError(PLUS_PRICE_MONTH - available);
+  const before = (await getBalances()).available;
+  if (before < PLUS_PRICE_MONTH) {
+    throw new InsufficientWalletError(PLUS_PRICE_MONTH - before);
   }
   const now = new Date();
-  const end = new Date(now.getTime() + PLUS_PERIOD_DAYS * 86400000);
   const existing = await getSingle<VipMembership>('vip', uid);
-  // Deduct the membership fee from the wallet. The ref+remark form a stable
-  // idempotency key (one charge per member per calendar day) so a double-tap
-  // can't charge twice.
+  // Deduct the membership fee. The ref+remark form a stable idempotency key (one
+  // charge per member per calendar day) so a double-tap can't charge twice.
   await debitWallet(PLUS_PRICE_MONTH, 'payment', `PYAAS Plus ${now.toISOString().slice(0, 10)}`);
+  const after = (await getBalances()).available;
+  const charged = before - after >= PLUS_PRICE_MONTH - 0.5;
+  // Idempotent replay (already purchased today, no charge) → do NOT extend again or
+  // the member would get free months by re-tapping; return the current membership.
+  if (!charged && existing) {
+    return { ...existing, charged: false };
+  }
+  // EXTEND from the later of now / the current period end (an early renew ADDS a
+  // month instead of discarding remaining paid days); a lapsed member starts fresh.
+  const stillActive = !!existing?.current_period_end && Date.parse(existing.current_period_end) > now.getTime() && existing.status !== 'expired';
+  const base = stillActive ? new Date(existing!.current_period_end!) : now;
+  const end = new Date(base.getTime() + PLUS_PERIOD_DAYS * 86400000);
   const m: VipMembership = {
     status: 'active',
     trial_started_at: existing?.trial_started_at ?? null,
@@ -113,7 +125,7 @@ export async function purchaseMembership(): Promise<VipMembership> {
   };
   // TODO(api): POST /membership/purchase when the backend is live.
   await putSingle<VipMembership>('vip', uid, m);
-  return m;
+  return { ...m, charged: true };
 }
 
 /** Cancel Plus (keeps access until the current period ends). */
@@ -146,4 +158,28 @@ export function vipDaysLeft(m: VipMembership | null): number {
 /** True while the user is inside the free trial window. */
 export function vipOnTrial(m: VipMembership | null): boolean {
   return !!m && m.status === 'trial' && vipActive(m);
+}
+
+// ── Become-VIP upsell restraint ──────────────────────────────────────────────
+// The soft "Become Plus" upsell targets happy, well-funded subscribers. Without a
+// cap it would pop on EVERY Home visit — annoying the best cohort. So it snoozes
+// for a few days on dismiss, per-user (uid), and re-arms only after that.
+const VIP_UPSELL_SNOOZE_DAYS = 3;
+const VIP_UPSELL_TABLE = 'vip_upsell_snooze';
+
+/** True if the become-VIP upsell was dismissed within the snooze window. */
+export async function vipUpsellSnoozed(): Promise<boolean> {
+  const uid = await requireUserId().catch(() => null);
+  if (!uid) return true; // signed out → never nag
+  const row = await getSingle<{ until: string }>(VIP_UPSELL_TABLE, uid).catch(() => null);
+  return !!row?.until && Date.now() < Date.parse(row.until);
+}
+
+/** Snooze the become-VIP upsell for VIP_UPSELL_SNOOZE_DAYS. */
+export async function snoozeVipUpsell(): Promise<void> {
+  const uid = await requireUserId().catch(() => null);
+  if (!uid) return;
+  await putSingle(VIP_UPSELL_TABLE, uid, {
+    until: new Date(Date.now() + VIP_UPSELL_SNOOZE_DAYS * 86400000).toISOString(),
+  });
 }
