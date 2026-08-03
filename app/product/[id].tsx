@@ -120,6 +120,26 @@ export default function ProductDetail() {
   // lane so the member's manual edits here are never overwritten.
   const cartLines = useCart((s) => s.lines);
   const bagSeedRef = useRef<string | null>(null);
+  // PER-MODE QUANTITY MEMORY: the one-time count (bag-synced) and the
+  // subscription count are INDEPENDENT — bag ×3 must never leak into a
+  // daily/alternate plan, and the plan's own count survives a hop through
+  // one-time and back. Each ref remembers its mode's number while the other
+  // mode is on screen.
+  const oneTimeQtyRef = useRef<number>(freq === 'one_time' ? qty : 1);
+  const subQtyRef = useRef<number>(freq !== 'one_time' ? qty : 1);
+  const prevOneTimeRef = useRef(freq === 'one_time');
+  useEffect(() => {
+    const nowOneTime = freq === 'one_time';
+    if (prevOneTimeRef.current === nowOneTime) return;
+    if (nowOneTime) {
+      subQtyRef.current = qty; // leaving subscribe — stash the plan's count
+      setQty(oneTimeQtyRef.current); // restore the one-time (bag) count
+    } else {
+      oneTimeQtyRef.current = qty; // leaving one-time — stash the bag count
+      setQty(subQtyRef.current); // restore the plan's own count
+    }
+    prevOneTimeRef.current = nowOneTime;
+  }, [freq, qty]);
   useEffect(() => {
     if (qtyParam != null || freq !== 'one_time') return;
     const laneKey: 'instant' | 'morning' = deliverBy === 'instant' ? 'instant' : 'morning';
@@ -127,6 +147,7 @@ export default function ProductDetail() {
     const inBag = cartLines.find((l) => l.id === id && l.lane === laneKey)?.qty ?? 0;
     if (inBag >= 1) {
       setQty(inBag);
+      oneTimeQtyRef.current = inBag; // the bag count belongs to one-time only
       bagSeedRef.current = laneKey;
     }
   }, [freq, deliverBy, qtyParam, cartLines, id]);
