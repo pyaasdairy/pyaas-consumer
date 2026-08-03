@@ -533,7 +533,10 @@ export default function ProductDetail() {
                 </TextMed>
               </View>
             </Animated.View>
-          ) : (
+          ) : sharedMode !== 'instant' ? (
+            // Subscription start date — Morning world only. In the ⚡ instant
+            // world the order is a one-time purchase arriving TODAY in ~20 min,
+            // so a start date is meaningless (and startDate is never read).
             <Animated.View entering={FadeInDown.duration(420).delay(120)} style={{ gap: 8 }}>
               <TextSemi style={{ fontSize: 16 }}>Start date</TextSemi>
               <Tap haptic={false} onPress={() => setShowCal(true)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: colors.flame, borderRadius: radius.md, paddingHorizontal: 16, height: 56, backgroundColor: colors.white, ...shadow.soft }}>
@@ -547,7 +550,7 @@ export default function ProductDetail() {
                 </View>
               </Tap>
             </Animated.View>
-          )}
+          ) : null}
 
           <Divider />
 
