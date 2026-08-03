@@ -137,17 +137,17 @@ export function PromoGate() {
         onClose={() => setDismissedMoney(true)}
         accent={colors.flameDeep}
         icon="wallet"
-        badge={hasPausedSub ? 'DELIVERY PAUSED' : `GET ${rupee(tier.bonus)} FREE`}
-        title={hasPausedSub ? 'Your delivery is paused' : `Go prepaid, get ${rupee(tier.bonus)} free`}
+        badge={hasPausedSub ? 'DELIVERY PAUSED' : 'GO PREPAID'}
+        title={hasPausedSub ? 'Your delivery is paused' : 'Go prepaid for one-tap mornings'}
         body={
           hasPausedSub
-            ? `Balance ${rupee(balance)}. Your daily milk is PAUSED because the wallet ran low. Add ${rupee(PREPAID_TARGET)}, get ${rupee(tier.bonus)} FREE, and it resumes from tomorrow.`
+            ? `Balance ${rupee(balance)}. Your daily milk is PAUSED because the wallet ran low. Add ${rupee(PREPAID_TARGET)} and it resumes from tomorrow.`
             : critical
-              ? `Balance ${rupee(balance)}. Add ${rupee(PREPAID_TARGET)} to your PYAAS Wallet, get ${rupee(tier.bonus)} FREE — so tomorrow's morning delivery never pauses.`
-              : `Add ${rupee(PREPAID_TARGET)} to your PYAAS Wallet and get ${rupee(tier.bonus)} FREE. Prepaid means one-tap mornings — no daily payments, and you save more.`
+              ? `Balance ${rupee(balance)}. Add ${rupee(PREPAID_TARGET)} to your PYAAS Wallet so tomorrow's morning delivery never pauses.`
+              : `Add ${rupee(PREPAID_TARGET)} to your PYAAS Wallet. Prepaid means one-tap mornings, no daily payments.`
         }
-        cta={hasPausedSub ? `Add ${rupee(PREPAID_TARGET)} · resume delivery` : `Add ${rupee(PREPAID_TARGET)} · get ${rupee(tier.bonus)} free`}
-        onAccept={() => { setDismissedMoney(true); router.push(`/recharge?amount=${PREPAID_TARGET}&reason=${hasPausedSub ? 'resume your paused delivery' : `go prepaid and get ${rupee(tier.bonus)} free`}`); }}
+        cta={hasPausedSub ? `Add ${rupee(PREPAID_TARGET)} · resume delivery` : `Add ${rupee(PREPAID_TARGET)} to wallet`}
+        onAccept={() => { setDismissedMoney(true); router.push(`/recharge?amount=${PREPAID_TARGET}&reason=${hasPausedSub ? 'resume your paused delivery' : 'go prepaid for one-tap mornings'}`); }}
       />
       <PromoModal
         visible={showVipExpiring}
@@ -156,7 +156,7 @@ export function PromoGate() {
         icon="star"
         badge={`${daysLeft} DAY${daysLeft === 1 ? '' : 'S'} LEFT`}
         title={vipOnTrial(vip) ? 'Your free Plus trial is ending' : 'Your PYAAS Plus is ending'}
-        body={`Your PYAAS Plus ${vipOnTrial(vip) ? 'trial ' : ''}ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. Renew it to keep free delivery and member prices — it won't renew on its own.`}
+        body={`Your PYAAS Plus ${vipOnTrial(vip) ? 'trial ' : ''}ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. Renew it to keep free delivery and member prices, it won't renew on its own.`}
         cta="Renew Plus"
         onAccept={() => { setDismissedMoney(true); router.push('/(tabs)/vip'); }}
       />

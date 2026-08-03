@@ -62,7 +62,7 @@ export function setOnAuthExpired(cb: () => void): void {
 function fireAuthExpired(reason: string): void {
   if (authExpiredFired) return;
   authExpiredFired = true;
-  logDiag({ kind: 'auth', message: `Session expired — ${reason}. Signing out.` });
+  logDiag({ kind: 'auth', message: `Session expired, ${reason}. Signing out.` });
   onAuthExpired?.();
 }
 
@@ -210,7 +210,7 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     // mistyped their OTP to "check your connection".
     if (res.status === 401 && !path.startsWith('/auth/')) {
       message = didSignOut
-        ? 'Session expired — please sign in again.'
+        ? 'Session expired, please sign in again.'
         : 'Could not verify your session. Check your connection and try again.';
     }
     throw new HttpError(res.status, message, path);

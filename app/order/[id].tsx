@@ -4,17 +4,11 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  FadeIn,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-  withSequence,
-} from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts } from '../../lib/theme';
 import { SkeletonBlock } from '../../components/Skeleton';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Divider } from '../../components/ui';
+import { RiderTrackMap } from '../../components/RiderTrackMap';
 import { getOrder, cancelOrder, simulateRiderAssignment, simulateDelivered, reviewOrder, type Order } from '../../lib/api';
 import { STATUS_FLOW, STATUS_LABEL, STATUS_SUB, statusIndex } from '../../lib/orderStatus';
 import { isBackendConfigured } from '../../lib/apiClient';
@@ -228,7 +222,7 @@ export default function OrderTracking() {
         {owed > 0 ? (
           <Tap onPress={() => router.push(`/recharge?amount=${Math.max(100, Math.ceil(owed / 50) * 50)}&min=${Math.ceil(owed)}&returnTo=${encodeURIComponent(`/order/${order.id}`)}&reason=to settle this delivery`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12, ...shadow.soft }}>
             <Ionicons name="alert-circle" size={20} color={colors.white} />
-            <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.white}>This delivery couldn't be charged — balance was low. Add {rupee(owed)} to settle it.</TextMed>
+            <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.white}>This delivery couldn't be charged, your balance was low. Add {rupee(owed)} to settle it.</TextMed>
             <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.85)" />
           </Tap>
         ) : null}
@@ -337,10 +331,17 @@ export default function OrderTracking() {
           )
         ) : null}
 
-        {/* Live rider card */}
+        {/* Live rider card · the member SEES the rider on a real map the moment
+            one is assigned, gliding towards their door while out for delivery. */}
         {hasRider && order.riders ? (
           <Animated.View entering={FadeIn} style={{ backgroundColor: colors.white, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.card }}>
-            <LiveTrackStrip active={order.status === 'out_for_delivery'} />
+            {!delivered ? (
+              <RiderTrackMap
+                riderLat={order.riders.current_lat}
+                riderLng={order.riders.current_lng}
+                active={order.status === 'out_for_delivery'}
+              />
+            ) : null}
             <View style={{ padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="person" size={26} color={colors.flameDeep} />
@@ -464,7 +465,7 @@ export default function OrderTracking() {
           <View style={{ gap: 8 }}>
             <Button title="Simulate rider pickup (demo)" variant="sage" onPress={onSimulate} loading={busy} />
             <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>
-              Demo only — assigns a delivery partner so you can test tracking. The rider app does this for real; hidden once a real rider claims the order.
+              Demo only. Assigns a delivery partner so you can test tracking. The rider app does this for real; hidden once a real rider claims the order.
             </TextBody>
           </View>
         ) : null}
@@ -472,43 +473,6 @@ export default function OrderTracking() {
           <Button title="Simulate delivered (demo)" variant="sage" onPress={onSimulateDelivered} loading={busy} />
         ) : null}
       </ScrollView>
-    </View>
-  );
-}
-
-/** A stylised "live tracking" strip with a moving rider marker. No paid map API. */
-function LiveTrackStrip({ active }: { active: boolean }) {
-  const x = useSharedValue(0);
-  const pulse = useSharedValue(1);
-  useEffect(() => {
-    if (active) {
-      x.value = withRepeat(withTiming(1, { duration: 3200 }), -1, true);
-      pulse.value = withRepeat(withSequence(withTiming(1.25, { duration: 700 }), withTiming(1, { duration: 700 })), -1, false);
-    }
-  }, [active, x, pulse]);
-
-  const markerStyle = useAnimatedStyle(() => ({ left: `${8 + x.value * 78}%` }));
-  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }], opacity: 2 - pulse.value }));
-
-  return (
-    <View style={{ height: 88, justifyContent: 'center', overflow: 'hidden', backgroundColor: colors.cream }}>
-      {/* dashed route line */}
-      <View style={{ position: 'absolute', left: '8%', right: '8%', top: 44, height: 2, backgroundColor: 'rgba(199,91,110,0.35)' }} />
-      {/* store marker */}
-      <View style={{ position: 'absolute', left: '6%', top: 34, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-        <Ionicons name="storefront" size={12} color={colors.blue} />
-      </View>
-      {/* home marker */}
-      <View style={{ position: 'absolute', right: '6%', top: 34, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-        <Ionicons name="home" size={12} color={colors.flameDeep} />
-      </View>
-      {/* moving rider */}
-      <Animated.View style={[{ position: 'absolute', top: 30 }, markerStyle]}>
-        <Animated.View style={[{ position: 'absolute', top: -3, left: -3, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(199,91,110,0.25)' }, pulseStyle]} />
-        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-          <Ionicons name="bicycle" size={16} color={colors.white} />
-        </View>
-      </Animated.View>
     </View>
   );
 }

@@ -12,9 +12,9 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-pink.png",
+      "image": "./assets/splash-wordmark-white.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#F36DB6"
     },
     "ios": {
       "supportsTablet": true,
@@ -33,7 +33,7 @@
         "ACCESS_COARSE_LOCATION"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
+        "backgroundColor": "#F36DB6",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

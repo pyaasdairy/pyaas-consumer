@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getUserId } from '../lib/session';
 import { getBalances, replayPendingPromos } from '../lib/walletApi';
+import { syncWalletUnlock } from '../lib/walletGate';
 
 /**
  * PYAAS wallet balance store. Reads the DERIVED balances off the append-only
@@ -39,6 +40,9 @@ export const useWallet = create<WalletState>((set) => ({
       // up the moment the wallet next refreshes. No-op offline / local mode.
       await replayPendingPromos().catch(() => { /* still offline — retried next refresh */ });
       const b = await getBalances();
+      // ₹500 gate: the first refresh that sees the balance at/over the target
+      // unlocks purchasing and auto-starts the 7-day starter plan (idempotent).
+      void syncWalletUnlock(b.available);
       set({
         balance: b.available,
         cash: b.cash,

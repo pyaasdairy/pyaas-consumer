@@ -43,3 +43,4 @@ yarn-error.*
 
 # server-side Edge Function secrets (never commit)
 supabase/functions.env
+parag-saathi-be/

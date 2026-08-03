@@ -129,7 +129,7 @@ export function ComingSoon() {
                 <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.danger}>{err}</TextBody>
               ) : (
                 <TextBody style={{ fontSize: 11.5, textAlign: 'center' }} color={colors.inkMute}>
-                  No spam — just one message when we go live near you.
+                  No spam, just one message when we go live near you.
                 </TextBody>
               )}
             </>

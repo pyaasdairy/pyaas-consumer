@@ -7,6 +7,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap, Stepper } from './ui';
 import { haptics } from '../lib/haptics';
 import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
+import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 import { hasExactLocation, type Coords } from '../lib/location';
 import { useUserLocation, currentUserLoc } from '../lib/userLocation';
 import MapPicker from './MapPicker';
@@ -104,7 +105,10 @@ export function SubscribeSheet({
       // recharge screen first, returning here once funded.
       await refreshWallet();
       const bal = useWallet.getState().balance;
-      const need = minWalletToStart(perDelivery);
+      // ₹500 GATE: a still-locked account must fund the wallet to the unlock
+      // target before ANY purchase, subscriptions included.
+      const unlocked = await purchasesUnlocked(bal);
+      const need = Math.max(minWalletToStart(perDelivery), unlocked ? 0 : WALLET_UNLOCK_TARGET);
       if (bal < need) {
         const short = Math.max(1, Math.ceil(need - bal));
         const amount = Math.max(100, Math.ceil(short / 50) * 50);

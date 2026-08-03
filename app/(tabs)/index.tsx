@@ -9,9 +9,8 @@ import { useHideTabBarOnScroll } from '../../lib/navVisibility';
 import { colors, radius, spacing, shadow, rupee } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../../components/ui';
 import { ProductCard } from '../../components/ProductCard';
-import { FlipCard, PackBack, PackBackPhoto } from '../../components/FlipCard';
-import { backImageFor } from '../../constants/products';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
+import { WelcomeOffer, welcomeOfferSeen, markWelcomeOfferSeen } from '../../components/WelcomeOffer';
 import { ClaimPackFlow } from '../../components/ClaimPackFlow';
 import { ShopSkeleton } from '../../components/Skeleton';
 import { HomeHeader, useHomeHeaderHeight } from '../../components/HomeHeader';
@@ -35,7 +34,8 @@ import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
 import { useAuth } from '../../lib/auth';
 
-const TAAZA = require('../../assets/products/pyaas-toned-pouch.png');
+// The free-trial pack shown on every funnel surface: PYAAS Gold FULL CREAM.
+const FREE_PACK_IMG = require('../../assets/products/gold.png');
 
 // Ionicons for each catalog category (outline set), used in the category rail.
 const CAT_ICON: Record<string, string> = {
@@ -155,17 +155,22 @@ export default function Shop() {
       .catch(() => { setHasSub(false); setFreshUser(false); });
   }, []);
 
-  // Auto-open the 2-day-free claim popup ONCE per app launch for an eligible
-  // (fresh, unclaimed) member — so it greets them on the home screen each time they
-  // open/reopen the app, not only when they tap the banner. Existing subscribers /
-  // already-claimed members are not "fresh", so they never see it.
+  // WELCOME OFFER: the very first time a member lands signed-in, greet them with
+  // the animated confetti offer (once per account). On later launches an eligible
+  // fresh member goes straight to the 2-day-free claim popup, once per app launch.
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const autoOpenedClaim = React.useRef(false);
   useEffect(() => {
-    if (!autoOpenedClaim.current && freshUser && claimEligible) {
-      autoOpenedClaim.current = true;
-      setClaimOpen(true);
-    }
-  }, [freshUser, claimEligible]);
+    if (autoOpenedClaim.current || !freshUser || !claimEligible) return;
+    const uid = profile?.id;
+    if (!uid) return;
+    autoOpenedClaim.current = true;
+    void welcomeOfferSeen(uid).then((seen) => {
+      if (seen) { setClaimOpen(true); return; }
+      void markWelcomeOfferSeen(uid);
+      setWelcomeOpen(true);
+    });
+  }, [freshUser, claimEligible, profile?.id]);
 
   // Active orders drive the "Track your order" strip. Refetched whenever the
   // home tab regains focus; renders nothing gracefully when there are none.
@@ -289,35 +294,23 @@ export default function Shop() {
             {hasSub && balance < PREPAID_TARGET ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
                 {lowBalance ? (
-                  <Tap onPress={() => router.push(`/recharge?amount=${PREPAID_TARGET}&reason=go prepaid and get ${rupee(prepaidTier().bonus)} free`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
+                  <Tap onPress={() => router.push(`/recharge?amount=${PREPAID_TARGET}&reason=go prepaid for one-tap mornings`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
                     <Ionicons name="wallet" size={18} color={colors.gold} />
-                    <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.white}>Low wallet. Add {rupee(PREPAID_TARGET)}, get {rupee(prepaidTier().bonus)} free — so tomorrow's delivery isn't paused.</TextMed>
+                    <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.white}>Low wallet. Add {rupee(PREPAID_TARGET)} so tomorrow's delivery isn't paused.</TextMed>
                     <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.8)" />
                   </Tap>
                 ) : (
-                  <Tap onPress={() => router.push(`/recharge?amount=${PREPAID_TARGET}&reason=go prepaid and get ${rupee(prepaidTier().bonus)} free`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.flame, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
+                  <Tap onPress={() => router.push(`/recharge?amount=${PREPAID_TARGET}&reason=go prepaid for one-tap mornings`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.flame, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
                     <Ionicons name="wallet" size={18} color={colors.flameDeep} />
-                    <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.ink}>Go prepaid: add {rupee(PREPAID_TARGET)}, get {rupee(prepaidTier().bonus)} FREE 🎉 · one-tap mornings</TextMed>
+                    <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.ink}>Go prepaid: add {rupee(PREPAID_TARGET)} for one-tap mornings</TextMed>
                     <Ionicons name="chevron-forward" size={16} color={colors.flameDeep} />
                   </Tap>
                 )}
               </Animated.View>
             ) : null}
 
-            {/* Subscription starter · shown ONLY to a fresh member (no active/paused
-                subscription and the 2+2 trial not yet redeemed). Tapping opens the
-                claim / subscribe flow. Existing or already-redeemed members render
-                nothing here. Also requires claimEligible so the tap never opens a
-                dead-end "already used" claim on a device that spent its free trial. */}
-            {freshUser && claimEligible ? (
-              <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-                <Tap onPress={() => setClaimOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.flame, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
-                  <Ionicons name="gift" size={18} color={colors.flameDeep} />
-                  <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.ink}>Start your subscription: pay 2 days, get 2 free</TextMed>
-                  <Ionicons name="chevron-forward" size={16} color={colors.flameDeep} />
-                </Tap>
-              </Animated.View>
-            ) : null}
+            {/* (The small "start your subscription" strip that sat here was
+                redundant with the big trial card below — removed.) */}
 
             {/* Track your order · MODE-AWARE: the Instant world only tracks
                 instant orders, the Morning world tracks the scheduled ones —
@@ -379,13 +372,13 @@ export default function Shop() {
               <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
                 <Tap weight="medium" onPress={() => setClaimOpen(true)} style={{ borderRadius: radius.lg, overflow: 'hidden', ...shadow.card }}>
                   <LinearGradient colors={[colors.flameDeep, colors.blue]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14 }}>
-                    <Image source={TAAZA} style={{ width: 58, height: 58 }} contentFit="contain" />
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Image source={FREE_PACK_IMG} style={{ width: 58, height: 58 }} contentFit="contain" />
+                    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                      <View style={{ flexDirection: 'row' }}>
                         <Pill small label={`${TRIAL_FREE_DAYS} DAYS FREE`} bg={colors.white} color={colors.blue} />
-                        <TextSemi color={colors.white} style={{ fontSize: 15 }}>Start your subscription</TextSemi>
                       </View>
-                      <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 11.5, lineHeight: 15 }}>
+                      <TextSemi color={colors.white} style={{ fontSize: 15 }} numberOfLines={1}>Start your subscription</TextSemi>
+                      <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
                         Pay {TRIAL_PAID_DAYS} days, get {TRIAL_FREE_DAYS} FREE 🎉 · 500 ml every morning · pause anytime
                       </TextBody>
                     </View>
@@ -438,23 +431,12 @@ export default function Shop() {
                   <Serif style={{ fontSize: 19 }}>Most ordered</Serif>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: 4 }}>
-                  {/* Hero carousel cards auto-FLIP to the pack backside (nutrition,
-                      ingredients, FSSAI…), staggered so they never flip in unison.
-                      Grid/list cards below stay static (perf). */}
-                  {popular.map((p, i) => {
-                    // Flip to the real back-of-pack PHOTO when we shot it; otherwise
-                    // fall back to the printed-back info card.
-                    const backPhoto = backImageFor(p);
-                    return (
-                      <FlipCard
-                        key={p.id}
-                        index={i}
-                        style={{ width: 168 }}
-                        front={<ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />}
-                        back={backPhoto != null ? <PackBackPhoto product={p} source={backPhoto} /> : <PackBack product={p} />}
-                      />
-                    );
-                  })}
+                  {/* Static pack-shot cards: the shelf scrolls, the cards never flip. */}
+                  {popular.map((p, i) => (
+                    <View key={p.id} style={{ width: 168 }}>
+                      <ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />
+                    </View>
+                  ))}
                 </ScrollView>
               </Animated.View>
             ) : null}
@@ -510,6 +492,14 @@ export default function Shop() {
           Home focus (dismissals reset so a banner re-shows next Home visit). */}
       <PromoGate />
 
+      {/* Animated welcome offer: first signed-in landing only. Claiming hands
+          straight into the subscription claim flow below. */}
+      <WelcomeOffer
+        visible={welcomeOpen}
+        onClaim={() => { setWelcomeOpen(false); setClaimOpen(true); }}
+        onClose={() => setWelcomeOpen(false)}
+      />
+
       {/* Free-pack funnel sheet, opened from the claim card / status card */}
       <ClaimPackFlow
         visible={claimOpen}
@@ -548,7 +538,7 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
           onPress={() => setDeliveryMode('instant')}
           icon="flash"
           label="Instant"
-          badge="⚡ 20 मिनट/20 min"
+          badge="⚡ 20 min"
           a11yLabel={instantServed ? 'Instant delivery, 20 minutes' : closedForNight ? `Instant closed, resumes ${resumesLabel ?? 'soon'}` : 'Instant delivery not available at your address yet'}
         />
       </View>

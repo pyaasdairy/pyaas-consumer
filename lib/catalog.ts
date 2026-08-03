@@ -233,8 +233,20 @@ export function applyOverlay(base: Product[], res: CatalogResponse | null | unde
   return out;
 }
 
+// ── Launch range gate ─────────────────────────────────────────────────────────
+// We currently SELL exactly two SKUs: Parag Taaza toned 500 ml and PYAAS Gold
+// full cream 500 ml. Every other product and every other size stays VISIBLE in
+// the catalogue but greyed out (outOfStock), so nothing else can be bought.
+// Applied at this single choke point so the grid, shelves, product pages, cart
+// revalidation and subscription flows all honour it automatically.
+const SELLABLE_IDS = new Set(['taaza-500ml', 'gold-500ml']);
+
+function applySellableGate(list: Product[]): Product[] {
+  return list.map((p) => (SELLABLE_IDS.has(p.id) ? p : p.outOfStock ? p : { ...p, outOfStock: true }));
+}
+
 // ── External store (module-level; hook + imperative getters share it) ─────────
-let merged: Product[] = PRODUCTS;
+let merged: Product[] = applySellableGate(PRODUCTS);
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -245,6 +257,7 @@ function subscribe(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 function setMerged(next: Product[]): void {
+  next = applySellableGate(next);
   if (next === merged) return;
   merged = next;
   emit();

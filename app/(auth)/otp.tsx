@@ -1,29 +1,36 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Keyboard } from 'react-native';
+import { View, Text, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Keyboard, FlatList, useWindowDimensions, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts } from '../../lib/theme';
-import { Serif, TextBody, TextMed, TextSemi, Tap } from '../../components/ui';
-import { ShineSweep } from '../../components/Fx';
+import { TextBody, TextMed, TextSemi, Serif, Tap } from '../../components/ui';
 import { enterUp } from '../../lib/motion';
 import { signInWithPhone, saveProfile, DEMO_OTP } from '../../lib/session';
 import { api, isBackendConfigured, setTokens } from '../../lib/apiClient';
+import { isMsg91Configured, msg91SendOtp, msg91RetryOtp, msg91VerifyOtp } from '../../lib/msg91';
 import { requestPhoneHint, startSmsRetriever } from '../../lib/nativeConvenience';
 import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
 
 /**
- * Phone OTP sign-in. In this build the code is verified on-device (demo /
- * offline mode): any 10-digit number plus the demo code signs in and gets a
- * stable per-phone account. When parag-api is deployed, swap sendCode/verify for
- * apiClient POST /auth/otp/request + /auth/otp/verify (which return JWT tokens);
- * the rest of the screen stays the same.
+ * Phone OTP sign-in, built for a ZERO-TYPING flow: tapping the number field
+ * opens the Play-Services number chooser (one tap fills the SIM number and the
+ * code sends itself), the incoming OTP SMS is auto-read and fanned into the
+ * boxes, and a complete code verifies on its own. Typing stays available as the
+ * fallback on devices without the native helpers.
  */
-// Large white PYAAS wordmark shown on the pink header (no circle badge). The
-// asset is 1127×317, so height is derived from the width to keep it crisp.
-const LOGO_W = 244;
-const LOGO_RATIO = 317 / 1127;
+
+// The four landing creatives, in order, for the top slideshow.
+const SLIDES = [
+  require('../../assets/landing/landing-1.png'),
+  require('../../assets/landing/landing-2.png'),
+  require('../../assets/landing/landing-3.png'),
+  require('../../assets/landing/landing-4.png'),
+];
+const SLIDE_RATIO = 1024 / 1536; // h/w of the landing art
+const SLIDE_INTERVAL = 3400;
 
 export default function OtpLogin() {
   const router = useRouter();
@@ -40,9 +47,8 @@ export default function OtpLogin() {
   const [resendIn, setResendIn] = useState(0);
   // In-flight guard so a burst of focus events doesn't launch the hint twice.
   const hintBusy = useRef(false);
-
-  // The keyboard hides the input + button on a tall header; collapse the logo
-  // while the keyboard is open so the field and CTA stay above it.
+  // The keyboard covers the bottom card on phones — while it's up, collapse the
+  // slideshow so the "Get started" card (field + button) stays fully visible.
   const [kbUp, setKbUp] = useState(false);
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKbUp(true));
@@ -53,29 +59,42 @@ export default function OtpLogin() {
   const digits = () => phone.replace(/\D/g, '').slice(-10);
 
   /**
-   * Trigger Android's Play-Services phone-number hint (one-tap SIM number) when
-   * the user TAPS the phone field — NOT on app launch (the field no longer
-   * autofocuses). Fires whenever the field is still empty; no-ops gracefully when
-   * the native module is absent (the field's autoComplete="tel" then offers OS
-   * autofill). The in-flight guard prevents a double-launch from rapid focus.
+   * ZERO-TYPING step 1: the Phone Number Hint chooser (no runtime permission)
+   * opens ON ITS OWN shortly after the screen lands — the member just taps
+   * their number and the code sends itself; no field tap, no typing. It also
+   * re-arms on field focus as a fallback. No-ops gracefully when the native
+   * module / Play Services is absent; autoComplete="tel" then offers OS
+   * autofill and typing still works.
    */
-  async function onPhoneFocus() {
+  const launchHint = async () => {
     if (hintBusy.current || digits().length >= 10) return;
     hintBusy.current = true;
     try {
-      // Google's phone-number Hint Picker (Identity Services, getPhoneNumberHintIntent)
-      // shows a "Choose a number" sheet with NO runtime permission — so we NEVER ask
-      // for READ_PHONE_NUMBERS ("make and manage phone calls"), which scared users off.
       const hinted = await requestPhoneHint();
-      if (hinted && digits().length < 10) setPhone(hinted);
+      if (hinted && hinted.length >= 10 && digits().length < 10) {
+        setPhone(hinted);
+        Keyboard.dismiss();
+        // Auto-continue: the picked number is the SIM's own, so send the code
+        // without a second tap on Continue.
+        void sendCodeFor(hinted);
+      }
     } finally {
       hintBusy.current = false;
     }
-  }
+  };
+  // Auto-launch once when the phone step is on screen.
+  const hintLaunched = useRef(false);
+  useEffect(() => {
+    if (step !== 'phone' || hintLaunched.current) return;
+    hintLaunched.current = true;
+    const t = setTimeout(() => { void launchHint(); }, 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   /**
-   * SMS Retriever: while on the code step, auto-read the incoming OTP SMS and
-   * verify. No-ops when the native module is absent — the code input's
+   * ZERO-TYPING step 2: while on the code step, auto-read the incoming OTP SMS
+   * and verify. No-ops when the native module is absent; the code input's
    * autoComplete="sms-otp" still surfaces the code via the keyboard.
    */
   useEffect(() => {
@@ -88,9 +107,8 @@ export default function OtpLogin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // Cold-start / flaky-network fetches throw low-level messages ("fetch failed:
-  // Fetch request has been canceled"). Show friendly copy for those; pass real
-  // server messages (e.g. "Too many attempts") straight through.
+  // Cold-start / flaky-network fetches throw low-level messages. Show friendly
+  // copy for those; pass real server messages ("Too many attempts") through.
   function friendly(e: any, fallback: string) {
     const m = String(e?.message ?? '');
     if (/fetch|network|timeout|timed out|cancell?ed|aborted|connection|ECONN|failed to fetch/i.test(m)) {
@@ -99,13 +117,19 @@ export default function OtpLogin() {
     return m || fallback;
   }
 
-  async function sendCode() {
-    if (digits().length < 10) { setError('Enter a valid 10-digit mobile number.'); return; }
+  // OTP provider order: the parag-api backend when configured, else MSG91 real
+  // SMS (EXPO_PUBLIC_MSG91_* env), else the offline dev fallback (which shows
+  // no hint on screen and is dead the moment either real provider is set).
+  async function sendCodeFor(raw: string) {
+    const ds = raw.replace(/\D/g, '').slice(-10);
+    if (ds.length < 10) { setError('Enter a valid 10-digit mobile number.'); return; }
     setError(''); setLoading(true);
     try {
       if (isBackendConfigured()) {
-        const r = await api.post<{ sent: boolean; dev_otp?: string }>('/auth/otp/request', { phone: digits() });
+        const r = await api.post<{ sent: boolean; dev_otp?: string }>('/auth/otp/request', { phone: ds });
         setDevOtp(r.dev_otp ?? '');
+      } else if (isMsg91Configured()) {
+        await msg91SendOtp(ds);
       }
       setStep('code');
       setResendIn(30); // start the resend cooldown
@@ -114,12 +138,23 @@ export default function OtpLogin() {
     } finally { setLoading(false); }
   }
 
-  // Resend the OTP without leaving the code step or clearing typed digits beyond a
-  // reset. Gated by a 30s cooldown (set in sendCode) to avoid SMS spam.
-  function resend() {
+  function sendCode() { void sendCodeFor(phone); }
+
+  // Resend the OTP without leaving the code step. Gated by a 30s cooldown.
+  async function resend() {
     if (resendIn > 0 || loading) return;
     setCode(''); setError('');
-    void sendCode();
+    if (!isBackendConfigured() && isMsg91Configured()) {
+      setLoading(true);
+      try {
+        await msg91RetryOtp(digits());
+        setResendIn(30);
+      } catch (e: any) {
+        setError(friendly(e, 'Could not resend the code. Please try again.'));
+      } finally { setLoading(false); }
+      return;
+    }
+    sendCode();
   }
 
   // Tick the resend cooldown down to 0.
@@ -135,7 +170,7 @@ export default function OtpLogin() {
     setLoading(true); setError('');
     try {
       if (isBackendConfigured()) {
-        // Real backend: verify → JWT tokens; also set the local session uid the
+        // Real backend: verify -> JWT tokens; also set the local session uid the
         // FE data layer reads (requireUserId) so both stay in sync.
         const pair = await api.post<{ access_token: string; refresh_token: string; profile?: { id: string; full_name?: string | null } }>(
           '/auth/otp/verify', { phone: digits(), code: c });
@@ -146,9 +181,15 @@ export default function OtpLogin() {
         // being forced back through profile setup on every reinstall / new device.
         const nm = pair.profile?.full_name;
         if (nm && nm.trim()) await saveProfile({ full_name: nm });
+      } else if (isMsg91Configured()) {
+        // Real SMS OTP via MSG91: verify the code, then open the local session.
+        await msg91VerifyOtp(digits(), c);
+        await signInWithPhone(digits());
       } else {
+        // Offline dev fallback only (no backend, no MSG91). Not advertised on
+        // screen; a real provider disables this path entirely.
         if (c !== DEMO_OTP) { setError('That code is not right. Try again.'); return; }
-        await signInWithPhone(digits()); // offline demo
+        await signInWithPhone(digits());
       }
     } catch (e: any) {
       setError(friendly(e, 'Could not sign you in. Please try again.'));
@@ -156,80 +197,158 @@ export default function OtpLogin() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.flameDeep }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={{ flex: 1, backgroundColor: colors.flameDeep }}>
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, overflow: 'hidden' }}>
-            {step === 'code' || router.canGoBack() ? (
-              <Tap haptic={false} onPress={() => (step === 'code' ? setStep('phone') : router.back())} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="chevron-back" size={20} color={colors.white} />
-              </Tap>
-            ) : (
-              // Signed-out entry point — nowhere to go back to; keep header spacing.
-              <View style={{ width: 38, height: 38 }} />
-            )}
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.white }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {step === 'phone' ? (
+          <>
+            {/* Full-bleed landing slideshow with dot indicators. Collapses while
+                the keyboard is up so the field + button stay fully visible. */}
             {kbUp ? (
-              // Keyboard open: collapse the logo so the input + button clear it.
-              <View style={{ height: spacing.sm }} />
+              <View style={{ flex: 1, minHeight: spacing.xl, paddingTop: insets.top }} />
             ) : (
-              <>
-                <View style={{ alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.xxl, gap: 14 }}>
-                  <Image source={require('../../assets/pyaas-logo-white-trim.png')} style={{ width: LOGO_W, height: LOGO_W * LOGO_RATIO }} resizeMode="contain" />
-                  <TextMed color="rgba(255,255,255,0.92)" style={{ fontSize: 14 }}>Pure, natural, good health.</TextMed>
-                </View>
-                <ShineSweep dur={3600} travel={420} bandWidth={120} delay={600} />
-              </>
+              <View style={{ flex: 1, justifyContent: 'center', paddingTop: insets.top }}>
+                <LandingSlideshow />
+              </View>
             )}
-          </View>
 
-          <Animated.View entering={enterUp()} style={{ flex: kbUp ? undefined : 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: kbUp ? spacing.lg : spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}>
-            {step === 'phone' ? (
-              <>
-                <Serif style={{ fontSize: 30 }}>Log in / Sign up</Serif>
-                <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Enter your mobile to get a one-time code. We will also text your order and delivery updates here.</TextBody>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1.5, borderBottomColor: colors.line, paddingVertical: 12 }}>
-                  <TextMed style={{ fontSize: 15.5 }}>+91</TextMed>
-                  <TextInput value={phone} onChangeText={setPhone} onFocus={onPhoneFocus} keyboardType="phone-pad" placeholder="10-digit mobile" placeholderTextColor={colors.inkMute} maxLength={10} returnKeyType="done" onSubmitEditing={sendCode} autoComplete="tel" textContentType="telephoneNumber" importantForAutofill="yes" style={{ flex: 1, fontFamily: fonts.sans, fontSize: 16, color: colors.ink }} />
+            {/* "Get started" card */}
+            <Animated.View
+              entering={enterUp()}
+              style={{ backgroundColor: colors.white, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderColor: colors.line, marginHorizontal: 8, borderBottomWidth: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.lg, gap: spacing.md, ...shadow.card }}
+            >
+              <Serif style={{ fontSize: 22 }}>Get started</Serif>
+
+              {/* Flag + number field. Tapping it opens the one-tap number chooser. */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 14, height: 56, backgroundColor: colors.white }}>
+                <Text style={{ fontSize: 22 }}>🇮🇳</Text>
+                <View style={{ width: 1, height: 24, backgroundColor: colors.line }} />
+                <TextInput
+                  value={phone}
+                  onChangeText={setPhone}
+                  onFocus={() => { void launchHint(); }}
+                  keyboardType="phone-pad"
+                  placeholder="Enter mobile number"
+                  placeholderTextColor={colors.inkMute}
+                  maxLength={10}
+                  returnKeyType="done"
+                  onSubmitEditing={sendCode}
+                  autoComplete="tel"
+                  textContentType="telephoneNumber"
+                  importantForAutofill="yes"
+                  style={{ flex: 1, fontFamily: fonts.sans, fontSize: 16.5, color: colors.ink }}
+                />
+              </View>
+
+              {error ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{error}</TextBody> : null}
+
+              <Tap onPress={loading ? undefined : sendCode}>
+                <View style={{ height: 54, borderRadius: radius.md, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+                  {loading ? <ActivityIndicator color={colors.white} /> : (
+                    <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>Continue</TextSemi>
+                  )}
                 </View>
-                {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
-                <SolidBtn label="Send code" loading={loading} onPress={sendCode} />
-              </>
-            ) : (
-              <>
-                <Serif style={{ fontSize: 30 }}>Enter the code</Serif>
-                <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>Sent to +91 {digits()}. <TextMed color={colors.flameDeep} onPress={() => setStep('phone')}>Change</TextMed></TextBody>
-                <OtpBoxes value={code} error={!!error} onChange={setCode} onComplete={(c) => { if (!loading) verify(c); }} />
-                {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
-                {/* The "enter 123456" hint is LOCAL-mode only (no backend) — a real
-                    backend build (live OR pilot) must NEVER tell users to type 123456.
-                    The pilot flask box shows the backend-echoed test OTP only when this
-                    is a WALLET_TEST_TOPUP build; a live build shows neither. */}
-                {!isBackendConfigured() ? (
-                  <TextBody style={{ fontSize: 12.5, marginTop: 10 }}>Demo build: enter {DEMO_OTP} to continue.</TextBody>
-                ) : devOtp && WALLET_TEST_TOPUP ? (
-                  <View style={{ marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.flameSoft, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Ionicons name="flask-outline" size={16} color={colors.flameDeep} />
-                    <TextBody style={{ fontSize: 13, flex: 1 }}>Test OTP: <TextSemi color={colors.flameDeep} style={{ fontSize: 15, letterSpacing: 2 }}>{devOtp}</TextSemi>  ·  shown for testing (SMS later)</TextBody>
-                  </View>
-                ) : null}
-                <SolidBtn label="Verify & sign in" loading={loading} onPress={() => verify()} />
-                {isBackendConfigured() ? (
-                  <Tap haptic={false} onPress={resend} style={{ alignItems: 'center', paddingVertical: 8 }}>
-                    <TextMed color={resendIn > 0 ? colors.inkMute : colors.flameDeep} style={{ fontSize: 13.5 }}>
-                      {resendIn > 0 ? `Resend code in ${resendIn}s` : "Didn't get the code? Resend"}
-                    </TextMed>
-                  </Tap>
-                ) : null}
-                <Tap haptic={false} onPress={() => setStep('phone')} style={{ alignItems: 'center', paddingVertical: 10 }}>
-                  <TextMed color={colors.flameDeep} style={{ fontSize: 13.5 }}>Change number</TextMed>
+              </Tap>
+
+              <View style={{ alignItems: 'center' }}>
+                <TextSemi style={{ fontSize: 12 }} color={colors.ink}>By Signing up you agree to</TextSemi>
+                <TextSemi style={{ fontSize: 12 }} color={colors.ink}>TnC and Privacy Policy</TextSemi>
+              </View>
+            </Animated.View>
+          </>
+        ) : (
+          <>
+            {/* Code step: compact header + the OTP card */}
+            <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg }}>
+              <Tap haptic={false} onPress={() => setStep('phone')} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="chevron-back" size={20} color={colors.flameDeep} />
+              </Tap>
+            </View>
+            <Animated.View entering={FadeInDown.duration(280)} style={{ flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: insets.bottom + spacing.lg }}>
+              <Serif style={{ fontSize: 28 }}>Enter the code</Serif>
+              <TextBody style={{ fontSize: 14.5, marginTop: 4, marginBottom: spacing.xl }}>
+                Sent to +91 {digits()}. It fills in on its own the moment the SMS arrives. <TextMed color={colors.flameDeep} onPress={() => setStep('phone')}>Change</TextMed>
+              </TextBody>
+              <OtpBoxes value={code} error={!!error} onChange={setCode} onComplete={(c) => { if (!loading) verify(c); }} />
+              {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
+              {/* The pilot flask box shows the backend-echoed test OTP only in a
+                  WALLET_TEST_TOPUP build; a live build shows nothing here. */}
+              {devOtp && WALLET_TEST_TOPUP ? (
+                <View style={{ marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.flameSoft, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="flask-outline" size={16} color={colors.flameDeep} />
+                  <TextBody style={{ fontSize: 13, flex: 1 }}>Test OTP: <TextSemi color={colors.flameDeep} style={{ fontSize: 15, letterSpacing: 2 }}>{devOtp}</TextSemi>  ·  shown for testing (SMS later)</TextBody>
+                </View>
+              ) : null}
+              <Tap onPress={loading ? undefined : () => verify()} style={{ marginTop: spacing.lg }}>
+                <View style={{ height: 54, borderRadius: radius.md, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+                  {loading ? <ActivityIndicator color={colors.white} /> : (
+                    <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>Verify and sign in</TextSemi>
+                  )}
+                </View>
+              </Tap>
+              {isBackendConfigured() || isMsg91Configured() ? (
+                <Tap haptic={false} onPress={() => { void resend(); }} style={{ alignItems: 'center', paddingVertical: 12 }}>
+                  <TextMed color={resendIn > 0 ? colors.inkMute : colors.flameDeep} style={{ fontSize: 13.5 }}>
+                    {resendIn > 0 ? `Resend code in ${resendIn}s` : "Didn't get the code? Resend"}
+                  </TextMed>
                 </Tap>
-              </>
-            )}
-            {/* Phone OTP is the only sign-in path (email / create-account removed). */}
-          </Animated.View>
-        </ScrollView>
-      </View>
+              ) : null}
+            </Animated.View>
+          </>
+        )}
+      </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** Auto-advancing full-width slideshow of the four landing creatives, with the
+ *  reference's pill/dot pagination. Swipeable; a manual swipe simply re-anchors
+ *  the timer at the new index. */
+function LandingSlideshow() {
+  const { width } = useWindowDimensions();
+  const ref = useRef<FlatList>(null);
+  const [idx, setIdx] = useState(0);
+  const idxRef = useRef(0);
+  idxRef.current = idx;
+  const h = Math.round(width * SLIDE_RATIO);
+
+  useEffect(() => {
+    if (width <= 0) return;
+    const t = setInterval(() => {
+      const next = (idxRef.current + 1) % SLIDES.length;
+      ref.current?.scrollToOffset({ offset: next * width, animated: true });
+      setIdx(next);
+    }, SLIDE_INTERVAL);
+    return () => clearInterval(t);
+  }, [width]);
+
+  const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (width > 0) setIdx(Math.round(e.nativeEvent.contentOffset.x / width));
+  };
+
+  return (
+    <View style={{ gap: 18 }}>
+      <FlatList
+        ref={ref}
+        data={SLIDES}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(_, i) => String(i)}
+        onMomentumScrollEnd={onEnd}
+        getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
+        renderItem={({ item }) => (
+          <Image source={item} style={{ width, height: h }} contentFit="cover" transition={200} />
+        )}
+      />
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7 }}>
+        {SLIDES.map((_, i) => (
+          <View
+            key={i}
+            style={{ width: i === idx ? 22 : 7, height: 7, borderRadius: 4, backgroundColor: i === idx ? colors.flameDeep : colors.flameSoft }}
+          />
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -246,7 +365,7 @@ function OtpBoxes({ value, error, onChange, onComplete }: { value: string; error
   // Mirror the code in a ref so a BURST of rapid onChangeText events (fast typing,
   // paste-as-keystrokes, or SMS autofill delivered char-by-char) each read the
   // LATEST value. Reading the `value` prop directly dropped digits: box-1's
-  // handler fires before box-0's onChange→setCode has flushed, so it rebuilt the
+  // handler fires before box-0's onChange->setCode has flushed, so it rebuilt the
   // code from a stale (empty) prop and the first digit was lost.
   const valRef = useRef(value);
   valRef.current = value;
@@ -314,20 +433,5 @@ function OtpBoxes({ value, error, onChange, onComplete }: { value: string; error
         />
       ))}
     </View>
-  );
-}
-
-function SolidBtn({ label, loading, onPress }: { label: string; loading: boolean; onPress: () => void }) {
-  return (
-    <Tap onPress={loading ? undefined : onPress} style={{ marginTop: spacing.lg }}>
-      <View style={{ height: 56, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
-        {loading ? <ActivityIndicator color={colors.white} /> : (
-          <>
-            <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>{label}</TextSemi>
-            <Ionicons name="arrow-forward" size={18} color={colors.white} />
-          </>
-        )}
-      </View>
-    </Tap>
   );
 }

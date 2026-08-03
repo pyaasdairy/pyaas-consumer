@@ -23,6 +23,12 @@ import { isAdminUser } from '../../lib/admin';
 const SUPPORT_EMAIL = CARE_EMAIL;
 const SITE = SITE_URL;
 
+/**
+ * MENU / PROFILE — laid out to the reference menu structure: the account card,
+ * then section headings each above a centered 3-column grid of icon tiles,
+ * the membership card, and finally full-width list rows (icon, title, subtitle,
+ * chevron) with the version string centered at the very bottom.
+ */
 export default function Profile() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -59,7 +65,7 @@ export default function Profile() {
       <StatusBar style="dark" />
       <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
         {/* ACCOUNT CARD · a bounded, custom account box that floats on the white
-            surface (REQ10). All motion stays clipped inside the card (no leak). */}
+            surface. All motion stays clipped inside the card (no leak). */}
         <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg }}>
           <Animated.View entering={FadeInDown.duration(440)} style={{ borderRadius: radius.xl, overflow: 'hidden', backgroundColor: colors.flameDeep, ...shadow.card }}>
             {focused ? <FloatingParticles count={14} height={280} /> : null}
@@ -78,7 +84,7 @@ export default function Profile() {
                   </Tap>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Serif color={colors.white} style={{ fontSize: 21 }} numberOfLines={1}>{name}</Serif>
+                  <Serif color={colors.white} style={{ fontSize: 21 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{name}</Serif>
                   {full?.phone ? <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 13 }}>{full.phone}</TextBody> : null}
                   {email ? <TextBody color="rgba(255,255,255,0.8)" style={{ fontSize: 12.5 }} numberOfLines={1}>{email}</TextBody> : null}
                 </View>
@@ -99,75 +105,95 @@ export default function Profile() {
           </Animated.View>
         </View>
 
-        {/* QUICK CARDS · Wallet + Orders (solid, animated) */}
-        <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: spacing.lg, paddingTop: spacing.lg }}>
-          <QuickCard index={0} title="PYAAS WALLET" sub={rupee(balance)} icon="wallet" bg={colors.flameDeep} accent={colors.white} onPress={() => router.push('/(tabs)/wallet')} />
-          <QuickCard index={1} title="MY ORDERS" sub={orderCount ? `${orderCount} placed` : 'None yet'} icon="receipt" bg={colors.blue} accent={colors.white} onPress={() => router.push('/(tabs)/orders')} />
-        </View>
+        {/* Icon-tile sections · 3-column centered grids under each heading */}
+        <GridSection
+          delay={180}
+          title="Products and Subscriptions"
+          tiles={[
+            { icon: 'storefront-outline', label: 'Products', onPress: () => router.push('/(tabs)') },
+            { icon: 'infinite-outline', label: 'My Subscriptions', onPress: () => router.push('/subscriptions') },
+            { icon: 'airplane-outline', label: 'Set Vacations', onPress: () => router.push('/vacations') },
+          ]}
+        />
+        <GridSection
+          delay={220}
+          title="Orders and Billing"
+          tiles={[
+            { icon: 'receipt-outline', label: 'My Orders', onPress: () => router.push('/(tabs)/orders') },
+            { icon: 'swap-horizontal-outline', label: 'Transactions', onPress: () => router.push('/transactions') },
+            { icon: 'wallet-outline', label: 'Wallet', onPress: () => router.push('/(tabs)/wallet') },
+          ]}
+        />
+        <GridSection
+          delay={260}
+          title="Rewards"
+          tiles={[
+            { icon: 'gift-outline', label: 'Refer', onPress: () => router.push('/refer') },
+            { icon: 'pricetags-outline', label: 'Offer Zone', onPress: () => router.push('/coupons') },
+          ]}
+        />
 
-        <SectionGroup delay={240} title="Products & subscriptions">
-          <Row icon="storefront-outline" label="Products" onPress={() => router.push('/(tabs)')} />
-          <Row icon="infinite-outline" label="My subscriptions" onPress={() => router.push('/subscriptions')} />
-          <Row icon="airplane-outline" label="Set vacations" onPress={() => router.push('/vacations')} last />
-        </SectionGroup>
+        {/* Membership card · PYAAS Plus */}
+        <Animated.View entering={FadeInDown.duration(440).delay(300)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
+          <Tap onPress={() => router.push('/(tabs)/vip')} scaleTo={0.98} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.flameSoft, padding: spacing.md, ...shadow.soft }}>
+            <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="diamond" size={20} color={colors.gold} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <TextSemi style={{ fontSize: 15 }}>PYAAS Plus</TextSemi>
+              <TextBody style={{ fontSize: 12.5 }} numberOfLines={1}>
+                {plusActive ? `Active · ${plusDays} days left` : 'Join the club, save on every order'}
+              </TextBody>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
+          </Tap>
+        </Animated.View>
 
-        <SectionGroup delay={280} title="Orders & billing">
-          <Row icon="receipt-outline" label="My orders" onPress={() => router.push('/(tabs)/orders')} />
-          <Row icon="swap-horizontal-outline" label="Transactions" onPress={() => router.push('/transactions')} last />
-        </SectionGroup>
+        {/* Full-width list rows · icon, title, subtitle, chevron */}
+        <ListCard delay={340}>
+          <Row icon="person-outline" label="Account & Preferences" sub="Profile, addresses, delivery preferences" onPress={() => router.push('/profile-edit')} />
+          <Row icon="location-outline" label="Saved Addresses" sub="Where your mornings arrive" onPress={() => router.push('/addresses')} />
+          <Row icon="options-outline" label="Delivery Preferences" sub="Slot and drop instructions" onPress={() => router.push('/delivery-preferences')} />
+          <Row icon="flash-outline" label="Smart Recharge Autopay" sub="Auto top-up when the wallet runs low" onPress={() => router.push('/autopay')} last />
+        </ListCard>
 
-        <SectionGroup delay={300} title="PYAAS Plus & rewards">
-          <Row icon="diamond-outline" label={plusActive ? `PYAAS Plus · ${plusDays} days left` : 'Join PYAAS Plus'} onPress={() => router.push('/(tabs)/vip')} />
-          <Row icon="gift-outline" label="Refer & earn" onPress={() => router.push('/refer')} />
-          <Row icon="pricetags-outline" label="Coupons & offers" onPress={() => router.push('/coupons')} last />
-        </SectionGroup>
+        <ListCard delay={380}>
+          <Row icon="scan-outline" label="Know Your Milk" sub="Scan a pack, meet the farm behind it" onPress={() => router.push('/know-your-milk')} />
+          <Row icon="flask-outline" label="Test Reports" sub="View the latest quality check reports" onPress={() => router.push('/quality')} />
+          <Row icon="business-outline" label="Member Dairies" sub="The cooperative behind your milk" onPress={() => router.push('/farms')} last />
+        </ListCard>
 
-        <SectionGroup delay={330} title="Know your milk">
-          <Row icon="scan-outline" label="Scan a pack" onPress={() => router.push('/(tabs)/traceability')} />
-          <Row icon="qr-code-outline" label="Know your milk" onPress={() => router.push('/know-your-milk')} />
-          <Row icon="flask-outline" label="Quality dashboard" onPress={() => router.push('/quality')} />
-          <Row icon="business-outline" label="Member dairies" onPress={() => router.push('/farms')} last />
-        </SectionGroup>
+        <ListCard delay={420}>
+          <Row icon="chatbubble-ellipses-outline" label="Chat With Us" sub="We reply in minutes" onPress={() => router.push('/support-chat')} />
+          <Row icon="call-outline" label="Customer Care" sub={SUPPORT.careNumber} onPress={callCare} />
+          <Row icon="help-circle-outline" label="Help & FAQ" sub="Answers to common questions" onPress={() => router.push('/faq')} />
+          <Row icon="pulse-outline" label="Diagnostics" sub="Connection and app health" onPress={() => router.push('/diagnostics')} last />
+        </ListCard>
 
-        <SectionGroup delay={360} title="Account & preferences">
-          <Row icon="person-outline" label="My profile" onPress={() => router.push('/profile-edit')} />
-          <Row icon="location-outline" label="Saved addresses" onPress={() => router.push('/addresses')} />
-          <Row icon="options-outline" label="Delivery preferences" onPress={() => router.push('/delivery-preferences')} />
-          <Row icon="flash-outline" label="Smart Recharge autopay" onPress={() => router.push('/autopay')} last />
-        </SectionGroup>
+        <ListCard delay={460}>
+          <Row icon="information-circle-outline" label="About Us" sub="Who we are and what we stand for" onPress={() => router.push('/about-us')} />
+          <Row icon="ribbon-outline" label="FSSAI & Seller Details" sub="Licences and seller information" onPress={() => router.push('/fssai-details')} />
+          <Row icon="briefcase-outline" label="Business & Franchise" sub="Partner or vend with PYAAS" onPress={() => router.push('/business')} />
+          <Row icon="people-outline" label="Cooperative & Community" sub="Farmers first, always" onPress={() => router.push('/community')} />
+          <Row icon="leaf-outline" label="Sustainability" sub="Good for you, good for Earth" onPress={() => router.push('/sustainability')} last />
+        </ListCard>
 
-        <SectionGroup delay={390} title="About PYAAS">
-          <Row icon="information-circle-outline" label="About us" onPress={() => router.push('/about-us')} />
-          <Row icon="ribbon-outline" label="FSSAI & seller details" onPress={() => router.push('/fssai-details')} />
-          <Row icon="briefcase-outline" label="Business, franchise & vendor" onPress={() => router.push('/business')} />
-          <Row icon="people-outline" label="Cooperative & community" onPress={() => router.push('/community')} />
-          <Row icon="leaf-outline" label="Sustainability" onPress={() => router.push('/sustainability')} last />
-        </SectionGroup>
+        <ListCard delay={500}>
+          <Row icon="document-text-outline" label="Legal" sub="Privacy, terms and policies" onPress={() => router.push('/legal')} />
+          <Row icon="lock-closed-outline" label="Privacy Policy" sub="How we handle your data" onPress={() => router.push('/privacy-policy')} />
+          <Row icon="reader-outline" label="Terms & Conditions" sub="The fine print, in plain words" onPress={() => router.push('/terms')} />
+          <Row icon="cash-outline" label="Refund Policy" sub="When and how refunds work" onPress={() => router.push('/refund-policy')} />
+          <Row icon="close-circle-outline" label="Cancellation Policy" sub="Changing or cancelling an order" onPress={() => router.push('/cancellation-policy')} />
+          <Row icon="cube-outline" label="Shipping & Delivery Policy" sub="How deliveries reach you" onPress={() => router.push('/shipping-policy')} last />
+        </ListCard>
 
         {isAdmin ? (
-          <SectionGroup delay={410} title="Admin">
-            <Row icon="shield-checkmark-outline" label="Admin console" onPress={() => router.push('/admin')} last />
-          </SectionGroup>
+          <ListCard delay={520}>
+            <Row icon="shield-checkmark-outline" label="Admin Console" sub="Store operations" onPress={() => router.push('/admin')} last />
+          </ListCard>
         ) : null}
 
-        <SectionGroup delay={420} title="Help & support">
-          <Row icon="chatbubble-ellipses-outline" label="Chat with us" onPress={() => router.push('/support-chat')} />
-          <Row icon="pulse-outline" label="Diagnostics" onPress={() => router.push('/diagnostics')} />
-          <Row icon="call-outline" label={`Call customer care · ${SUPPORT.careNumber}`} onPress={callCare} />
-          <Row icon="chatbubbles-outline" label="Help & support" onPress={() => router.push('/support')} />
-          <Row icon="help-circle-outline" label="FAQ" onPress={() => router.push('/faq')} />
-          <Row icon="globe-outline" label="Visit pyaasdairy.in" onPress={() => Linking.openURL(SITE)} last />
-        </SectionGroup>
-
-        <SectionGroup delay={450} title="Policies">
-          <Row icon="lock-closed-outline" label="Privacy Policy" onPress={() => router.push('/privacy-policy')} />
-          <Row icon="document-text-outline" label="Terms & Conditions" onPress={() => router.push('/terms')} />
-          <Row icon="cash-outline" label="Refund Policy" onPress={() => router.push('/refund-policy')} />
-          <Row icon="close-circle-outline" label="Cancellation Policy" onPress={() => router.push('/cancellation-policy')} />
-          <Row icon="cube-outline" label="Shipping & Delivery Policy" onPress={() => router.push('/shipping-policy')} last />
-        </SectionGroup>
-
-        <Animated.View entering={FadeInDown.duration(440).delay(520)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg, gap: 12, alignItems: 'center' }}>
+        <Animated.View entering={FadeInDown.duration(440).delay(540)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg, gap: 12, alignItems: 'center' }}>
           <Button title="Sign out" variant="outline" onPress={signOut} style={{ alignSelf: 'stretch' }} />
           <Tap
             haptic={false}
@@ -186,8 +212,11 @@ export default function Profile() {
           >
             <TextMed color="#C0344D" style={{ fontSize: 14 }}>Delete account</TextMed>
           </Tap>
-          <Image source={require('../../assets/parag-logo.png')} style={{ width: 96, height: 96, opacity: 0.85 }} contentFit="contain" />
-          <TextBody style={{ fontSize: 11.5 }}>Pure, natural, good health. · v{Constants.expoConfig?.version ?? '1.0.0'}</TextBody>
+          <Tap haptic={false} onPress={() => Linking.openURL(SITE)} style={{ paddingVertical: 2 }}>
+            <TextBody style={{ fontSize: 12.5 }} color={colors.flameDeep}>pyaasdairy.in</TextBody>
+          </Tap>
+          <Image source={require('../../assets/parag-logo.png')} style={{ width: 84, height: 84, opacity: 0.85 }} contentFit="contain" />
+          <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>Version : {Constants.expoConfig?.version ?? '1.0.0'}</TextBody>
         </Animated.View>
       </Animated.ScrollView>
     </View>
@@ -195,48 +224,65 @@ export default function Profile() {
 }
 
 function StatChip({ label, value }: { label: string; value: string }) {
+  // The label ("SUBSCRIPTIONS") shrinks to fit its tile on ONE line instead of
+  // wrapping and clipping — every chip keeps the same height and baseline.
   return (
-    <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: radius.md, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }}>
-      <Text style={{ fontFamily: fonts.serifBlack, color: colors.white, fontSize: 18, ...tabular }}>{value}</Text>
-      <Text style={{ fontFamily: fonts.sansMed, color: 'rgba(255,255,255,0.8)', fontSize: 10, letterSpacing: 0.8 }}>{label}</Text>
+    <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: radius.md, paddingVertical: 10, paddingHorizontal: 6, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }}>
+      <Text style={{ fontFamily: fonts.serifBlack, color: colors.white, fontSize: 18, ...tabular }} numberOfLines={1}>{value}</Text>
+      <Text
+        style={{ fontFamily: fonts.sansMed, color: 'rgba(255,255,255,0.8)', fontSize: 10, letterSpacing: 0.4, textAlign: 'center' }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
 
-function QuickCard({ index, title, sub, icon, bg, accent, onPress }: { index: number; title: string; sub: string; icon: any; bg: string; accent: string; onPress: () => void }) {
+type GridTileDef = { icon: any; label: string; onPress: () => void };
+
+/** A section heading above a centered 3-column grid of icon+label tiles. */
+function GridSection({ title, tiles, delay }: { title: string; tiles: GridTileDef[]; delay: number }) {
   return (
-    <Animated.View entering={FadeInDown.duration(440).delay(180 + index * 70)} style={{ flex: 1 }}>
-      <Tap onPress={onPress} scaleTo={0.96}>
-        <View style={{ borderRadius: radius.lg, overflow: 'hidden', backgroundColor: bg, padding: spacing.md, height: 98, justifyContent: 'space-between', ...shadow.card }}>
-          <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name={icon} size={18} color={accent} />
-          </View>
-          <View>
-            <Text style={{ fontFamily: fonts.sansMed, color: 'rgba(255,255,255,0.8)', fontSize: 10.5, letterSpacing: 0.6 }}>{title}</Text>
-            <TextSemi color={colors.white} style={{ fontSize: 15.5, ...tabular }}>{sub}</TextSemi>
-          </View>
-        </View>
-      </Tap>
+    <Animated.View entering={FadeInDown.duration(440).delay(delay)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
+      <TextSemi style={{ fontSize: 14.5, marginBottom: 10 }}>{title}</TextSemi>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        {tiles.map((t) => (
+          <Tap key={t.label} haptic={false} onPress={t.onPress} scaleTo={0.96} style={{ flex: 1, alignItems: 'center', gap: 8, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, paddingVertical: spacing.md, paddingHorizontal: 6, ...shadow.soft }}>
+            <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name={t.icon} size={20} color={colors.flameDeep} />
+            </View>
+            <TextMed style={{ fontSize: 12, textAlign: 'center' }} numberOfLines={2}>{t.label}</TextMed>
+          </Tap>
+        ))}
+        {/* Pad short rows so 2 tiles keep the 3-column rhythm */}
+        {tiles.length < 3 ? Array.from({ length: 3 - tiles.length }, (_, i) => <View key={`pad-${i}`} style={{ flex: 1 }} />) : null}
+      </View>
     </Animated.View>
   );
 }
 
-function SectionGroup({ title, delay, children }: { title: string; delay: number; children: React.ReactNode }) {
+/** A white card of stacked full-width rows. */
+function ListCard({ children, delay }: { children: React.ReactNode; delay: number }) {
   return (
     <Animated.View entering={FadeInDown.duration(440).delay(delay)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
-      <TextMed color={colors.inkMute} style={{ fontSize: 12, letterSpacing: 0.4, marginBottom: 8, marginLeft: 4, textTransform: 'uppercase' }}>{title}</TextMed>
       <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.soft }}>{children}</View>
     </Animated.View>
   );
 }
 
-function Row({ icon, label, onPress, last }: { icon: any; label: string; onPress: () => void; last?: boolean }) {
+function Row({ icon, label, sub, onPress, last }: { icon: any; label: string; sub?: string; onPress: () => void; last?: boolean }) {
   return (
     <Tap haptic={false} onPress={onPress} scaleTo={0.98} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: spacing.md, paddingVertical: 12, borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line }}>
-      <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name={icon} size={17} color={colors.flameDeep} />
       </View>
-      <TextMed style={{ flex: 1, fontSize: 15 }}>{label}</TextMed>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <TextMed style={{ fontSize: 15 }} numberOfLines={1}>{label}</TextMed>
+        {sub ? <TextBody style={{ fontSize: 12 }} numberOfLines={1}>{sub}</TextBody> : null}
+      </View>
       <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
     </Tap>
   );

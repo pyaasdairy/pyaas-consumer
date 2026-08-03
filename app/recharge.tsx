@@ -384,7 +384,9 @@ export default function Recharge() {
         <View style={{ flexDirection: 'row', backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.flame, overflow: 'hidden', ...shadow.soft }}>
           {[
             { l: 'Amount to pay', v: rupee(value), c: colors.ink },
-            { l: bonus?.kind === 'cashback' ? 'Cashback' : 'Bonus', v: bonus ? `+${rupee(bonus.bonus)}` : '—', c: bonus ? colors.flameDeep : colors.inkMute },
+            // Bonus cell only when one actually exists (recharge bonuses retired:
+            // the wallet is credited exactly what is paid).
+            ...(bonus && bonus.bonus > 0 ? [{ l: bonus.kind === 'cashback' ? 'Cashback' : 'Bonus', v: `+${rupee(bonus.bonus)}`, c: colors.flameDeep }] : []),
             { l: 'To be credited', v: rupee(credited), c: colors.blue, bold: true },
           ].map((s, i) => (
             <View key={s.l} style={{ flex: 1, alignItems: 'center', paddingVertical: 16, borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: colors.line, backgroundColor: s.bold ? colors.blueSoft : 'transparent' }}>

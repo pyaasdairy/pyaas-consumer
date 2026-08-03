@@ -7,6 +7,7 @@ import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import { DEFAULT_REGION, getDeviceCoords, type Coords } from '../lib/location';
+import { placeLabelFromCoords } from '../lib/userLocation';
 
 /**
  * MAP PICKER — a full-screen map with a DRAGGABLE PIN so the member sets their
@@ -79,6 +80,9 @@ export default function MapPicker({
   // the WebView's onError does NOT catch a failed subresource, so we time out.
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [picked, setPicked] = useState<Coords | null>(initial ?? null);
+  // Human-readable address of the CURRENT pin, shown above Confirm so the
+  // member always sees exactly which location they are about to confirm.
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   // Whether the member has actually PLACED the pin (dragged/tapped) or we have a
   // real point (a caller-supplied `initial`, or their device GPS). If not, the pin
   // is only sitting on the auto-seeded map centre — Confirm must stay disabled so a
@@ -143,6 +147,18 @@ export default function MapPicker({
       }
     } catch { /* ignore malformed */ }
   }
+
+  // Debounced reverse-geocode of the pin: the label follows every drag/tap.
+  useEffect(() => {
+    if (!picked) { setPlaceLabel(null); return; }
+    let on = true;
+    const t = setTimeout(() => {
+      placeLabelFromCoords(picked)
+        .then((l) => { if (on) setPlaceLabel(l); })
+        .catch(() => { /* keep the last label */ });
+    }, 350);
+    return () => { on = false; clearTimeout(t); };
+  }, [picked]);
 
   async function locateMe() {
     setLocating(true);
@@ -219,6 +235,15 @@ export default function MapPicker({
 
         {/* Footer actions */}
         <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, gap: 10, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.line }}>
+          {/* The location being confirmed, in words — never a silent pin. */}
+          {picked ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.cream, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 10 }}>
+              <Ionicons name="location" size={16} color={colors.flameDeep} />
+              <TextBody style={{ flex: 1, fontSize: 13 }} color={colors.ink} numberOfLines={2}>
+                {placeLabel ?? 'Finding this address…'}
+              </TextBody>
+            </View>
+          ) : null}
           <Tap onPress={locateMe} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.flameDeep, backgroundColor: colors.white }}>
             {locating ? <ActivityIndicator size="small" color={colors.flameDeep} /> : <Ionicons name="locate" size={18} color={colors.flameDeep} />}
             <TextSemi color={colors.flameDeep} style={{ fontSize: 14.5 }}>{locating ? 'Finding you…' : 'Use my current location'}</TextSemi>

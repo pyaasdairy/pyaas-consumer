@@ -98,7 +98,7 @@ export function StartDatePicker({ value, minISO, onConfirm, onClose }: {
             ))}
           </View>
 
-          <TextBody style={{ fontSize: 12, textAlign: 'center', marginTop: 2 }}>Order by 9 PM · delivered by 7 AM</TextBody>
+          <TextBody style={{ fontSize: 12, textAlign: 'center', marginTop: 2 }}>Order by 11:59 PM · delivered by 7 AM</TextBody>
 
           {/* Done */}
           <Tap onPress={() => onConfirm(sel)} style={{ alignSelf: 'center', marginTop: 2 }}>

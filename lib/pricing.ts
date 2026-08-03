@@ -17,19 +17,21 @@ export function cartTotals(lines: { id: string; price: number; qty: number }[]):
 }
 
 // ── WALLET RECHARGE TIERS ────────────────────────────────────────────────────
-// Instant bonus when the customer tops up their PYAAS wallet. Kept in sync with
-// the parag-api wallet recharge logic when the backend is live.
+// NO FREE MONEY on top-ups: every tier credits exactly what was paid. The tier
+// list only powers the quick-pick amount grid; `bonus` stays in the type for
+// call-site compatibility but is ALWAYS 0 and rechargeBonus() always returns
+// null, so no promo credit is ever granted on a recharge.
 export type RechargeTier = { amount: number; bonus: number; kind: 'instant' | 'cashback'; label: string };
 export const RECHARGE_TIERS: RechargeTier[] = [
-  { amount: 200, bonus: 50, kind: 'instant', label: 'Add ₹200 · ₹50 free' },
-  { amount: 500, bonus: 100, kind: 'instant', label: 'Add ₹500 · ₹100 free' },
-  { amount: 1000, bonus: 250, kind: 'instant', label: 'Add ₹1000 · ₹250 free' },
-  { amount: 10000, bonus: 1000, kind: 'cashback', label: 'Add ₹10,000 · ₹1,000 cashback' },
+  { amount: 200, bonus: 0, kind: 'instant', label: 'Add ₹200' },
+  { amount: 500, bonus: 0, kind: 'instant', label: 'Add ₹500' },
+  { amount: 1000, bonus: 0, kind: 'instant', label: 'Add ₹1000' },
+  { amount: 10000, bonus: 0, kind: 'instant', label: 'Add ₹10,000' },
 ];
 
-/** Bonus for an arbitrary custom recharge amount (picks the best tier met). */
-export function rechargeBonus(amount: number): RechargeTier | null {
-  return [...RECHARGE_TIERS].reverse().find((t) => amount >= t.amount) ?? null;
+/** Recharge bonuses are retired: always null (you get exactly what you add). */
+export function rechargeBonus(_amount: number): RechargeTier | null {
+  return null;
 }
 
 export const LOW_BALANCE_THRESHOLD = 200; // ₹ below which we nudge a recharge

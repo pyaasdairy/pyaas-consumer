@@ -171,7 +171,9 @@ export default function Payment() {
       <View style={{ flexDirection: 'row', backgroundColor: colors.milk, borderBottomWidth: 1, borderBottomColor: colors.line }}>
         {[
           { l: 'You pay', v: rupee(value), c: colors.ink },
-          { l: bonus?.kind === 'cashback' ? 'Cashback' : 'Bonus', v: rupee(bonus?.bonus ?? 0), c: colors.flameDeep },
+          // Bonus cell only when one actually exists (recharge bonuses retired:
+          // the wallet is credited exactly what is paid).
+          ...(bonus && bonus.bonus > 0 ? [{ l: bonus.kind === 'cashback' ? 'Cashback' : 'Bonus', v: rupee(bonus.bonus), c: colors.flameDeep }] : []),
           { l: 'Credited', v: rupee(credited), c: colors.blue },
         ].map((s, i) => (
           <View key={s.l} style={{ flex: 1, alignItems: 'center', paddingVertical: 14, borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: colors.line }}>

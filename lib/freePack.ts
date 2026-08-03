@@ -49,7 +49,8 @@ export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
  * banner + pop-up re-arm for each account and re-appear on reopen until claimed.
  */
 
-export const FREE_PACK_PRODUCT_ID = 'taaza-500ml';
+// The free-trial pack is PYAAS Gold FULL CREAM 500 ml (image assets/products/gold.png).
+export const FREE_PACK_PRODUCT_ID = 'gold-500ml';
 /** ₹/day of the funnel SKU (falls back to the launch price if the SKU moves). */
 export const FREE_PACK_DAILY_PRICE = getProduct(FREE_PACK_PRODUCT_ID)?.price ?? 29;
 /** Promo credit granted on claim: the value of the TWO FREE days (2 × ₹29). */
@@ -125,7 +126,7 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
   // one-per-device gate with no money behind it.
   await addPromoCredit(FREE_PACK_VALUE, {
     ref_id: `trial_2plus2:${p}`,
-    remark: `Trial · ${TRIAL_FREE_DAYS} free days of PYAAS Taaza toned milk 500 ml`,
+    remark: `Trial · ${TRIAL_FREE_DAYS} free days of PYAAS Gold full cream milk 500 ml`,
   });
   // Record the claim (device-global) only now that the credit path succeeded.
   await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {

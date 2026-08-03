@@ -349,7 +349,7 @@ export default function Vip() {
               const next = await cancelVip();
               setM(next);
               haptics.success();
-              setMsg(`Plus cancelled — you keep your perks for ${days} more day${days === 1 ? '' : 's'}.`);
+              setMsg(`Plus cancelled, you keep your perks for ${days} more day${days === 1 ? '' : 's'}.`);
             } catch {
               setMsg('Could not cancel just now. Please try again.');
             }
@@ -387,8 +387,8 @@ export default function Vip() {
                 ? (onTrial
                     ? `Your free trial is live, ${days} day${days === 1 ? '' : 's'} of Plus left.`
                     : m?.status === 'cancelled'
-                      ? `Plus cancelled — ${days} day${days === 1 ? '' : 's'} of perks left.`
-                      : `You're a Plus member — ${days} day${days === 1 ? '' : 's'} left this period.`)
+                      ? `Plus cancelled, ${days} day${days === 1 ? '' : 's'} of perks left.`
+                      : `You're a Plus member, ${days} day${days === 1 ? '' : 's'} left this period.`)
                 : 'Join PYAAS Plus'}
             </TextSemi>
             {!active ? (

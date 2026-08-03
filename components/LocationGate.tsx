@@ -165,7 +165,7 @@ export default function LocationGate() {
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: spacing.lg, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Serif style={{ fontSize: 23 }}>{loc ? 'Change location' : 'Where should we deliver?'}</Serif>
-                <TextBody style={{ fontSize: 12.5, marginTop: 2 }} color={colors.inkSoft}>{loc ? `Delivering to ${loc.city}` : 'Set your delivery location — change it anytime.'}</TextBody>
+                <TextBody style={{ fontSize: 12.5, marginTop: 2 }} color={colors.inkSoft}>{loc ? `Delivering to ${loc.city}` : 'Set your delivery location, change it anytime.'}</TextBody>
               </View>
               {!needsLocation ? (
                 <Tap haptic={false} onPress={close} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
@@ -184,7 +184,7 @@ export default function LocationGate() {
                 ) : null}
               </View>
               {searchErr ? <TextMed style={{ fontSize: 11.5, marginTop: 6 }} color={colors.flameDeep}>{searchErr}</TextMed> : null}
-              {!isPlacesEnabled() ? <TextMed style={{ fontSize: 11, marginTop: 6 }} color={colors.inkMute}>Address search is unavailable — pick a city below.</TextMed> : null}
+              {!isPlacesEnabled() ? <TextMed style={{ fontSize: 11, marginTop: 6 }} color={colors.inkMute}>Address search is unavailable, pick a city below.</TextMed> : null}
             </View>
 
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: 8, paddingBottom: spacing.md }} showsVerticalScrollIndicator={false}>
@@ -219,7 +219,7 @@ export default function LocationGate() {
                       {locating ? <ActivityIndicator size="small" color={colors.flameDeep} /> : <Ionicons name="chevron-forward" size={16} color={colors.flameDeep} />}
                     </View>
                   </Tap>
-                  {permissionDenied ? <TextMed style={{ fontSize: 12 }} color={colors.flameDeep}>Location is off — search above or pick a city below.</TextMed> : null}
+                  {permissionDenied ? <TextMed style={{ fontSize: 12 }} color={colors.flameDeep}>Location is off, search above or pick a city below.</TextMed> : null}
                   <TextMed style={{ fontSize: 12, marginTop: 8, marginBottom: 2 }} color={colors.inkMute}>Popular cities</TextMed>
                   {CITIES.map((c) => {
                     const active = !!loc && sameCity(loc.city, c.name);

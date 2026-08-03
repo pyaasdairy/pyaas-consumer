@@ -7,6 +7,8 @@ import { Serif, TextBody, TextMed, TextSemi } from '../components/ui';
 import { colors, radius, spacing } from '../lib/theme';
 import { isBackendConfigured, tokenPresence } from '../lib/apiClient';
 import { getUserId } from '../lib/session';
+import { getSmsAppHash, hasNativeConvenience } from '../lib/nativeConvenience';
+import { isMsg91Configured } from '../lib/msg91';
 import { clearDiag, diagSeverity, getDiagEvents, subscribeDiag, type DiagEvent } from '../lib/diag';
 
 const SEV_COLOR: Record<'error' | 'warn' | 'info', string> = {
@@ -31,14 +33,18 @@ export default function DiagnosticsScreen() {
   const [events, setEvents] = useState<DiagEvent[]>(getDiagEvents());
   const [tokens, setTokens] = useState<{ access: boolean; refresh: boolean } | null>(null);
   const [uid, setUid] = useState<string | null>(null);
+  const [smsHash, setSmsHash] = useState<string | null>(null);
 
   useEffect(() => subscribeDiag(() => setEvents([...getDiagEvents()])), []);
   useEffect(() => {
     void tokenPresence().then(setTokens);
     void getUserId().then(setUid);
   }, [events.length]);
+  useEffect(() => {
+    void getSmsAppHash().then(setSmsHash);
+  }, []);
 
-  const apiUrl = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/^https?:\/\//, '') || '(not set — local mode)';
+  const apiUrl = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/^https?:\/\//, '') || '(not set, local mode)';
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
@@ -68,6 +74,17 @@ export default function DiagnosticsScreen() {
             Access token: {tokens ? (tokens.access ? 'present' : 'absent') : '…'} · Refresh token:{' '}
             {tokens ? (tokens.refresh ? 'present' : 'absent') : '…'}
           </TextBody>
+          <TextBody style={{ fontSize: 12.5 }} color={colors.inkMute}>
+            OTP provider: {isBackendConfigured() ? 'backend' : isMsg91Configured() ? 'MSG91' : 'offline dev'} · Native login helpers: {hasNativeConvenience() ? 'present' : 'absent'}
+          </TextBody>
+          {/* THE auto-read key: the OTP SMS template must END with this 11-char
+              hash (and start with "<#>") or SMS Retriever silently ignores it.
+              The hash is derived from package + SIGNING KEY, so a Play-signed
+              build has a DIFFERENT hash than this test build — read it from a
+              build signed with the same key the SMS will target. */}
+          <TextBody style={{ fontSize: 12.5 }} color={colors.inkMute} selectable>
+            SMS Retriever app hash (put at the END of the OTP template): {smsHash ?? 'unavailable in this build'}
+          </TextBody>
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
@@ -82,7 +99,7 @@ export default function DiagnosticsScreen() {
         {events.length === 0 ? (
           <TextBody style={{ fontSize: 13 }} color={colors.inkMute}>
             No errors captured this session. Events appear here the moment any API call fails
-            (status, network or auth) — check this screen first when something looks wrong.
+            (status, network or auth). Check this screen first when something looks wrong.
           </TextBody>
         ) : (
           events.map((e, i) => (

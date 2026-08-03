@@ -80,6 +80,28 @@ export async function geoAddress(c: Coords): Promise<{ city: string | null; pinc
   }
 }
 
+/**
+ * Reverse-geocode a coordinate to a short human-readable place label
+ * ("Nehru Marg, Gomti Nagar, Lucknow 226010") so screens can SHOW the member
+ * exactly which spot they are confirming — never a silent, unexplained pin.
+ * Best-effort; null when the OS geocoder has nothing.
+ */
+export async function placeLabelFromCoords(c: Coords): Promise<string | null> {
+  try {
+    const res = await Location.reverseGeocodeAsync({ latitude: c.lat, longitude: c.lng });
+    const r = res?.[0] as (typeof res)[0] & { subregion?: string } | undefined;
+    if (!r) return null;
+    const line = [r.name || r.street, r.district || r.subregion, r.city || r.region]
+      .filter((p): p is string => !!p && p.trim().length > 0)
+      .filter((p, i, arr) => arr.indexOf(p) === i) // drop duplicates ("Lucknow, Lucknow")
+      .join(', ');
+    const label = [line, r.postalCode].filter(Boolean).join(' ');
+    return label.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 type State = {
   loc: UserLoc | null;
   /** true once hydrate() has run (home waits for this before prompting). */

@@ -10,7 +10,8 @@ import { colors, radius, spacing, shadow, rupee } from '../lib/theme';
 import { Serif, TextBody, TextSemi, Tap } from './ui';
 import { todayISO, addDaysISO, parseISO } from '../lib/dates';
 import { listSubscriptions, deliveriesForDay, type Subscription } from '../lib/subscriptions';
-import { PRODUCTS, getProduct } from '../constants/products';
+import { getProduct } from '../constants/products';
+import { getMergedProducts } from '../lib/catalog';
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WD_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -146,7 +147,7 @@ export function DeliveryStrip() {
             </Tap>
           </View>
           <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 8, gap: 8 }} showsVerticalScrollIndicator={false}>
-            {PRODUCTS.filter((p) => !p.outOfStock).map((p) => (
+            {getMergedProducts().filter((p) => !p.outOfStock).map((p) => (
               <Tap key={p.id} onPress={() => pickProduct(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 10, ...shadow.soft }}>
                 <View style={{ width: 52, height: 52, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                   <Image source={p.image} style={{ width: '82%', height: '82%' }} contentFit="contain" />

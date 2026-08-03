@@ -14,7 +14,6 @@ import {
 } from '@expo-google-fonts/bricolage-grotesque';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { setOnAuthExpired } from '../lib/apiClient';
-import { signOut } from '../lib/session';
 import { colors } from '../lib/theme';
 import { Splash } from '../components/Splash';
 import { AppErrorBoundary } from '../components/AppErrorBoundary';
@@ -26,14 +25,17 @@ function RootNavigator() {
   const [minSplash, setMinSplash] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
 
-  // PERMANENT auth-expiry handling: when the API layer declares the stored
-  // session dead (refresh rejected / tokenless 401 — e.g. a server key
-  // rotation), sign the LOCAL session out too. The gate below then routes to
-  // the sign-in screen — no more half-signed-in screens printing raw
-  // "authentication required" errors.
+  // PERSISTENT SESSION: a member who signed in STAYS signed in. When the API
+  // layer declares the stored backend tokens dead (refresh rejected / tokenless
+  // 401 after a server key rotation), we deliberately do NOT sign the local
+  // session out any more — that was silently booting returning users to the
+  // login screen. The tokens are already cleared by the api client; the app
+  // keeps running on the local data layer and the next OTP sign-in re-mints
+  // tokens. Only an explicit "Sign out" (or account deletion) ends the session.
   useEffect(() => {
     setOnAuthExpired(() => {
-      void signOut();
+      // Keep the local session alive; nothing to do beyond the client's own
+      // token cleanup. (Never call signOut() here.)
     });
   }, []);
   const [maxWaited, setMaxWaited] = useState(false);

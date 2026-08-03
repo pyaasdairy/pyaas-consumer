@@ -52,10 +52,13 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD' }: 
 
   return (
     <View style={{ flex: 1 }}>
+      {/* flex:1 + fixed-height inner zones: every card in a row (and across rows)
+          renders the same height — the grid stays perfectly symmetric whether a
+          product has one size, three sizes, a rating or none. */}
       <Tap
         haptic={false}
         onPress={open}
-        style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.sm, ...shadow.soft }}
+        style={{ flex: 1, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.sm, ...shadow.soft }}
       >
         <View style={{ backgroundColor: colors.wash, borderRadius: radius.md, height: 140, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
           {/* Only the pack-shot greys out of stock; the badge + heart stay crisp. */}
@@ -115,42 +118,41 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD' }: 
           ) : null}
         </View>
 
-        <View style={{ paddingHorizontal: 4, paddingTop: 10 }}>
-          <Serif style={{ fontSize: 17 }} numberOfLines={1}>{selected.name}</Serif>
+        <View style={{ flex: 1, paddingHorizontal: 4, paddingTop: 10 }}>
+          <Serif style={{ fontSize: 17, lineHeight: 21 }} numberOfLines={1}>{selected.name}</Serif>
 
-          {/* Size selector (segmented ≤3 / dropdown >3). Single-variant bases show
-              the variant label instead, exactly as before. */}
-          {vs.length > 1 ? (
-            <View style={{ marginTop: 7 }}>
+          {/* Size zone · FIXED height whether it holds the segmented selector, a
+              plain variant label or nothing — no card ever grows past another. */}
+          <View style={{ height: 30, marginTop: 5, justifyContent: 'center' }}>
+            {vs.length > 1 ? (
               <VariantSelector variants={vs} selectedId={selectedId} onSelect={setSelectedId} compact />
-            </View>
-          ) : (
-            <TextBody style={{ fontSize: 12.5, marginTop: 2 }} numberOfLines={1}>{selected.variant}</TextBody>
-          )}
+            ) : (
+              <TextBody style={{ fontSize: 12.5 }} numberOfLines={1}>{selected.variant}</TextBody>
+            )}
+          </View>
 
-          {selected.rating ? (
-            <View style={{ marginTop: 5 }}>
-              <Stars rating={selected.rating} count={selected.ratingCount} size={11} />
-            </View>
-          ) : null}
+          {/* Rating zone · always reserved so rated and unrated cards line up. */}
+          <View style={{ height: 18, justifyContent: 'center', marginTop: 2 }}>
+            {selected.rating ? <Stars rating={selected.rating} count={selected.ratingCount} size={11} /> : null}
+          </View>
 
           {/* Price on its own line · the struck MRP can never collide with the button */}
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 6, marginBottom: 10, height: 24 }}>
             <Serif style={{ fontSize: 18, ...tabular }} color={colors.ink} numberOfLines={1}>{rupee(selected.price)}</Serif>
             {selected.mrp ? <TextBody style={{ fontSize: 12, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute} numberOfLines={1}>{rupee(selected.mrp)}</TextBody> : null}
           </View>
 
-          {/* Full-width "Add" button below the price → opens subscription setup for
-              the SELECTED variant. An out-of-stock selection greys it out. */}
+          {/* Full-width "Add" button, pinned to the card's bottom edge so every
+              CTA in the grid sits on the same line. */}
           {selected.outOfStock ? (
-            <View style={{ marginTop: 10, alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: radius.pill, backgroundColor: colors.wash, borderWidth: 1.5, borderColor: colors.line }}>
+            <View style={{ marginTop: 'auto', alignItems: 'center', justifyContent: 'center', height: 38, borderRadius: radius.pill, backgroundColor: colors.wash, borderWidth: 1.5, borderColor: colors.line }}>
               <TextSemi color={colors.inkMute} style={{ fontSize: 13, letterSpacing: 0.5 }}>OUT OF STOCK</TextSemi>
             </View>
           ) : (
             <Tap
               onPress={open}
               scaleTo={0.95}
-              style={{ marginTop: 10, alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: radius.pill, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flameDeep, ...shadow.soft }}
+              style={{ marginTop: 'auto', alignItems: 'center', justifyContent: 'center', height: 38, borderRadius: radius.pill, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flameDeep, ...shadow.soft }}
             >
               <TextSemi numberOfLines={1} color={colors.flameDeep} style={{ fontSize: 14, letterSpacing: 0.5 }}>{ctaLabel}</TextSemi>
             </Tap>

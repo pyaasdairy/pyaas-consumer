@@ -30,8 +30,10 @@ export function VariantSelector({
 }) {
   if (variants.length <= 1) return null;
   if (variants.length <= 3) {
+    // Compact (grid-card) mode stays on ONE row — wrapping to a second row made
+    // three-size cards taller than two-size ones and broke the grid's symmetry.
     return (
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: compact ? 5 : 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: compact ? 'nowrap' : 'wrap', gap: compact ? 5 : 8 }}>
         {variants.map((v) => {
           const active = v.id === selectedId;
           const oos = !!v.outOfStock;
@@ -43,6 +45,7 @@ export function VariantSelector({
               accessibilityState={{ selected: active }}
               onPress={() => { if (!active) { haptics.select(); onSelect(v.id); } }}
               style={{
+                flexShrink: 1,
                 paddingHorizontal: compact ? 9 : 13,
                 paddingVertical: compact ? 5 : 8,
                 borderRadius: radius.pill,

@@ -16,6 +16,7 @@ import { refreshCatalog, getMergedProducts } from '../lib/catalog';
 import { useServiceability, joinWaitlist } from '../lib/serviceability';
 import { useDeliveryMode } from '../lib/deliveryMode';
 import { useAuth } from '../lib/auth';
+import { purchasesUnlocked, onWalletUnlocked, WALLET_UNLOCK_TARGET, STARTER_FREE_DAYS } from '../lib/walletGate';
 
 // Fees we SHOW (for transparency, like a quick-commerce bill) but WAIVE — so the
 // amount payable stays item-total + delivery. Handling + small-cart are on us.
@@ -57,15 +58,28 @@ export default function Cart() {
   const [placing, setPlacing] = useState(false);
   const [err, setErr] = useState('');
   const [waitlisted, setWaitlisted] = useState(false);
+  // ₹500 GATE: ordering stays locked until the wallet has been funded to the
+  // target once. `null` = still resolving (treat as unlocked so the CTA never
+  // flashes the lock for an already-unlocked member).
+  const [unlocked, setUnlocked] = useState<boolean | null>(null);
+
+  const recheckUnlock = useCallback(() => {
+    purchasesUnlocked(useWallet.getState().balance)
+      .then(setUnlocked)
+      .catch(() => setUnlocked(true)); // fail-open: never brick checkout on a read error
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void refreshWallet();
+      void refreshWallet().then(recheckUnlock);
+      recheckUnlock();
       void checkSvc();
       // Re-check live stock so a line that went OOS since the cart was opened is
       // flagged (and dropped from the bill) before the user can pay for it.
       void refreshCatalog().then(() => revalidateStock(getMergedProducts()));
-    }, [refreshWallet, checkSvc, revalidateStock])
+      const off = onWalletUnlocked(() => setUnlocked(true));
+      return off;
+    }, [refreshWallet, checkSvc, revalidateStock, recheckUnlock])
   );
 
   const hasOutOfStock = lines.some((l) => l.outOfStock);
@@ -94,6 +108,21 @@ export default function Cart() {
     router.push(`/recharge?${qs}`);
   }
 
+  // Locked account: route to a top-up that brings the wallet to the ₹500 target.
+  // The unlock (and the 7-day starter plan) fires automatically when it lands.
+  const unlockShort = Math.max(0, WALLET_UNLOCK_TARGET - balance);
+  function goUnlock() {
+    haptics.press();
+    const qs = new URLSearchParams({
+      min: String(Math.ceil(unlockShort)),
+      amount: String(Math.max(100, Math.ceil(unlockShort / 50) * 50)),
+      returnTo: '/cart',
+      reason: `to unlock ordering, your first ${STARTER_FREE_DAYS} days of milk are on us`,
+    }).toString();
+    router.push(`/recharge?${qs}`);
+  }
+  const locked = unlocked === false;
+
   async function joinZoneWaitlist() {
     const s = useServiceability.getState();
     try {
@@ -110,6 +139,7 @@ export default function Cart() {
 
   async function place() {
     if (placing || orderable.length === 0 || blocked) return;
+    if (locked) { goUnlock(); return; }
     setPlacing(true);
     setErr('');
     try {
@@ -288,18 +318,34 @@ export default function Cart() {
 
       {/* Sticky wallet-first CTA */}
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: 'rgba(255,255,255,0.97)', borderTopWidth: 1, borderTopColor: colors.line, gap: 8 }}>
-        {short > 0 && !blocked ? (
+        {locked && !blocked ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
+            <Ionicons name="gift" size={16} color={colors.flameDeep} />
+            <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>
+              Fund your wallet to {rupee(WALLET_UNLOCK_TARGET)} to unlock ordering. Your 7-day starter plan begins right away, first {STARTER_FREE_DAYS} days on us.
+            </TextMed>
+          </View>
+        ) : null}
+        {!locked && short > 0 && !blocked ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
             <Ionicons name="wallet" size={16} color={colors.flameDeep} />
             <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>Low balance. Recharge {rupee(short)} to pay for this order.</TextMed>
           </View>
         ) : null}
 
-        <Tap onPress={blocked ? undefined : short > 0 ? goRecharge : place} disabled={placing || blocked || orderable.length === 0}>
+        <Tap onPress={blocked ? undefined : locked ? goUnlock : short > 0 ? goRecharge : place} disabled={placing || blocked || orderable.length === 0}>
           <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: blocked || orderable.length === 0 ? colors.inkMute : colors.flameDeep, height: 56, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: placing ? 0.85 : 1, ...shadow.card }}>
             {placing ? <ActivityIndicator color={colors.white} /> : null}
             <TextSemi color={colors.white} style={{ fontSize: 16.5, ...tabular }}>
-              {blocked ? 'Unavailable in your area' : placing ? 'Placing order…' : short > 0 ? `Recharge ${rupee(short)} to continue` : `Place order · ${rupee(total)}`}
+              {blocked
+                ? 'Unavailable in your area'
+                : placing
+                  ? 'Placing order…'
+                  : locked
+                    ? `Add ${rupee(unlockShort)} to unlock ordering`
+                    : short > 0
+                      ? `Recharge ${rupee(short)} to continue`
+                      : `Place order · ${rupee(total)}`}
             </TextSemi>
             {!placing && !blocked ? <ShineSweep dur={2400} travel={340} bandWidth={70} angle="16deg" delay={400} /> : null}
           </View>

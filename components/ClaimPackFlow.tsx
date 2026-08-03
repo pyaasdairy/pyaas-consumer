@@ -12,13 +12,14 @@ import { cityFromCoords } from '../lib/userLocation';
 import MapPicker from './MapPicker';
 import { addAddress } from '../lib/api';
 import { claimFreePack, shouldShowFreePack, snoozeFreePack, FREE_PACK_DAILY_PRICE, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
-import { minWalletToStart, MIN_SUB_DAYS_COVER } from '../lib/subscriptions';
+import { minWalletToStart } from '../lib/subscriptions';
+import { WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 import { formatDeliveryWindow } from '../lib/dates';
 import { useAuth } from '../lib/auth';
 import { useUserLocation } from '../lib/userLocation';
 import { useWallet } from '../store/wallet';
 
-const TAAZA = require('../assets/products/pyaas-toned-pouch.png');
+const FREE_PACK_IMG = require('../assets/products/gold.png');
 const DELIVERY_WINDOW = '06:00-07:00'; // matches placeOrder's stamped window
 
 // 'done' is reached ONLY on a real successful claim. A signed-out member lands
@@ -26,8 +27,9 @@ const DELIVERY_WINDOW = '06:00-07:00'; // matches placeOrder's stamped window
 // 'ineligible' with the gate's reason — never a false delivery promise.
 type Step = 'intro' | 'address' | 'confirm' | 'fund' | 'done' | 'signin' | 'ineligible';
 
-/** Minimum wallet balance (rupees) needed before the trial subscription starts. */
-const MIN_START_BALANCE = minWalletToStart(FREE_PACK_DAILY_PRICE);
+/** Minimum wallet balance (rupees) needed before the trial subscription starts.
+ *  Matches the app-wide ₹500 unlock target so the two funnels never disagree. */
+const MIN_START_BALANCE = Math.max(minWalletToStart(FREE_PACK_DAILY_PRICE), WALLET_UNLOCK_TARGET);
 
 /**
  * "Start your subscription" onboarding: the 2 + 2 trial funnel. Claiming
@@ -229,15 +231,16 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg }}>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, overflow: 'hidden', maxHeight: '88%', ...shadow.card }}>
-          {/* Flame header with the Taaza pack shot */}
-          <View style={{ backgroundColor: colors.flameDeep, alignItems: 'center', paddingTop: spacing.lg, paddingBottom: spacing.md, overflow: 'hidden' }}>
-            <View style={{ position: 'absolute', top: 12, right: 12 }}>
-              <Tap haptic={false} onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="close" size={18} color={colors.white} />
+          {/* White header: the transparent Taaza pack shot merges into the sheet,
+              so only the blue packet reads as an image (no pink block behind it). */}
+          <View style={{ backgroundColor: colors.white, alignItems: 'center', paddingTop: spacing.lg, paddingBottom: spacing.md, overflow: 'hidden' }}>
+            <View style={{ position: 'absolute', top: 12, right: 12, zIndex: 2 }}>
+              <Tap haptic={false} onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="close" size={18} color={colors.inkSoft} />
               </Tap>
             </View>
-            <Image source={TAAZA} style={{ width: 120, height: 120 }} contentFit="contain" />
-            <Serif color={colors.white} style={{ fontSize: 22, textAlign: 'center', marginTop: 4 }}>
+            <Image source={FREE_PACK_IMG} style={{ width: 130, height: 130 }} contentFit="contain" />
+            <Serif color={colors.ink} style={{ fontSize: 22, textAlign: 'center', marginTop: 4 }}>
               {step === 'done'
                 ? 'Congrats, you are all set'
                 : step === 'ineligible'
@@ -248,10 +251,10 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                       ? 'Add funds to start'
                       : `Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} FREE`}
             </Serif>
-            <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
+            <TextBody color={colors.inkSoft} style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
               {step === 'ineligible' || step === 'signin'
-                ? 'Parag Taaza · 500 ml fresh every morning'
-                : `Parag Taaza · 500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} free`}
+                ? 'PYAAS Gold Full Cream · 500 ml fresh every morning'
+                : `PYAAS Gold Full Cream · 500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} free`}
             </TextBody>
           </View>
 
@@ -302,7 +305,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
               <Animated.View entering={FadeInDown.duration(260)} style={{ gap: spacing.md }}>
                 <TextSemi style={{ fontSize: 16 }}>Confirm your subscription</TextSemi>
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
-                  <Row icon="cube" label="Parag Taaza Toned Milk" value={`500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} FREE`} />
+                  <Row icon="cube" label="PYAAS Gold Full Cream Milk" value={`500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} FREE`} />
                   <Row icon="location" label="Delivering to" value={`${line1.trim()}${city ? ', ' + city.trim() : ''}${pincode ? ' - ' + pincode.trim().replace(/\D/g, '') : ''}`} />
                   <Row icon="time" label="First pack arrives tomorrow" value={formatDeliveryWindow(DELIVERY_WINDOW)} highlight />
                   <Row icon="wallet" label="Billing" value={`Pay ${TRIAL_PAID_DAYS} days · next ${TRIAL_FREE_DAYS} days FREE · then ${rupee(FREE_PACK_DAILY_PRICE)}/day · pause anytime`} />
@@ -323,7 +326,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="wallet" size={30} color={colors.flameDeep} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Almost there. Your subscription starts the moment your wallet is funded. Add money for at least {MIN_SUB_DAYS_COVER} days ({rupee(MIN_START_BALANCE)}) and we will start it right away, then it is just {rupee(FREE_PACK_DAILY_PRICE)}/day.
+                  Almost there. Fund your wallet to {rupee(MIN_START_BALANCE)} and your subscription starts right away. Milk is just {rupee(FREE_PACK_DAILY_PRICE)}/day from your balance, pause anytime.
                 </TextBody>
                 {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
                 <PrimaryButton title={busy ? 'Starting…' : 'Add funds'} loading={busy} onPress={goAddFunds} />
@@ -340,8 +343,8 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
                   {subStarted
-                    ? `Congrats! Your Parag Taaza subscription is live. Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} free, then ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet. Pause anytime. Your first pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow.`
-                    : `Your first Parag Taaza pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow. We will notify you when the rider sets off.`}
+                    ? `Congrats! Your PYAAS Gold subscription is live. Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} free, then ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet. Pause anytime. Your first pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow.`
+                    : `Your first PYAAS Gold pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow. We will notify you when the rider sets off.`}
                 </TextBody>
                 <PrimaryButton title="Start shopping" onPress={startShopping} />
               </Animated.View>
@@ -354,7 +357,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="gift-outline" size={30} color={colors.flameDeep} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  {blockReason} You can still get Parag Taaza every morning — a daily subscription is just {rupee(FREE_PACK_DAILY_PRICE)}/day, pause anytime.
+                  {blockReason} You can still get PYAAS Gold every morning. A daily subscription is just {rupee(FREE_PACK_DAILY_PRICE)}/day, pause anytime.
                 </TextBody>
                 <PrimaryButton title="Start shopping" onPress={startShopping} />
               </Animated.View>
@@ -367,7 +370,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="person-circle-outline" size={32} color={colors.flameDeep} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Your trial is tied to your phone number. Sign in (or finish setting up your profile) and come back — the offer will be waiting.
+                  Your trial is tied to your phone number. Sign in (or finish setting up your profile) and come back, the offer will be waiting.
                 </TextBody>
                 <PrimaryButton title="Sign in" onPress={() => { onClose(); router.replace('/(auth)/sign-in'); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>

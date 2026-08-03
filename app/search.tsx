@@ -7,23 +7,25 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
 import { TextBody, TextSemi, Tap } from '../components/ui';
 import { ProductCard } from '../components/ProductCard';
-import { PRODUCTS } from '../constants/products';
+import { useCatalog } from '../lib/catalog';
 
 export default function Search() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
+  // Gated live catalog: non-sellable SKUs surface greyed out, never buyable.
+  const products = useCatalog();
   const data = useMemo(() => {
-    if (!q) return PRODUCTS;
+    if (!q) return products;
     const POPULAR_WORDS = ['popular', 'bestseller', 'best seller', 'most ordered', 'trending', 'top'];
     const wantsPopular = q.length >= 3 && POPULAR_WORDS.some((k) => k.includes(q));
-    return PRODUCTS.filter(
+    return products.filter(
       (p) =>
         [p.name, p.variant, p.tag, p.category].some((t) => t.toLowerCase().includes(q)) ||
         (wantsPopular && !!p.mostOrdered)
     );
-  }, [q]);
+  }, [q, products]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>

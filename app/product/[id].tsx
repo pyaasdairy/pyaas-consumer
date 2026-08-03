@@ -23,7 +23,7 @@ import { placeOrder, listAddresses, deliveryFeeFor } from '../../lib/api';
 import { captureRestockLead } from '../../lib/leads';
 import { isBackendConfigured } from '../../lib/apiClient';
 import { todayISO, tomorrowISO, addDaysISO, parseISO, formatShort } from '../../lib/dates';
-import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12, type DeliveryMode } from '../../lib/deliveryMode';
+import { useDeliveryMode, getDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12, type DeliveryMode } from '../../lib/deliveryMode';
 import { useWallet } from '../../store/wallet';
 import { useCart } from '../../store/cart';
 
@@ -37,11 +37,11 @@ const SUB_TYPES: { key: Frequency; label: string; sub: string }[] = [
   { key: 'one_time', label: 'One Time', sub: 'Just once' },
 ];
 
-// ── Top banner: "Order by 9 PM · Delivery by 7 AM" ────────────────────────────
+// ── Top banner: "Order by 11:59 PM · Delivery by 7 AM" ────────────────────────────
 function DeliveryBanner({ topInset }: { topInset: number }) {
   return (
     <View style={{ overflow: 'hidden', backgroundColor: colors.flameDeep, paddingTop: topInset + 7, paddingBottom: 9, paddingHorizontal: spacing.lg, alignItems: 'center' }}>
-      <TextSemi color={colors.white} style={{ fontSize: 12.5, letterSpacing: 0.5 }}>Order by 9 PM · Delivery by 7 AM</TextSemi>
+      <TextSemi color={colors.white} style={{ fontSize: 12.5, letterSpacing: 0.5 }}>Order by 11:59 PM · Delivery by 7 AM</TextSemi>
       <ShineSweep dur={3200} travel={520} bandWidth={90} delay={700} />
     </View>
   );
@@ -95,7 +95,13 @@ export default function ProductDetail() {
   const [qty, setQty] = useState(() => { const n = Number(qtyParam); return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1; });
   // Milk defaults to a Daily subscription; non-subscribable items (ghee) are a
   // one-time order · both go through the same Proceed → order flow (no cart).
-  const [freq, setFreq] = useState<Frequency>((freqParam as Frequency) || (product?.subscribable === false ? 'one_time' : 'daily'));
+  // Frequency default follows the app-wide delivery mode: in the ⚡ INSTANT
+  // world this is a one-time "Add to cart" purchase (never a Subscribe CTA);
+  // in the Morning world a subscribable SKU defaults to the daily subscription.
+  const [freq, setFreq] = useState<Frequency>(
+    (freqParam as Frequency) ||
+      (product?.subscribable === false || getDeliveryMode() === 'instant' ? 'one_time' : 'daily'),
+  );
   // Honour a start date passed in (e.g. the day chosen in the home delivery strip),
   // but never earlier than tomorrow.
   const [startDate, setStartDate] = useState(start && start > tomorrowISO() ? start : tomorrowISO());
@@ -547,7 +553,7 @@ export default function ProductDetail() {
             <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.cream, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Ionicons name="wallet-outline" size={18} color={colors.flameDeep} />
               <TextBody style={{ fontSize: 13, flex: 1 }}>
-                Paid from your PYAAS Wallet. If your balance is short, we'll top it up first — quick, secure, and your delivery is never held up.
+                Paid from your PYAAS Wallet. If your balance is short, we'll top it up first. Quick, secure, and your delivery is never held up.
               </TextBody>
             </View>
           </Animated.View>

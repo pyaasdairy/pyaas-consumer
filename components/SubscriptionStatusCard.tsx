@@ -110,7 +110,7 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
       style={[{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10, ...shadow.soft }, style]}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <StatusPill label="सदस्यता LIVE · Subscription LIVE" dot={LIVE_GREEN} bg="rgba(27,138,58,0.1)" color={LIVE_GREEN} />
+        <StatusPill label="Subscription LIVE" dot={LIVE_GREEN} bg="rgba(27,138,58,0.1)" color={LIVE_GREEN} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
           <TextMed style={{ fontSize: 12.5 }} color={colors.flameDeep}>Manage</TextMed>
           <Ionicons name="chevron-forward" size={14} color={colors.flameDeep} />
@@ -124,7 +124,7 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
           <TextSemi numberOfLines={1} style={{ fontSize: 14 }}>
             {s.qty} × {p?.name ?? s.product_id}{active.length > 1 ? `  +${active.length - 1} more` : ''}
           </TextSemi>
-          {trial.active && /^taaza-/.test(s.product_id) ? (
+          {trial.active && /^(taaza|gold)-/.test(s.product_id) ? (
             /* 2+2 trial phase, driven by lib/trial: "Day 2 of 2 · paid" (blue) /
                "Day 3 of 4 · FREE 🎉" (green). Paid days still carry the ₹/day.
                Taaza SKUs ONLY — the trial never advances for other products, so the

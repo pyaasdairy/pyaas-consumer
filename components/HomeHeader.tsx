@@ -1,15 +1,15 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, FadeIn } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, fonts } from '../lib/theme';
-import { Serif, TextBody, TextMed, Tap } from './ui';
+import { colors, spacing, radius, rupee, shadow, tabular } from '../lib/theme';
+import { Serif, TextMed, TextSemi, Tap } from './ui';
 import { navHidden } from '../lib/navVisibility';
-import { useCart } from '../store/cart';
+import { useWallet } from '../store/wallet';
 import { useUserLocation } from '../lib/userLocation';
 
 /** Time-of-day greeting (incl. a playful late-night line). */
@@ -23,15 +23,12 @@ function greetingFor(name: string): string {
 }
 
 /**
- * Clean pinned home header: a greeting, the delivery window, and a minimal
- * profile avatar. Slides up / fades when the feed scrolls down (shares
- * `navHidden` with the tab bar) and returns on scroll-up.
+ * Clean pinned home header: location line + greeting on the left, the
+ * persistent wallet chip on the right (nothing else). Slides up / fades when
+ * the feed scrolls down (shares `navHidden` with the tab bar).
  */
 export function HomeHeader({ firstName }: { firstName: string }) {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const initial = (firstName?.trim()?.[0] ?? 'P').toUpperCase();
-  const cartCount = useCart((s) => s.lines.reduce((n, l) => n + l.qty, 0));
   const city = useUserLocation((s) => s.loc?.city ?? null);
   const openPicker = useUserLocation((s) => s.setPickerOpen);
   const hideStyle = useAnimatedStyle(() => ({
@@ -42,10 +39,10 @@ export function HomeHeader({ firstName }: { firstName: string }) {
     <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(236,226,220,0.6)' }, hideStyle]}>
       {/* Subtle frosted glass: the feed faintly shows through the pinned header. */}
       <BlurView tint="light" intensity={28} experimentalBlurMethod="dimezisBlurView" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.72)' }} />
-      <Animated.View entering={FadeIn.duration(420)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-          {/* PARAG sun logo · brand presence, top left */}
-          <Image source={require('../assets/parag-logo.png')} style={{ width: 38, height: 38 }} contentFit="contain" />
+      <Animated.View entering={FadeIn.duration(420)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+          {/* PYAAS wordmark · big, unmissable brand presence, top left */}
+          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 96, height: 96 * (317 / 1127) }} contentFit="contain" />
           <View style={{ flex: 1 }}>
             <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -54,25 +51,34 @@ export function HomeHeader({ firstName }: { firstName: string }) {
                 <Ionicons name="chevron-down" size={13} color={colors.flameDeep} />
               </View>
             </Tap>
-            <Serif style={{ fontSize: 21, lineHeight: 26, letterSpacing: -0.3 }} numberOfLines={1}>{greetingFor(firstName)}</Serif>
+            {/* adjustsFontSizeToFit: the greeting shrinks instead of ellipsizing,
+                so it fits any name on any display width. */}
+            <Serif style={{ fontSize: 21, lineHeight: 26, letterSpacing: -0.3 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{greetingFor(firstName)}</Serif>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {/* Cart → wallet-first checkout. Badge shows the live item count. */}
-          <Tap onPress={() => router.push('/cart')} scaleTo={0.92} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, borderWidth: 1.5, borderColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="bag-handle-outline" size={20} color={colors.flameDeep} />
-            {cartCount > 0 ? (
-              <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: colors.flameDeep, borderWidth: 1.5, borderColor: colors.milk, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.sansBold, fontSize: 10, color: colors.white }}>{cartCount}</Text>
-              </View>
-            ) : null}
-          </Tap>
-          <Tap onPress={() => router.push('/(tabs)/profile')} scaleTo={0.92} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, borderWidth: 1.5, borderColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontFamily: fonts.sansBold, fontSize: 16, color: colors.flameDeep }}>{initial}</Text>
-          </Tap>
-        </View>
+        {/* Right side: ONLY the wallet chip — no cart button, no avatar. The
+            cart lives in the bottom bar and the profile on its own tab. */}
+        <WalletChip />
+
       </Animated.View>
     </Animated.View>
+  );
+}
+
+/** The persistent wallet chip: live balance in a pink box, always top-right. */
+function WalletChip() {
+  const router = useRouter();
+  const balance = useWallet((s) => s.balance);
+  return (
+    <Tap
+      onPress={() => router.push('/(tabs)/wallet')}
+      scaleTo={0.94}
+      accessibilityLabel={`Wallet balance ${rupee(balance)}`}
+      style={{ height: 42, minWidth: 56, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.flameDeep, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, ...shadow.soft }}
+    >
+      <Ionicons name="wallet" size={15} color={colors.white} />
+      <TextSemi color={colors.white} style={{ fontSize: 13.5, ...tabular }} numberOfLines={1}>{rupee(balance)}</TextSemi>
+    </Tap>
   );
 }
 
