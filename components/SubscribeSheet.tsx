@@ -7,6 +7,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap, Stepper } from './ui';
 import { haptics } from '../lib/haptics';
 import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
+import { attachTrialAfterSubscribe } from '../lib/freePack';
 import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 import { hasExactLocation } from '../lib/location';
 import { useUserLocation } from '../lib/userLocation';
@@ -160,9 +161,11 @@ export function SubscribeSheet({
         frequency: freq,
         startDate,
       });
-      // The 3+3 trial itself is owned by the claim funnel + backend (GET
-      // /consumer/trial/me), not minted here — so a direct subscribe never shows
-      // a "FREE" phase without the matching free-day handling behind it.
+      // 2+2 HOOK: when THIS subscribe is the offer SKU (gold, daily) and the
+      // member is a qualified candidate, attach the trial (claim + day-1
+      // anchor) — the popup funnel routes here instead of owning its own
+      // create path. Silent no-op otherwise; never blocks the subscription.
+      try { await attachTrialAfterSubscribe(product.id, freq); } catch { /* non-fatal */ }
       // Auto-renew mandate seam (UPI AutoPay): backend only, best-effort. Never
       // blocks the subscription — a failed/absent mandate just means manual
       // top-ups, exactly as before.

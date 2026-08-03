@@ -161,6 +161,39 @@ export async function recordRechargeForOffer(amount: number): Promise<void> {
   notifyFreePackChanged();
 }
 
+/**
+ * POST-SUBSCRIBE HOOK — the popup no longer creates the subscription itself;
+ * it routes to the full-cream product page and the standard SubscribeSheet
+ * (qty/frequency/date + review → confirm) owns the write. This hook runs after
+ * ANY successful subscribe: when the new sub is the OFFER SKU (gold, daily)
+ * and the member is still an eligible, ₹500-qualified 2+2 candidate, it
+ * attaches the trial — the claim record + the idempotent day-1 anchor. A
+ * resume after a mid-trial cancel re-enters here: no duplicate claim row, the
+ * anchor is untouched, and the server's delivered-day count means only the
+ * REMAINING paid day(s) are owed. Silently a no-op for any other product,
+ * frequency, or an unqualified/completed member.
+ */
+export async function attachTrialAfterSubscribe(productId: string, frequency: string): Promise<void> {
+  if (productId !== FREE_PACK_PRODUCT_ID || frequency !== 'daily') return;
+  const uid = await getUserId();
+  if (!uid) return;
+  const prof = await getProfile().catch(() => null);
+  const phone = prof?.phone ?? '';
+  if (!phone) return;
+  if (await offerCompleted()) return;
+  if (!(await offerQualified())) return;
+  const p = normPhone(phone);
+  const deviceId = await getDeviceId();
+  const claims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
+  if (!claims.some((c) => normPhone(c.phone) === p)) {
+    await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
+      phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
+    });
+  }
+  await beginTrial(tomorrowISO());
+  notifyFreePackChanged();
+}
+
 // Module-level in-flight mutex: a double-tap (or the flow mounted on several
 // screens at once) must never run two claims concurrently — the second caller
 // simply awaits the first claim's result. Single JS thread makes this promise

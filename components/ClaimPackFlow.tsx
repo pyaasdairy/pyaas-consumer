@@ -7,21 +7,21 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts, rupee } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
-import { AddressCaptureSheet } from './AddressCapture';
-import { listAddresses, type Address } from '../lib/api';
-import { claimFreePack, shouldShowFreePack, snoozeFreePack, offerQualified, OFFER_QUALIFY_RECHARGE, FREE_PACK_DAILY_PRICE, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
-import { formatDeliveryWindow } from '../lib/dates';
+import { shouldShowFreePack, snoozeFreePack, freePackEligible, offerQualified, OFFER_QUALIFY_RECHARGE, FREE_PACK_DAILY_PRICE, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
+import { listSubscriptions } from '../lib/subscriptions';
 import { useAuth } from '../lib/auth';
 import { useUserLocation } from '../lib/userLocation';
 import { useWallet } from '../store/wallet';
 
 const FREE_PACK_IMG = require('../assets/products/gold.png');
-const DELIVERY_WINDOW = '06:00-07:00'; // matches placeOrder's stamped window
 
-// 'done' is reached ONLY on a real successful claim. A signed-out member lands
-// on 'signin'; a failed gate (phone/device already claimed) lands on
-// 'ineligible' with the gate's reason — never a false delivery promise.
-type Step = 'intro' | 'confirm' | 'fund' | 'done' | 'signin' | 'ineligible';
+// The popup is ONLY the funnel DOOR now: the intro sells, the gates route —
+// the subscription itself is created on the FULL-CREAM PRODUCT PAGE (the
+// standard SubscribeSheet: quantity, frequency, start date, REVIEW → confirm;
+// attachTrialAfterSubscribe hooks the 2+2 on after that confirm). 'subscribed'
+// shows when a gold sub is already ACTIVE; 'ineligible' when the trial is
+// completed; 'fund' gates on the one-time ₹500 qualifying recharge.
+type Step = 'intro' | 'fund' | 'signin' | 'ineligible' | 'subscribed';
 
 // THE ₹500 RULE: the 2+2 offer redeems ONLY after the account's one-time
 // qualifying recharge — a SINGLE top-up of ≥ OFFER_QUALIFY_RECHARGE. Smaller
@@ -60,94 +60,56 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   const router = useRouter();
   const refreshWallet = useWallet((s) => s.refresh);
   const [step, setStep] = useState<Step>('intro');
-  // The COMPLETE address captured through the shared CD-style flow (map with
-  // search → full form). Saved once; shown on the confirm card.
-  const [captureOpen, setCaptureOpen] = useState(false);
-  const [savedAddr, setSavedAddr] = useState<Address | null>(null);
   const [busy, setBusy] = useState(false);
   // Synchronous re-entry guard: setBusy only disables the button after a
-  // re-render, so a fast double-tap would run confirm() twice without this ref.
+  // re-render, so a fast double-tap would run the gates twice without this ref.
   const busyRef = useRef(false);
   const [err, setErr] = useState('');
-  const [subStarted, setSubStarted] = useState(false);
   const [blockReason, setBlockReason] = useState('');
-  // The delivery address is captured ONCE (before the funding step); this guards
-  // against a second addAddress if the member bounces to recharge and back.
-  const addressSavedRef = useRef(false);
   // We temporarily hide this modal while the full-screen recharge route is on top
   // (a native Modal would otherwise cover it), then reveal it again on return.
   const [navHidden, setNavHidden] = useState(false);
-  // True while we are waiting for the member to fund the wallet before the trial
-  // subscription is created. Read on screen re-focus to resume into the claim.
+  // True while we are waiting for the member to fund the wallet (the ₹500
+  // qualifying recharge). Read on screen re-focus to resume into the handover.
   const awaitingFundsRef = useRef(false);
-  // Always-current pointer to finishClaim so the focus resume never fires a stale
-  // closure (e.g. an out-of-date profile phone).
-  const finishRef = useRef<() => Promise<void>>(async () => {});
 
-  // Reset to a clean intro each time it opens (so a VIP re-open never prefills
-  // the previous address).
+  // Reset to a clean intro each time it opens.
   useEffect(() => {
     if (visible) {
       setStep('intro');
       setErr('');
-      setCaptureOpen(false);
-      setSavedAddr(null);
-      setSubStarted(false);
       setBlockReason('');
       setNavHidden(false);
-      addressSavedRef.current = false;
       awaitingFundsRef.current = false;
     }
   }, [visible]);
 
-  // The shared capture saved a COMPLETE address (pin + flat + receiver + city +
-  // pincode + preferences) — move straight to the confirm card.
-  function onAddressSaved(addr: Address) {
-    setSavedAddr(addr);
-    addressSavedRef.current = true;
-    setCaptureOpen(false);
-    setErr('');
-    setStep('confirm');
-  }
-
-  // Intro CTA: a member with a COMPLETE saved address (map pin included) must
-  // NEVER be sent back to the location page — reuse it and go straight to the
-  // review card. Only a member with no pinned address captures one.
+  // THE DOOR: run the gates (sign-in → trial completed? → already subscribed?
+  // → the ₹500 qualifying recharge), then HAND OVER to the full-cream product
+  // page — the standard SubscribeSheet (quantity, frequency, start date,
+  // REVIEW → confirm) owns the creation, and attachTrialAfterSubscribe hooks
+  // the 2+2 on after that confirm. This popup never creates anything itself.
   async function startFromIntro() {
-    haptics.press();
-    try {
-      const addrs = await listAddresses();
-      const hasPin = (a: Address) => {
-        const g = a as unknown as { lat?: number | null; lng?: number | null };
-        return g.lat != null && g.lng != null;
-      };
-      const pick = addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin);
-      if (pick) {
-        setSavedAddr(pick);
-        addressSavedRef.current = true;
-        setErr('');
-        setStep('confirm');
-        return;
-      }
-    } catch { /* signed out / storage blip — capture fresh below */ }
-    setCaptureOpen(true);
-  }
-
-  // STEP 1 (confirm): capture the delivery address, then GATE on wallet funds.
-  // A trial subscription is NEVER created here unless the wallet already covers
-  // MIN_SUB_DAYS_COVER days — otherwise we route to add funds first and resume.
-  async function confirm() {
     if (busyRef.current) return; // synchronous double-tap guard
     busyRef.current = true;
     setBusy(true); setErr('');
     try {
       const phone = profile?.phone ?? '';
-      // No signed-in phone → nothing to claim against. Never show the delivery
-      // promise; send the member to sign in instead.
+      // No signed-in phone → nothing to claim against.
       if (!phone) { setStep('signin'); return; }
-      // The COMPLETE address must already be captured (map + full form) — the
-      // shared sheet saved it before this step was reachable.
-      if (!addressSavedRef.current) { setCaptureOpen(true); return; }
+      // COMPLETED (2 paid days done) → the offer is over, honestly.
+      const gate = await freePackEligible(phone);
+      if (!gate.eligible) {
+        setBlockReason(gate.reason ?? 'This trial has already been completed.');
+        setStep('ineligible');
+        return;
+      }
+      // A gold subscription is ALREADY running → say so, never re-sell.
+      const subs = await listSubscriptions().catch(() => []);
+      if (subs.some((s) => s.product_id === FREE_PACK_PRODUCT_ID && s.status === 'active' && s.frequency !== 'one_time')) {
+        setStep('subscribed');
+        return;
+      }
       // ₹500 RULE: the offer redeems only via the one-time qualifying recharge
       // (a single ≥₹500 top-up) — not by any balance level.
       await refreshWallet();
@@ -155,13 +117,21 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
         goAddFunds();
         return;
       }
-      await finishClaim();
+      goProductPage();
     } catch (e: any) {
-      setErr(e?.message ?? 'Could not confirm just now. Please try again.');
+      setErr(e?.message ?? 'Could not start just now. Please try again.');
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
+  }
+
+  // Hand over: the product page opens with the subscribe sheet up (daily
+  // full-cream pre-selected) — qty/date/review/confirm all live there.
+  function goProductPage() {
+    haptics.press();
+    onClose();
+    router.push(`/product/${FREE_PACK_PRODUCT_ID}?freq=daily&subscribe=1`);
   }
 
   // Route to the wallet recharge screen for at least the shortfall, hiding this
@@ -182,46 +152,9 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
     router.push(`/recharge?${qs}`);
   }
 
-  // STEP 2 (post-funding): actually create the trial subscription, then show the
-  // congrats screen. Only ever reached once the wallet is funded.
-  async function finishClaim() {
-    const phone = profile?.phone ?? '';
-    if (!phone) { setStep('signin'); return; }
-    setBusy(true); setErr('');
-    try {
-      // Claim = promo credit + auto-started daily subscription (+ test top-up).
-      // The result decides the screen: only a REAL success reaches 'done'.
-      let r: Awaited<ReturnType<typeof claimFreePack>>;
-      try {
-        r = await claimFreePack(phone);
-      } catch (e: any) {
-        // Hard failure (signed out mid-flow / storage error): nothing was
-        // claimed, so it stays claimable — surface it and go back a step.
-        if (/not signed in/i.test(String(e?.message ?? ''))) { setStep('signin'); return; }
-        setErr(e?.message ?? 'Could not start just now. Please try again.');
-        setStep('confirm');
-        return;
-      }
-      if (!r.ok) {
-        // Gate rejected (phone/device already claimed): show WHY, no promises.
-        setBlockReason(r.reason ?? 'This trial has already been started.');
-        setStep('ineligible');
-        return;
-      }
-      setSubStarted(!!r.subscriptionId);
-      try { await refreshWallet(); } catch { /* balance refreshes on next focus */ }
-      haptics.confirm();
-      setStep('done');
-      onClaimed?.();
-    } finally {
-      setBusy(false);
-    }
-  }
-  finishRef.current = finishClaim;
-
   // Resume-on-return: when the recharge route pops back to us, reveal the modal
-  // and, if we were waiting on funds and they have now landed, create the
-  // subscription and jump straight to the congrats screen.
+  // and, once the ≥₹500 qualifying recharge has landed, hand straight over to
+  // the product page (the member reviews + confirms there).
   useFocusEffect(
     useCallback(() => {
       let on = true;
@@ -230,16 +163,14 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
         (async () => {
           try { await refreshWallet(); } catch { /* retried on next focus */ }
           if (!on) return;
-          // The ≥₹500 recharge marks the account qualified → land BACK ON THE
-          // REVIEW CARD (confirm step) so the member re-reviews the
-          // subscription + prices after funding, then taps to start.
           if (await offerQualified()) {
             awaitingFundsRef.current = false;
-            setStep('confirm');
+            goProductPage();
           }
         })();
       }
       return () => { on = false; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visible, refreshWallet]),
   );
 
@@ -252,7 +183,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
 
   return (
     <>
-    <Modal visible={visible && !navHidden && !captureOpen} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible && !navHidden} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg }}>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, overflow: 'hidden', maxHeight: '88%', ...shadow.card }}>
@@ -266,10 +197,10 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             </View>
             <Image source={FREE_PACK_IMG} style={{ width: 130, height: 130 }} contentFit="contain" />
             <Serif color={colors.ink} style={{ fontSize: 22, textAlign: 'center', marginTop: 4 }}>
-              {step === 'done'
-                ? 'Congrats, you are all set'
+              {step === 'subscribed'
+                ? 'Already subscribed'
                 : step === 'ineligible'
-                  ? 'Trial already started'
+                  ? 'Trial already completed'
                   : step === 'signin'
                     ? 'Sign in to start'
                     : step === 'fund'
@@ -277,7 +208,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                       : `Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} FREE`}
             </Serif>
             <TextBody color={colors.inkSoft} style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
-              {step === 'ineligible' || step === 'signin'
+              {step === 'ineligible' || step === 'signin' || step === 'subscribed'
                 ? 'PYAAS Gold Full Cream · 500 ml fresh every morning'
                 : `PYAAS Gold Full Cream · 500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} free`}
             </TextBody>
@@ -297,40 +228,10 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <IntroLine icon="pause-circle" text="Pause anytime" />
                   <IntroLine icon="card-outline" text={`Applicable on a min. ${rupee(OFFER_QUALIFY_RECHARGE)} recharge at a time`} />
                 </View>
-                <PrimaryButton title="Start my subscription" onPress={() => { void startFromIntro(); }} />
+                {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5, textAlign: 'center' }}>{err}</TextBody> : null}
+                <PrimaryButton title={busy ? 'Checking…' : 'Start my subscription'} loading={busy} onPress={() => { void startFromIntro(); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Maybe later</TextMed>
-                </Tap>
-              </Animated.View>
-            ) : null}
-
-            {/* The address step is the shared CD-style AddressCaptureSheet (map
-                with search → complete form) — opened from the intro button. */}
-
-            {step === 'confirm' ? (
-              /* REVIEW ORDER — the last screen before anything is created. The
-                 subscription exists ONLY after "Confirm subscription" below
-                 (and only appears in Subscriptions after that). */
-              <Animated.View entering={FadeInDown.duration(260)} style={{ gap: spacing.md }}>
-                <TextSemi style={{ fontSize: 16 }}>Review your subscription</TextSemi>
-                <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
-                  <Row icon="cube" label="PYAAS Gold Full Cream Milk" value={`500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} FREE`} />
-                  <Row icon="location" label="Delivering to" value={savedAddr ? `${savedAddr.line1}${savedAddr.line2 ? ', ' + savedAddr.line2 : ''}, ${savedAddr.city} - ${savedAddr.pincode}` : '—'} />
-                  <Row icon="time" label="First pack arrives tomorrow" value={formatDeliveryWindow(DELIVERY_WINDOW)} highlight />
-                  <Row icon="cash" label={`To pay for the first ${TRIAL_PAID_DAYS} days`} value={`${rupee(TRIAL_PAID_DAYS * FREE_PACK_DAILY_PRICE)} · charged day by day from your wallet`} highlight />
-                  <Row icon="sparkles" label={`Days ${TRIAL_PAID_DAYS + 1}–${TRIAL_PAID_DAYS + TRIAL_FREE_DAYS}`} value="FREE — on us 🎉" />
-                  <Row icon="wallet" label="After the trial" value={`Continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day · pause anytime`} />
-                </View>
-                {/* Policy — the exact terms, no surprises. */}
-                <View style={{ gap: 6 }}>
-                  <IntroLine icon="pause-circle" text="Pause or cancel anytime — no lock-in" />
-                  <IntroLine icon="card-outline" text={`Offer applicable on a min. ${rupee(OFFER_QUALIFY_RECHARGE)} recharge at a time`} />
-                  <IntroLine icon="shield-checkmark-outline" text="Nothing is charged now — each day bills only on delivery" />
-                </View>
-                {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
-                <PrimaryButton title={busy ? 'Confirming…' : 'Confirm subscription'} loading={busy} onPress={confirm} />
-                <Tap haptic={false} onPress={() => setCaptureOpen(true)} style={{ alignItems: 'center', paddingVertical: 4 }}>
-                  <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Change address</TextMed>
                 </Tap>
               </Animated.View>
             ) : null}
@@ -347,23 +248,26 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                 </TextBody>
                 {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
                 <PrimaryButton title={busy ? 'Starting…' : 'Add funds'} loading={busy} onPress={goAddFunds} />
-                <Tap haptic={false} onPress={() => setStep('confirm')} style={{ alignItems: 'center', paddingVertical: 4 }}>
+                <Tap haptic={false} onPress={() => setStep('intro')} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Back</TextMed>
                 </Tap>
               </Animated.View>
             ) : null}
 
-            {step === 'done' ? (
+            {step === 'subscribed' ? (
+              /* A gold subscription is ALREADY running — never re-sell; point at
+                 Manage instead (pause / quantity / cancel live there). */
               <Animated.View entering={FadeInDown.duration(300)} style={{ gap: spacing.md, alignItems: 'center' }}>
                 <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.blueSoft, alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="checkmark" size={34} color={colors.blue} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  {subStarted
-                    ? `Congrats! Your PYAAS Gold subscription is live. Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} free, then ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet. Pause anytime. Your first pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow.`
-                    : `Your first PYAAS Gold pack arrives ${formatDeliveryWindow(DELIVERY_WINDOW)} tomorrow. We will notify you when the rider sets off.`}
+                  You are already subscribed — PYAAS Gold arrives every morning, billed day by day from your wallet. Pause, change quantity or cancel anytime from Manage.
                 </TextBody>
-                <PrimaryButton title="Start shopping" onPress={startShopping} />
+                <PrimaryButton title="Manage subscription" onPress={() => { onClose(); router.push('/subscriptions'); }} />
+                <Tap haptic={false} onPress={startShopping} style={{ alignItems: 'center', paddingVertical: 4 }}>
+                  <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Start shopping</TextMed>
+                </Tap>
               </Animated.View>
             ) : null}
 
@@ -400,7 +304,6 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
         </View>
       </KeyboardAvoidingView>
     </Modal>
-    <AddressCaptureSheet visible={captureOpen} onClose={() => setCaptureOpen(false)} onSaved={onAddressSaved} />
     </>
   );
 }
@@ -471,22 +374,6 @@ function PrimaryButton({ title, onPress, disabled, loading }: { title: string; o
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, keyboardType, maxLength }: { label: string; value: string; onChangeText: (t: string) => void; placeholder?: string; keyboardType?: 'number-pad'; maxLength?: number }) {
-  return (
-    <View style={{ gap: 5 }}>
-      <TextMed color={colors.inkSoft} style={{ fontSize: 12.5 }}>{label}</TextMed>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.inkMute}
-        keyboardType={keyboardType}
-        maxLength={maxLength}
-        style={{ backgroundColor: colors.milk, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, paddingVertical: 12, fontFamily: fonts.sans, fontSize: 15, color: colors.ink }}
-      />
-    </View>
-  );
-}
 
 function IntroLine({ icon, text }: { icon: any; text: string }) {
   return (
@@ -497,16 +384,3 @@ function IntroLine({ icon, text }: { icon: any; text: string }) {
   );
 }
 
-function Row({ icon, label, value, highlight }: { icon: any; label: string; value: string; highlight?: boolean }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-      <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: highlight ? colors.flameSoft : colors.white, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={icon} size={15} color={colors.flameDeep} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>{label}</TextBody>
-        <TextMed style={{ fontSize: 13.5 }} color={highlight ? colors.flameDeep : colors.ink}>{value}</TextMed>
-      </View>
-    </View>
-  );
-}
