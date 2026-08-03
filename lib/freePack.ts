@@ -96,19 +96,6 @@ export async function offerCompleted(): Promise<boolean> {
   }
 }
 
-/** Home-carousel visibility for the 2+2 creative: the slide keeps showing —
- *  including WHILE the claimed subscription's paid days are still running —
- *  and disappears only once the offer completes (2 paid days delivered).
- *  Unlike freePackShowEligible, an ACTIVE full-cream sub does NOT hide it:
- *  the slide explains the running trial; the popup is what stays quiet. */
-export async function offerBannerEligible(): Promise<boolean> {
-  const uid = await requireUserId().catch(() => null);
-  if (!uid) return false;
-  if (await offerCompleted()) return false;
-  const seen = await getSingle<{ seen: boolean }>(SEEN_TABLE, uid);
-  return !seen?.seen;
-}
-
 /** Whether this account may claim (or RE-ENTER) the trial. Open until the paid
  *  days are completed — a member who claimed then paused/cancelled after day 1
  *  resumes through the same flow to finish their remaining paid day(s). */
