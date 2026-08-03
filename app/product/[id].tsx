@@ -112,6 +112,24 @@ export default function ProductDetail() {
   const sharedMode = useDeliveryMode();
   const [deliverBy, setDeliverBy] = useState<DeliveryMode>((laneParam as DeliveryMode) || sharedMode);
   const [pickedDate, setPickedDate] = useState(start && start >= tomorrowISO() ? start : tomorrowISO());
+  // BAG ↔ QUANTITY SYNC (one-time orders only): the tile's bag stepper already
+  // put N of this product in the ACTIVE lane's cart, so this page must open at
+  // N — never reset to 1. Each lane (⚡ instant vs morning) syncs from ITS OWN
+  // bag. A SUBSCRIPTION plan's quantity stays independent (a plan is not the
+  // bag), and an explicit deep-link qty param always wins. Seeded once per
+  // lane so the member's manual edits here are never overwritten.
+  const cartLines = useCart((s) => s.lines);
+  const bagSeedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (qtyParam != null || freq !== 'one_time') return;
+    const laneKey: 'instant' | 'morning' = deliverBy === 'instant' ? 'instant' : 'morning';
+    if (bagSeedRef.current === laneKey) return;
+    const inBag = cartLines.find((l) => l.id === id && l.lane === laneKey)?.qty ?? 0;
+    if (inBag >= 1) {
+      setQty(inBag);
+      bagSeedRef.current = laneKey;
+    }
+  }, [freq, deliverBy, qtyParam, cartLines, id]);
   const [busy, setBusy] = useState(false);
   // Synchronous double-tap guard (setBusy only disables after a re-render, so a fast
   // double-tap could run proceed() — and placeOrder — twice).
