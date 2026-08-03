@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRows, insertRow, getSingle, putSingle, newId } from './localStore';
 import { requireUserId, getUserId, getProfile } from './session';
-import { rechargeWallet } from './walletApi';
+import { getLedger, rechargeWallet } from './walletApi';
 import { WALLET_TEST_TOPUP, testTopup } from './razorpay';
 import { isBackendConfigured } from './apiClient';
 import { createSubscription, listSubscriptions, reactivateSubscription } from './subscriptions';
@@ -106,7 +106,32 @@ const QUALIFIED_KEY_PREFIX = 'pyaas_offer_qualified:';
 export async function offerQualified(): Promise<boolean> {
   const uid = await getUserId();
   if (!uid) return false;
-  try { return (await AsyncStorage.getItem(QUALIFIED_KEY_PREFIX + uid)) === '1'; } catch { return false; }
+  try {
+    if ((await AsyncStorage.getItem(QUALIFIED_KEY_PREFIX + uid)) === '1') return true;
+  } catch { /* fall through to the ledger */ }
+  // SERVER-TRUTH FALLBACK: the flag above is device-local — a reinstall, or a
+  // ≥₹500 recharge made before this rule shipped (or through another screen),
+  // loses it and the member gets stuck on "Add funds" despite having paid. The
+  // wallet LEDGER is authoritative: any SINGLE successful CASH credit of
+  // ≥₹500 qualifies. Reward/promo credits, the seeded opening balance, and
+  // several small top-ups that merely SUM to ₹500 never do.
+  try {
+    const rows = await getLedger();
+    const qualified = rows.some(
+      (r) =>
+        r.type === 'credit' &&
+        r.bucket === 'cash' &&
+        r.status === 'success' &&
+        r.amount >= OFFER_QUALIFY_RECHARGE &&
+        r.ref_type !== 'seed' &&
+        r.ref_type !== 'reward',
+    );
+    if (qualified) {
+      try { await AsyncStorage.setItem(QUALIFIED_KEY_PREFIX + uid, '1'); } catch { /* cache only */ }
+      return true;
+    }
+  } catch { /* offline — only the local flag can answer */ }
+  return false;
 }
 
 /**

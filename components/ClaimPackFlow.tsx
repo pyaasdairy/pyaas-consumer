@@ -8,7 +8,7 @@ import { colors, radius, spacing, shadow, fonts, rupee } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import { AddressCaptureSheet } from './AddressCapture';
-import { type Address } from '../lib/api';
+import { listAddresses, type Address } from '../lib/api';
 import { claimFreePack, shouldShowFreePack, snoozeFreePack, offerQualified, OFFER_QUALIFY_RECHARGE, FREE_PACK_DAILY_PRICE, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
 import { formatDeliveryWindow } from '../lib/dates';
 import { useAuth } from '../lib/auth';
@@ -108,6 +108,29 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
     setCaptureOpen(false);
     setErr('');
     setStep('confirm');
+  }
+
+  // Intro CTA: a member with a COMPLETE saved address (map pin included) must
+  // NEVER be sent back to the location page — reuse it and go straight to the
+  // review card. Only a member with no pinned address captures one.
+  async function startFromIntro() {
+    haptics.press();
+    try {
+      const addrs = await listAddresses();
+      const hasPin = (a: Address) => {
+        const g = a as unknown as { lat?: number | null; lng?: number | null };
+        return g.lat != null && g.lng != null;
+      };
+      const pick = addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin);
+      if (pick) {
+        setSavedAddr(pick);
+        addressSavedRef.current = true;
+        setErr('');
+        setStep('confirm');
+        return;
+      }
+    } catch { /* signed out / storage blip — capture fresh below */ }
+    setCaptureOpen(true);
   }
 
   // STEP 1 (confirm): capture the delivery address, then GATE on wallet funds.
@@ -272,8 +295,9 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <IntroLine icon="sparkles" text={`Next ${TRIAL_FREE_DAYS} days FREE 🎉`} />
                   <IntroLine icon="infinite" text={`Then continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet`} />
                   <IntroLine icon="pause-circle" text="Pause anytime" />
+                  <IntroLine icon="card-outline" text={`Applicable on a min. ${rupee(OFFER_QUALIFY_RECHARGE)} recharge at a time`} />
                 </View>
-                <PrimaryButton title="Start my subscription" onPress={() => { haptics.press(); setCaptureOpen(true); }} />
+                <PrimaryButton title="Start my subscription" onPress={() => { void startFromIntro(); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Maybe later</TextMed>
                 </Tap>
@@ -284,16 +308,27 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                 with search → complete form) — opened from the intro button. */}
 
             {step === 'confirm' ? (
+              /* REVIEW ORDER — the last screen before anything is created. The
+                 subscription exists ONLY after "Confirm subscription" below
+                 (and only appears in Subscriptions after that). */
               <Animated.View entering={FadeInDown.duration(260)} style={{ gap: spacing.md }}>
-                <TextSemi style={{ fontSize: 16 }}>Confirm your subscription</TextSemi>
+                <TextSemi style={{ fontSize: 16 }}>Review your subscription</TextSemi>
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
                   <Row icon="cube" label="PYAAS Gold Full Cream Milk" value={`500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} FREE`} />
                   <Row icon="location" label="Delivering to" value={savedAddr ? `${savedAddr.line1}${savedAddr.line2 ? ', ' + savedAddr.line2 : ''}, ${savedAddr.city} - ${savedAddr.pincode}` : '—'} />
                   <Row icon="time" label="First pack arrives tomorrow" value={formatDeliveryWindow(DELIVERY_WINDOW)} highlight />
-                  <Row icon="wallet" label="Billing" value={`Pay ${TRIAL_PAID_DAYS} days · next ${TRIAL_FREE_DAYS} days FREE · then ${rupee(FREE_PACK_DAILY_PRICE)}/day · pause anytime`} />
+                  <Row icon="cash" label={`To pay for the first ${TRIAL_PAID_DAYS} days`} value={`${rupee(TRIAL_PAID_DAYS * FREE_PACK_DAILY_PRICE)} · charged day by day from your wallet`} highlight />
+                  <Row icon="sparkles" label={`Days ${TRIAL_PAID_DAYS + 1}–${TRIAL_PAID_DAYS + TRIAL_FREE_DAYS}`} value="FREE — on us 🎉" />
+                  <Row icon="wallet" label="After the trial" value={`Continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day · pause anytime`} />
+                </View>
+                {/* Policy — the exact terms, no surprises. */}
+                <View style={{ gap: 6 }}>
+                  <IntroLine icon="pause-circle" text="Pause or cancel anytime — no lock-in" />
+                  <IntroLine icon="card-outline" text={`Offer applicable on a min. ${rupee(OFFER_QUALIFY_RECHARGE)} recharge at a time`} />
+                  <IntroLine icon="shield-checkmark-outline" text="Nothing is charged now — each day bills only on delivery" />
                 </View>
                 {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
-                <PrimaryButton title={busy ? 'Starting…' : 'Start my subscription'} loading={busy} onPress={confirm} />
+                <PrimaryButton title={busy ? 'Confirming…' : 'Confirm subscription'} loading={busy} onPress={confirm} />
                 <Tap haptic={false} onPress={() => setCaptureOpen(true)} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Change address</TextMed>
                 </Tap>
