@@ -10,6 +10,7 @@ import {
 import { listAddresses, placeOrder, deliveryFeeFor } from './api';
 import { getBalances } from './walletApi';
 import { getProduct } from '../constants/products';
+import { isBackendConfigured } from './apiClient';
 
 /**
  * CLIENT-SIDE SUBSCRIPTION SWEEP — the "day-3 charge" engine.
@@ -79,7 +80,14 @@ async function runSweep(): Promise<number> {
 
   const today = todayISO();
   const [subs, vacations] = await Promise.all([listSubscriptions(), listVacations()]);
-  const due = subs.filter((s) => s.status === 'active' && subscriptionDueOn(s, today, vacations));
+  // A subscription mirrored to the backend (backend_id) is ordered by the
+  // SERVER's daily worker — sweeping it here too would place the same morning
+  // order twice. This sweep only covers local-only rows (offline mode, or a
+  // row whose mirror failed).
+  const backendOwned = isBackendConfigured();
+  const due = subs.filter(
+    (s) => s.status === 'active' && !(backendOwned && s.backend_id) && subscriptionDueOn(s, today, vacations),
+  );
   if (due.length === 0) return 0;
 
   // Idempotency markers: one per (subscription, day). Prune the stale tail so

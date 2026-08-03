@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import { getUserId } from './session';
 import { getRows, updateRows, getSingle } from './localStore';
 import type { Address } from './api';
+import { api, isBackendConfigured } from './apiClient';
 
 /**
  * Location helper. Reads device GPS (for the delivery address) and remembers the
@@ -44,11 +45,20 @@ export async function hasExactLocation(): Promise<boolean> {
   return row?.loc?.exact === true && !!row?.loc?.coords;
 }
 
-/** Persist coordinates onto a saved address. */
+/** Persist coordinates onto a saved address (and its backend twin, so the DB
+ *  copy carries the exact pin the store routing + subscription worker read). */
 export async function setAddressCoords(addressId: string, c: Coords): Promise<void> {
   const uid = await getUserId();
   if (!uid) return;
   await updateRows<Address>('addresses', uid, (r) => r.id === addressId, { lat: c.lat, lng: c.lng } as Partial<Address>);
+  if (isBackendConfigured()) {
+    const bid = (await getRows<Address>('addresses', uid)).find((r) => r.id === addressId)?.backend_id;
+    if (bid) {
+      // Awaited (error-soft): the pin must land server-side before a following
+      // subscription mirror asks the backend for an address WITH coordinates.
+      await api.patch(`/addresses/${bid}`, { lat: c.lat, lng: c.lng }).catch(() => undefined);
+    }
+  }
 }
 
 /**

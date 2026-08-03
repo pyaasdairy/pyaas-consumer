@@ -35,6 +35,9 @@ export type Address = {
   instructions?: string | null;
   /** Sample door photo the member added so the rider finds the exact door. */
   door_photo_uri?: string | null;
+  /** Server-side twin id (Mongo hex) once mirrored to the backend — the DB copy
+   *  the subscription worker + store routing read. */
+  backend_id?: string | null;
 };
 
 export type OrderStatus =
@@ -144,18 +147,66 @@ export async function addAddress(a: Omit<Address, 'id' | 'user_id' | 'created_at
     user_id: uid,
     created_at: new Date().toISOString(),
   };
-  return insertRow<Address>('addresses', uid, row);
+  const saved = await insertRow<Address>('addresses', uid, row);
+  // Mirror the COMPLETE address into the backend DB (consumer_addresses) —
+  // awaited so anything that immediately follows (pin patch, a subscription
+  // mirror) finds it server-side. Error-soft: offline keeps the local row and
+  // the app behaves exactly as before.
+  await mirrorAddressCreate(uid, saved);
+  return saved;
+}
+
+/** Backend twin of a local address row, if it was mirrored. */
+async function addressBackendId(uid: string, id: string): Promise<string | null> {
+  const rows = await getRows<Address>('addresses', uid);
+  return rows.find((r) => r.id === id)?.backend_id ?? null;
+}
+
+async function mirrorAddressCreate(uid: string, row: Address): Promise<void> {
+  if (!isBackendConfigured()) return;
+  try {
+    const geo = row as unknown as { lat?: number | null; lng?: number | null };
+    const created = await api.post<{ id: string }>('/addresses', {
+      label: row.label,
+      line1: row.line1,
+      line2: row.line2 ?? '',
+      city: row.city,
+      pincode: row.pincode,
+      is_default: row.is_default,
+      lat: geo.lat ?? undefined,
+      lng: geo.lng ?? undefined,
+      receiver_name: row.receiver_name ?? '',
+      geo_label: row.geo_label ?? '',
+      ring_bell: row.ring_bell,
+      call_before: row.call_before,
+      instructions: row.instructions ?? '',
+      door_photo_uri: row.door_photo_uri ?? '',
+    });
+    if (created?.id) {
+      await updateRows<Address>('addresses', uid, (r) => r.id === row.id, { backend_id: created.id });
+    }
+  } catch {
+    /* local-only until the next save */
+  }
 }
 
 export async function setDefaultAddress(id: string): Promise<void> {
   const uid = await requireUserId();
   await updateRows<Address>('addresses', uid, () => true, { is_default: false });
   await updateRows<Address>('addresses', uid, (r) => r.id === id, { is_default: true });
+  const bid = await addressBackendId(uid, id);
+  if (bid && isBackendConfigured()) {
+    void api.post(`/addresses/${bid}/default`).catch(() => undefined);
+  }
 }
 
 export async function deleteAddress(id: string): Promise<void> {
   const uid = await requireUserId();
+  const bid = await addressBackendId(uid, id); // capture BEFORE the local delete
   await deleteRows<Address>('addresses', uid, (r) => r.id === id);
+  if (bid && isBackendConfigured()) {
+    void api.del(`/addresses/${bid}`).catch(() => undefined);
+  }
 }
 
 // ── Orders ───────────────────────────────────────────────────────────────────

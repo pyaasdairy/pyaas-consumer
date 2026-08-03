@@ -12,7 +12,7 @@ import { haptics } from '../lib/haptics';
 import { useCart } from '../store/cart';
 import { useWallet } from '../store/wallet';
 import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER } from '../lib/api';
-import { listSubscriptions, subscriptionDeliversOn } from '../lib/subscriptions';
+import { listSubscriptions, listVacations, subscriptionDueOn } from '../lib/subscriptions';
 import { tomorrowISO } from '../lib/dates';
 import { refreshCatalog, getMergedProducts } from '../lib/catalog';
 import { useServiceability, joinWaitlist } from '../lib/serviceability';
@@ -90,13 +90,15 @@ export default function Cart() {
       // Morning cart: pull the ACTIVE subscriptions delivering TOMORROW so the
       // "Your subscription" rows always mirror what will actually arrive.
       if (lane === 'morning') {
-        listSubscriptions()
-          .then((subs) => {
+        // Due = cadence AND not paused/skipped by a vacation — the rows must
+        // mirror what will ACTUALLY arrive tomorrow, not just the schedule.
+        Promise.all([listSubscriptions(), listVacations()])
+          .then(([subs, vacations]) => {
             const tmr = tomorrowISO();
             const byId = new Map(getMergedProducts().map((p) => [p.id, p]));
             setSubRows(
               subs
-                .filter((s) => s.status === 'active' && subscriptionDeliversOn(s, tmr))
+                .filter((s) => s.status === 'active' && subscriptionDueOn(s, tmr, vacations))
                 .map((s) => ({
                   key: s.id,
                   name: byId.get(s.product_id)?.name ?? s.product_id,

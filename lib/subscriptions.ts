@@ -3,6 +3,8 @@ import { parseISO, addDaysISO, todayISO } from './dates';
 import { requireUserId } from './session';
 import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 import { hasExactLocation } from './location';
+import { api, isBackendConfigured } from './apiClient';
+import { getProduct } from '../constants/products';
 
 /** Thrown by createSubscription when no exact delivery point is on file. */
 export const NEEDS_EXACT_LOCATION = 'NEEDS_EXACT_LOCATION';
@@ -28,6 +30,10 @@ export type Subscription = {
   start_date: string;
   next_delivery_date: string | null;
   created_at?: string;
+  /** Server-side twin id ("sub_…") once mirrored to the backend. A mirrored
+   *  subscription's daily order is created by the BACKEND worker (store manager
+   *  sees it without this app opening); the on-device sweep skips it. */
+  backend_id?: string | null;
 };
 
 export type Vacation = {
@@ -147,12 +153,87 @@ export async function createSubscription(params: {
     created_at: new Date().toISOString(),
   };
   await insertRow<Subscription>('subscriptions', uid, row);
+  // Best-effort backend mirror (fire-and-forget): the SERVER worker then owns
+  // the daily morning order, so it reaches the store even if this app never
+  // opens again. A failed mirror leaves the row local-only — the on-device
+  // sweep still covers it.
+  void mirrorSubscriptionCreate(uid, row);
   return id;
+}
+
+// ── Backend mirror (server-owned subscriptions, subscriptions.go) ────────────
+// Local rows remain the UI's source of truth; the backend twin exists so the
+// server's 15-minute worker turns due subscriptions into morning orders +
+// store delivery tasks. Every mirror call is error-soft.
+
+const MIRRORED_FREQUENCIES: Frequency[] = ['daily', 'alternate', 'weekly'];
+
+const STATUS_ACTION: Record<Subscription['status'], 'resume' | 'pause' | 'cancel'> = {
+  active: 'resume',
+  paused: 'pause',
+  cancelled: 'cancel',
+};
+
+async function mirrorSubscriptionCreate(uid: string, row: Subscription): Promise<void> {
+  // one_time/custom are fulfilled on-device immediately — never mirrored.
+  if (!isBackendConfigured() || !MIRRORED_FREQUENCIES.includes(row.frequency)) return;
+  try {
+    const product = getProduct(row.product_id);
+    const created = await api.post<{ id: string }>('/subscriptions', {
+      product_id: row.product_id,
+      name: product?.name ?? row.product_id,
+      variant: row.variant ?? product?.variant ?? '',
+      qty: row.qty,
+      unit_price: row.unit_price,
+      frequency: row.frequency,
+      delivery_slot: row.delivery_slot ?? '',
+      start_date: row.start_date,
+    });
+    if (created?.id) {
+      await updateRows<Subscription>('subscriptions', uid, (s) => s.id === row.id, { backend_id: created.id });
+    }
+  } catch {
+    /* local-only; the on-device sweep covers it */
+  }
+}
+
+/** The local row's backend twin id, if it was mirrored. */
+async function backendIdOf(uid: string, id: string): Promise<string | null> {
+  const rows = await getRows<Subscription>('subscriptions', uid);
+  return rows.find((s) => s.id === id)?.backend_id ?? null;
+}
+
+/** Push the CURRENT vacation set onto every mirrored subscription (an
+ *  account-wide vacation applies to all; a scoped one only to its own sub). */
+async function mirrorVacations(uid: string): Promise<void> {
+  if (!isBackendConfigured()) return;
+  try {
+    const [rows, vacations] = await Promise.all([
+      getRows<Subscription>('subscriptions', uid),
+      getRows<Vacation>('vacations', uid),
+    ]);
+    await Promise.all(
+      rows
+        .filter((s) => s.backend_id && s.status !== 'cancelled')
+        .map((s) => {
+          const ranges = vacations
+            .filter((v) => v.subscription_id === null || v.subscription_id === s.id)
+            .map((v) => ({ start: v.start_date, end: v.end_date }));
+          return api.patch(`/subscriptions/${s.backend_id}`, { vacations: ranges }).catch(() => undefined);
+        }),
+    );
+  } catch {
+    /* error-soft */
+  }
 }
 
 export async function setSubscriptionStatus(id: string, status: Subscription['status']): Promise<void> {
   const uid = await requireUserId();
   await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
+  const bid = await backendIdOf(uid, id);
+  if (bid && isBackendConfigured()) {
+    void api.post(`/subscriptions/${bid}/${STATUS_ACTION[status]}`).catch(() => undefined);
+  }
 }
 
 /** Edit a live subscription's plan (quantity / frequency / delivery slot). */
@@ -162,6 +243,17 @@ export async function updateSubscription(
 ): Promise<void> {
   const uid = await requireUserId();
   await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, patch);
+  const bid = await backendIdOf(uid, id);
+  if (bid && isBackendConfigured()) {
+    const body: Record<string, unknown> = {};
+    if (patch.qty != null) body.qty = patch.qty;
+    if (patch.delivery_slot !== undefined) body.delivery_slot = patch.delivery_slot ?? '';
+    // The backend only runs the recurring cadences.
+    if (patch.frequency && MIRRORED_FREQUENCIES.includes(patch.frequency)) body.frequency = patch.frequency;
+    if (Object.keys(body).length > 0) {
+      void api.patch(`/subscriptions/${bid}`, body).catch(() => undefined);
+    }
+  }
 }
 
 /**
@@ -176,6 +268,14 @@ export async function reactivateSubscription(id: string, startDate: string): Pro
     start_date: startDate,
     next_delivery_date: startDate,
   });
+  const bid = await backendIdOf(uid, id);
+  if (bid && isBackendConfigured()) {
+    // Re-anchor the schedule server-side too, then resume.
+    void api
+      .patch(`/subscriptions/${bid}`, { start_date: startDate })
+      .then(() => api.post(`/subscriptions/${bid}/resume`))
+      .catch(() => undefined);
+  }
 }
 
 export async function listVacations(): Promise<Vacation[]> {
@@ -193,11 +293,13 @@ export async function addVacation(params: { startDate: string; endDate: string; 
     end_date: params.endDate,
     reason: params.reason ?? null,
   });
+  void mirrorVacations(uid); // the server worker must skip these days too
 }
 
 export async function deleteVacation(id: string): Promise<void> {
   const uid = await requireUserId();
   await deleteRows<Vacation>('vacations', uid, (v) => v.id === id);
+  void mirrorVacations(uid);
 }
 
 // ── Wallet gating ────────────────────────────────────────────────────────────

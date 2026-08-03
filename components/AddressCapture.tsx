@@ -44,7 +44,10 @@ export function AddressCaptureSheet({
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
 
-  const [mapOpen, setMapOpen] = useState(true);
+  // Starts false — auto-opened from the parent Modal's onShow. Presenting the
+  // nested map Modal while this sheet is still sliding in silently fails on
+  // Android, leaving mapOpen stuck true (so banner taps became no-ops).
+  const [mapOpen, setMapOpen] = useState(false);
   const [coords, setCoords] = useState<Coords | null>(null);
   const [geoLabel, setGeoLabel] = useState<string | null>(null);
 
@@ -117,7 +120,7 @@ export function AddressCaptureSheet({
   // the profile (they can change it — e.g. delivering to family).
   useEffect(() => {
     if (!visible) return;
-    setMapOpen(true);
+    setMapOpen(false); // presented via the Modal's onShow, after the sheet lands
     setCoords(null);
     setGeoLabel(null);
     setFlat('');
@@ -152,6 +155,18 @@ export function AddressCaptureSheet({
     setMapOpen(false);
     // No pin yet and the member backed out of the map → nothing to form-fill.
     if (!coords) onClose();
+  }
+
+  // Banner tap must ALWAYS present the map. If the banner was tappable while
+  // mapOpen is already true, the nested Modal failed to present (Android race)
+  // — flip false→true to force a fresh presentation.
+  function openMap() {
+    if (mapOpen) {
+      setMapOpen(false);
+      setTimeout(() => setMapOpen(true), 60);
+    } else {
+      setMapOpen(true);
+    }
   }
 
   // "Add a door photo" opens the CAMERA (that's what the label promises); the
@@ -233,7 +248,7 @@ export function AddressCaptureSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose} presentationStyle="fullScreen">
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose} presentationStyle="fullScreen" onShow={() => setMapOpen(true)}>
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.milk }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.line }}>
@@ -255,7 +270,7 @@ export function AddressCaptureSheet({
           showsVerticalScrollIndicator={false}
         >
           {/* The pinned spot, in words — tap to adjust on the map. */}
-          <Tap onPress={() => setMapOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: coords ? colors.blueSoft : colors.flameSoft, borderRadius: radius.md, borderWidth: 1.5, borderColor: coords ? colors.blue : colors.flameDeep, paddingHorizontal: 14, paddingVertical: 12 }}>
+          <Tap onPress={openMap} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: coords ? colors.blueSoft : colors.flameSoft, borderRadius: radius.md, borderWidth: 1.5, borderColor: coords ? colors.blue : colors.flameDeep, paddingHorizontal: 14, paddingVertical: 12 }}>
             <Ionicons name={coords ? 'location' : 'map'} size={19} color={coords ? colors.blue : colors.flameDeep} />
             <View style={{ flex: 1 }}>
               <TextMed style={{ fontSize: 14 }} color={colors.ink}>{coords ? 'Delivery location set' : 'Set delivery location on map'}</TextMed>
