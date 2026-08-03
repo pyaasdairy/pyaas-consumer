@@ -26,7 +26,7 @@ import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
-import { freePackShowEligible, onFreePackChanged, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
+import { freePackShowEligible, onFreePackChanged, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
 import { PREPAID_TARGET, prepaidTier } from '../../lib/prepaid';
 import { listSubscriptions } from '../../lib/subscriptions';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
@@ -149,9 +149,17 @@ export default function Shop() {
       .then((subs) => {
         // A one-time order is NOT an ongoing subscription — exclude it so a single
         // instant buy never flips the member out of the "fresh" 2+2 funnel.
-        const active = subs.some((s) => (s.status === 'active' || s.status === 'paused') && s.frequency !== 'one_time');
-        setHasSub(active);
-        setFreshUser(!active);
+        const anySub = subs.some((s) => (s.status === 'active' || s.status === 'paused') && s.frequency !== 'one_time');
+        // The 2+2 offer applies ONLY to SUBSCRIBING the full cream (the offer
+        // SKU). A Taaza (or any other SKU) subscriber is still a candidate, and
+        // a PAUSED full-cream sub still owes its paid day(s) — only an ACTIVE
+        // full-cream subscription ends the "fresh" funnel (its progress card
+        // owns the home screen; claimEligible closes it for good on completion).
+        const goldActive = subs.some(
+          (s) => s.product_id === FREE_PACK_PRODUCT_ID && s.status === 'active' && s.frequency !== 'one_time',
+        );
+        setHasSub(anySub); // the low-wallet delivery nudge still keys off ANY sub
+        setFreshUser(!goldActive);
       })
       .catch(() => { setHasSub(false); setFreshUser(false); });
   }, []);

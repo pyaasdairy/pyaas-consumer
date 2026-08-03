@@ -8,7 +8,7 @@ import { isBackendConfigured } from './apiClient';
 import { createSubscription, listSubscriptions, reactivateSubscription } from './subscriptions';
 import { tomorrowISO } from './dates';
 import { getProduct } from '../constants/products';
-import { beginTrial, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
+import { beginTrial, getTrial, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 
 // Re-exported so screens can pull the trial shape from one funnel-facing module.
 export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
@@ -82,15 +82,27 @@ function normPhone(phone: string): string {
   return phone.replace(/\D/g, '').slice(-10);
 }
 
-/** Whether this account is eligible to claim (phone not used, device under cap). */
-export async function freePackEligible(phone: string): Promise<{ eligible: boolean; reason?: string }> {
-  const p = normPhone(phone);
-  const claims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
-  // Phone-uniqueness is the real gate (the server enforces it hard). We no longer
-  // block by device count — one trial PER NUMBER — so every new sign-up is a fresh
-  // first-time user (and the funnel is testable), while a re-claim by the same
-  // number is still refused.
-  if (claims.some((c) => normPhone(c.phone) === p)) return { eligible: false, reason: 'This number has already started its trial.' };
+/** THE COMPLETION LAW: the 2+2 funnel is DONE only once the member has
+ *  completed their TRIAL_PAID_DAYS paid deliveries of the full-cream
+ *  subscription (phase moves to 'free'/'completed' — the free days are already
+ *  earned; there is nothing left to sell). Until then a pause or even a cancel
+ *  mid-trial keeps the offer alive — they still owe the remaining paid day(s). */
+export async function offerCompleted(): Promise<boolean> {
+  try {
+    const t = await getTrial();
+    return t.phase === 'free' || t.phase === 'completed';
+  } catch {
+    return false; // offline / signed out — never close the funnel on a blip
+  }
+}
+
+/** Whether this account may claim (or RE-ENTER) the trial. Open until the paid
+ *  days are completed — a member who claimed then paused/cancelled after day 1
+ *  resumes through the same flow to finish their remaining paid day(s). */
+export async function freePackEligible(_phone: string): Promise<{ eligible: boolean; reason?: string }> {
+  if (await offerCompleted()) {
+    return { eligible: false, reason: 'This trial has already been completed.' };
+  }
   return { eligible: true };
 }
 
@@ -182,10 +194,14 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
   // NO money is credited for the trial — the offer is GOODIES (free milk), not
   // rupees. The member pays their first 2 delivered days; the BACKEND zeroes
   // the debits for the 2 free days (trial engine, isTrialProduct). The wallet
-  // is never touched here. Record the claim (device-global).
-  await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
-    phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
-  });
+  // is never touched here. Record the claim once (a RESUME after a mid-trial
+  // pause/cancel re-enters here and must not duplicate the row).
+  const priorClaims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
+  if (!priorClaims.some((c) => normPhone(c.phone) === p)) {
+    await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
+      phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
+    });
+  }
   // (b) Auto-start the daily subscription (first delivery tomorrow) and anchor
   // the trial. Days 1–2 are paid; days 3–4 are free (the backend zeroes those
   // days' debits — no wallet credit involved); it keeps running at ₹29/day until
@@ -230,7 +246,9 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
       }
     }
   }
-  await markSeen();
+  // NOTE: deliberately NOT markSeen() here — the funnel closes only on
+  // COMPLETION (2 paid days delivered, see freePackShowEligible). A member who
+  // pauses/cancels after day 1 must keep seeing the offer until day 2 is done.
   notifyFreePackChanged();
   return { ok: true, value: FREE_PACK_VALUE, subscriptionId };
 }
@@ -264,17 +282,25 @@ type Snooze = { dismissals: number; snoozed_until: string };
 export async function freePackShowEligible(phone: string): Promise<boolean> {
   const uid = await requireUserId().catch(() => null);
   if (!uid) return false;
+  // COMPLETED (2 paid full-cream days delivered) → the funnel disappears from
+  // the home page and everywhere else, permanently.
+  if (await offerCompleted()) {
+    await markSeen();
+    return false;
+  }
   const seen = await getSingle<{ seen: boolean }>(SEEN_TABLE, uid);
   if (seen?.seen) return false;
-  // Already subscribed (via ANY path, not just the 2+2 claim) → they are not a
-  // "start your subscription" candidate, so the trial banner/pop-up must NOT nag
-  // them. (Fixes the case where a member who subscribed from a product page keeps
-  // seeing the trial funnel because they never tripped the per-user 'seen' flag.)
+  // Only an ACTIVE FULL-CREAM (offer SKU) subscription pauses the sell — its
+  // live progress card owns the home screen while the paid days tick down. A
+  // PAUSED or CANCELLED full-cream sub (day(s) still owed), or any OTHER SKU's
+  // subscription (e.g. Taaza toned), keeps the 2+2 funnel visible: the offer
+  // applies only to SUBSCRIBING the full cream, so those members are still
+  // candidates until their 2 paid days are complete.
   try {
     const subs = await listSubscriptions();
-    // Exclude one-time orders — only a RECURRING active/paused sub disqualifies the
-    // 2+2 offer (matches the same filter in index.tsx / PromoGate / SubscriptionStatusCard).
-    if (subs.some((s) => (s.status === 'active' || s.status === 'paused') && s.frequency !== 'one_time')) return false;
+    if (subs.some((s) => s.product_id === FREE_PACK_PRODUCT_ID && s.status === 'active' && s.frequency !== 'one_time')) {
+      return false;
+    }
   } catch { /* offline — fall through to the claim gate */ }
   const gate = await freePackEligible(phone);
   return gate.eligible;

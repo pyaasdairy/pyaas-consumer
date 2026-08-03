@@ -11,7 +11,7 @@ import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 import { hasExactLocation } from '../lib/location';
 import { useUserLocation } from '../lib/userLocation';
 import { AddressCaptureSheet } from './AddressCapture';
-import { listAddresses } from '../lib/api';
+import { listAddresses, type Address } from '../lib/api';
 import { isBackendConfigured } from '../lib/apiClient';
 import { currentMandate, createMandate } from '../lib/autopay';
 import { tomorrowISO, addDaysISO, parseISO, formatShort } from '../lib/dates';
@@ -69,6 +69,11 @@ export function SubscribeSheet({
   const [busy, setBusy] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [err, setErr] = useState('');
+  // REVIEW-BEFORE-CREATE: every subscription (any milk, not just the 2+2 offer)
+  // goes edit → review → confirm. Nothing is created until the review's
+  // "Confirm subscription" — so the sub appears in Subscriptions only after it.
+  const [stage, setStage] = useState<'edit' | 'review'>('edit');
+  const [reviewAddr, setReviewAddr] = useState<Address | null>(null);
   // Synchronous double-tap guard (setBusy only disables after a re-render).
   const busyRef = useRef(false);
 
@@ -81,10 +86,30 @@ export function SubscribeSheet({
       // silently resetting it to tomorrow; fall back to tomorrow when none/invalid.
       setStartDate(initialStartDate && initialStartDate >= tomorrowISO() ? initialStartDate : tomorrowISO());
       setErr('');
+      setStage('edit');
+      setReviewAddr(null);
     }
   }, [visible, initialFreq, initialQty, initialStartDate]);
 
   const perDelivery = unitPrice * qty;
+
+  // Edit → the review card: resolve the delivery address for display (the hard
+  // gates — complete address + wallet — still run at confirm, exactly as before).
+  async function goReview() {
+    haptics.press();
+    setErr('');
+    try {
+      const addrs = await listAddresses().catch(() => [] as Address[]);
+      const hasPin = (a: Address) => {
+        const g = a as unknown as { lat?: number | null; lng?: number | null };
+        return g.lat != null && g.lng != null;
+      };
+      setReviewAddr(addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin) ?? null);
+    } catch {
+      setReviewAddr(null);
+    }
+    setStage('review');
+  }
 
   async function confirm() {
     if (busyRef.current) return;
@@ -194,6 +219,7 @@ export function SubscribeSheet({
               </Tap>
             </View>
 
+            {stage === 'edit' ? (<>
             {/* Frequency */}
             <View style={{ gap: 8 }}>
               <TextSemi style={{ fontSize: 14.5 }}>How often?</TextSemi>
@@ -270,17 +296,66 @@ export function SubscribeSheet({
 
             {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
 
-            {/* Confirm */}
-            <Tap onPress={busy ? undefined : confirm} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
-              {busy ? <ActivityIndicator color={colors.white} /> : <Ionicons name="checkmark-circle" size={19} color={colors.white} />}
-              <TextSemi color={colors.white} style={{ fontSize: 16 }}>{busy ? 'Starting…' : `Start subscription · ${rupee(perDelivery)}/delivery`}</TextSemi>
+            {/* Edit → the review page (nothing is created yet) */}
+            <Tap onPress={() => { void goReview(); }} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
+              <Ionicons name="receipt-outline" size={19} color={colors.white} />
+              <TextSemi color={colors.white} style={{ fontSize: 16 }}>{`Review subscription · ${rupee(perDelivery)}/delivery`}</TextSemi>
             </Tap>
             <TextBody style={{ fontSize: 11, textAlign: 'center' }} color={colors.inkMute}>Paid from your PYAAS Wallet · keep at least {MIN_SUB_DAYS_COVER} days funded · pause, skip or cancel anytime.</TextBody>
+            </>) : null}
+
+            {stage === 'review' ? (<>
+            {/* REVIEW ORDER — the last look before anything exists. Confirm below
+                runs the address + wallet gates and only then creates the sub. */}
+            <View style={{ backgroundColor: colors.wash, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
+              <ReviewRow icon="cube" label={product.name} value={`${qty} × ${product.variant} · ${FREQS.find((f) => f.key === freq)?.label ?? freq}`} />
+              <ReviewRow icon="calendar" label="First delivery" value={`${formatShort(startDate)} · 5–7:30 AM`} highlight />
+              <ReviewRow icon="location" label="Delivering to" value={reviewAddr ? `${reviewAddr.line1}${reviewAddr.line2 ? ', ' + reviewAddr.line2 : ''}, ${reviewAddr.city} - ${reviewAddr.pincode}` : 'Add your address at confirmation'} />
+              <ReviewRow icon="cash" label="To pay per delivery" value={`${rupee(perDelivery)} · charged after each delivery, from your wallet`} highlight />
+            </View>
+            {/* Policy — the exact terms, no surprises. */}
+            <View style={{ gap: 6 }}>
+              <PolicyLine icon="pause-circle" text="Pause, skip or cancel anytime — no lock-in" />
+              <PolicyLine icon="wallet-outline" text={`Keep at least ${MIN_SUB_DAYS_COVER} days funded in your PYAAS Wallet`} />
+              <PolicyLine icon="shield-checkmark-outline" text="Nothing is charged now — each delivery bills only after it arrives" />
+            </View>
+            {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
+            <Tap onPress={busy ? undefined : confirm} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
+              {busy ? <ActivityIndicator color={colors.white} /> : <Ionicons name="checkmark-circle" size={19} color={colors.white} />}
+              <TextSemi color={colors.white} style={{ fontSize: 16 }}>{busy ? 'Starting…' : `Confirm subscription · ${rupee(perDelivery)}/delivery`}</TextSemi>
+            </Tap>
+            <Tap haptic={false} onPress={() => setStage('edit')} style={{ alignItems: 'center', paddingVertical: 4 }}>
+              <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Edit details</TextMed>
+            </Tap>
+            </>) : null}
           </ScrollView>
         </Animated.View>
       </View>
     </Modal>
     <AddressCaptureSheet visible={mapOpen} onClose={() => setMapOpen(false)} onSaved={onAddressSaved} />
     </>
+  );
+}
+
+function ReviewRow({ icon, label, value, highlight }: { icon: any; label: string; value: string; highlight?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+      <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: highlight ? colors.flameSoft : colors.white, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={15} color={colors.flameDeep} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>{label}</TextBody>
+        <TextMed style={{ fontSize: 13.5 }} color={highlight ? colors.flameDeep : colors.ink}>{value}</TextMed>
+      </View>
+    </View>
+  );
+}
+
+function PolicyLine({ icon, text }: { icon: any; text: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <Ionicons name={icon} size={16} color={colors.flameDeep} />
+      <TextMed style={{ flex: 1, fontSize: 13, lineHeight: 18 }} color={colors.ink}>{text}</TextMed>
+    </View>
   );
 }
