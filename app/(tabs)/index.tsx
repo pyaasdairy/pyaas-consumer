@@ -26,7 +26,7 @@ import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
-import { freePackShowEligible, onFreePackChanged, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
+import { freePackShowEligible, offerBannerEligible, onFreePackChanged, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
 import { PREPAID_TARGET, prepaidTier } from '../../lib/prepaid';
 import { listSubscriptions } from '../../lib/subscriptions';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
@@ -128,6 +128,10 @@ export default function Shop() {
   const [hasSub, setHasSub] = useState(false);
   const phone = profile?.phone ?? '';
 
+  // 2+2 slide in the hero carousel: stays up — even while the claimed trial's
+  // paid days run — and drops out only once the offer completes (2 paid days).
+  const [trialSlide, setTrialSlide] = useState(true);
+
   const recheckClaim = useCallback(() => {
     if (!phone) { setClaimEligible(false); return; }
     // PER-USER show eligibility (not the device-capped claim gate) so a brand-new
@@ -135,6 +139,9 @@ export default function Shop() {
     freePackShowEligible(phone)
       .then((show) => setClaimEligible(show))
       .catch(() => setClaimEligible(false));
+    offerBannerEligible()
+      .then(setTrialSlide)
+      .catch(() => { /* keep the last value on a blip */ });
   }, [phone]);
 
   // A member is "fresh" (a candidate for the 2+2 subscription starter) when they
@@ -420,7 +427,7 @@ export default function Shop() {
 
             {/* Hero · auto-advancing slideshow of the brand creatives */}
             <Animated.View entering={FadeInDown.duration(440).delay(80)}>
-              <HeroSlideshow />
+              <HeroSlideshow showTrialOffer={trialSlide} />
             </Animated.View>
 
             {/* Category rail · horizontally scrollable (PYAAS has many ranges) */}

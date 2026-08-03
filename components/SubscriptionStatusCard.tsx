@@ -124,11 +124,12 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
           <TextSemi numberOfLines={1} style={{ fontSize: 14 }}>
             {s.qty} × {p?.name ?? s.product_id}{active.length > 1 ? `  +${active.length - 1} more` : ''}
           </TextSemi>
-          {trial.active && /^(taaza|gold)-/.test(s.product_id) ? (
+          {trial.active && /^gold-/.test(s.product_id) ? (
             /* 2+2 trial phase, driven by lib/trial: "Day 2 of 2 · paid" (blue) /
                "Day 3 of 4 · FREE 🎉" (green). Paid days still carry the ₹/day.
-               Taaza SKUs ONLY — the trial never advances for other products, so the
-               chip must not imply free days that will never arrive on Gold/Shakti/etc. */
+               FULL-CREAM (gold-*) ONLY — the backend counts trial days for the
+               offer SKU alone, so the chip must never ride a Taaza/other sub
+               and imply free days that will never arrive. */
             <TextSemi style={{ fontSize: 12, ...tabular }} color={trial.phase === 'free' ? LIVE_GREEN : colors.blue}>
               {trialLabel(trial)}{trial.phase === 'paid' ? ` · ${rupee(daily)}/day` : ''}
             </TextSemi>
