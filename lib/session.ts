@@ -71,23 +71,30 @@ export async function getUserId(): Promise<string | null> {
   return currentUid;
 }
 
-/** Sign in with a phone number (demo/offline path). Creates the account + a
- *  profile row on first use, keyed stably so repeat logins return the same data. */
-export async function signInWithPhone(phone: string): Promise<void> {
+/** Sign in with a phone number. Creates the account + a profile row on first
+ *  use, keyed stably so repeat logins return the same data. Pass the
+ *  server-known `fullName` (from OTP verify) so a RETURNING member's name is
+ *  written BEFORE the emit — the router gate then never even flashes the
+ *  complete-profile step on a fresh device. */
+export async function signInWithPhone(phone: string, fullName?: string | null): Promise<void> {
   const digits = phone.replace(/\D/g, '').slice(-10);
   const uid = `u_${digits}`;
   await AsyncStorage.setItem(UID_KEY, uid);
   currentUid = uid;
+  const nm = fullName?.trim() || null;
   const existing = await getSingle<Profile>('profile', uid);
   if (!existing) {
     await putSingle<Profile>('profile', uid, {
       id: uid,
-      full_name: null,
+      full_name: nm,
       phone: `+91${digits}`,
       email: null,
     });
     // Seed a demo wallet balance so the prepaid order flow works offline.
     await putSingle<{ balance: number }>('wallet', uid, { balance: DEMO_WALLET_SEED });
+  } else if (nm && !existing.full_name) {
+    // Returning member, fresh install: hydrate the server-known name pre-emit.
+    await putSingle<Profile>('profile', uid, { ...existing, full_name: nm });
   }
   emit();
 }

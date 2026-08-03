@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Modal, ActivityIndicator } from 'react-native';
+import { View, Modal, ActivityIndicator, TextInput, Keyboard } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, spacing, shadow } from '../lib/theme';
-import { Serif, TextBody, TextSemi, Tap } from './ui';
+import * as Location from 'expo-location';
+import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
+import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import { DEFAULT_REGION, getDeviceCoords, type Coords } from '../lib/location';
 import { placeLabelFromCoords } from '../lib/userLocation';
+import { placesAutocomplete, placeDetails, isPlacesEnabled, newSessionToken, type PlaceSuggestion } from '../lib/places';
 
 /**
  * MAP PICKER — a full-screen map with a DRAGGABLE PIN so the member sets their
@@ -67,7 +69,10 @@ export default function MapPicker({
   visible: boolean;
   initial?: Coords | null;
   onClose: () => void;
-  onConfirm: (coords: Coords) => void;
+  /** Returns the pin + the reverse-geocoded label of the confirmed spot (may be
+   *  null while offline) so callers can show "delivering to …" without another
+   *  geocode round-trip. */
+  onConfirm: (coords: Coords, label?: string | null) => void;
 }) {
   const insets = useSafeAreaInsets();
   const webRef = useRef<WebView>(null);
@@ -90,6 +95,15 @@ export default function MapPicker({
   const [userPlaced, setUserPlaced] = useState<boolean>(!!initial);
   const [locating, setLocating] = useState(false);
   const [mapError, setMapError] = useState(false);
+  // ── Manual search ON the map (CD-style "Try Sector 75…"): Places autocomplete
+  // when a key is configured, else the OS geocoder on submit. Picking a result
+  // recenters the pin — the member then fine-tunes by dragging.
+  const [query, setQuery] = useState('');
+  const [sugs, setSugs] = useState<PlaceSuggestion[]>([]);
+  const [searchErr, setSearchErr] = useState('');
+  const [searching, setSearching] = useState(false);
+  const sessionTokenRef = useRef(newSessionToken());
+  const searchReqRef = useRef(0);
   // Freeze the starting centre for the life of one open so the HTML source (and
   // thus the WebView) is stable — recenters go through injected JS, not reloads.
   const center = useMemo(() => initial ?? DEFAULT_REGION, [initial, visible]);
@@ -169,6 +183,65 @@ export default function MapPicker({
     webRef.current?.injectJavaScript(`window.__recenter(${c.lat},${c.lng}); true;`);
   }
 
+  /** Move the map + pin to a searched point (counts as a real placement). */
+  function recenterTo(c: Coords) {
+    setSugs([]);
+    setSearchErr('');
+    setQuery('');
+    Keyboard.dismiss();
+    haptics.select();
+    setPicked(c);
+    setUserPlaced(true);
+    webRef.current?.injectJavaScript(`window.__recenter(${c.lat},${c.lng}); true;`);
+  }
+
+  // Debounced Places autocomplete while typing (no-op without a key — the OS
+  // geocoder then answers on keyboard-submit instead).
+  useEffect(() => {
+    if (!visible) return;
+    if (!isPlacesEnabled()) return;
+    const q = query.trim();
+    if (q.length < 3) { setSugs([]); return; }
+    const my = ++searchReqRef.current;
+    const t = setTimeout(async () => {
+      const res = await placesAutocomplete(q, { sessionToken: sessionTokenRef.current });
+      if (my === searchReqRef.current) setSugs(res);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query, visible]);
+
+  async function chooseSug(s: PlaceSuggestion) {
+    searchReqRef.current++;
+    setSugs([]);
+    setSearching(true);
+    try {
+      const d = await placeDetails(s.placeId, { sessionToken: sessionTokenRef.current });
+      sessionTokenRef.current = newSessionToken();
+      if (d && d.lat != null && d.lng != null) recenterTo({ lat: d.lat, lng: d.lng });
+      else setSearchErr('Could not open that place — try another.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  /** Keyboard-submit fallback: the OS forward geocoder (keyless). */
+  async function searchSubmit() {
+    const q = query.trim();
+    if (q.length < 3) return;
+    setSearching(true);
+    setSearchErr('');
+    try {
+      const res = await Location.geocodeAsync(q);
+      const hit = res?.[0];
+      if (hit) recenterTo({ lat: hit.latitude, lng: hit.longitude });
+      else setSearchErr('No match found — try adding the area or a landmark.');
+    } catch {
+      setSearchErr('Search needs an internet connection.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
   // Confirm is enabled when there's a real placement (drag/tap/GPS/supplied point),
   // OR the map failed to load (offline) — then it commits the best-known centre so
   // the member is never dead-ended with a disabled button on a blank map.
@@ -179,7 +252,7 @@ export default function MapPicker({
     // able to commit the best-known centre, exactly as the overlay instructs.
     if (!canConfirm || !picked) return;
     haptics.confirm();
-    onConfirm(picked);
+    onConfirm(picked, placeLabel);
   }
 
   return (
@@ -220,6 +293,47 @@ export default function MapPicker({
             )}
             style={{ flex: 1, backgroundColor: colors.wash }}
           />
+          {/* Manual search, ON the map (CD-style): type an area / colony /
+              landmark → pick a suggestion (Places) or submit (OS geocoder) and
+              the pin jumps there for fine-tuning. */}
+          <View style={{ position: 'absolute', top: spacing.sm, left: spacing.lg, right: spacing.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, height: 46, ...shadow.soft }}>
+              <Ionicons name="search" size={17} color={colors.inkMute} />
+              <TextInput
+                value={query}
+                onChangeText={(t) => { setQuery(t); setSearchErr(''); }}
+                placeholder="Search area, colony, landmark…"
+                placeholderTextColor={colors.inkMute}
+                returnKeyType="search"
+                onSubmitEditing={searchSubmit}
+                style={{ flex: 1, fontFamily: fonts.sans, fontSize: 14.5, color: colors.ink }}
+              />
+              {searching ? <ActivityIndicator size="small" color={colors.flameDeep} /> : null}
+              {query.length > 0 && !searching ? (
+                <Tap haptic={false} onPress={() => { setQuery(''); setSugs([]); setSearchErr(''); }} style={{ padding: 4 }}>
+                  <Ionicons name="close-circle" size={17} color={colors.inkMute} />
+                </Tap>
+              ) : null}
+            </View>
+            {sugs.length > 0 ? (
+              <View style={{ marginTop: 6, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.soft }}>
+                {sugs.slice(0, 4).map((s, i) => (
+                  <Tap key={s.placeId} haptic={false} onPress={() => { void chooseSug(s); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: spacing.md, paddingVertical: 11, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line }}>
+                    <Ionicons name="location-outline" size={16} color={colors.flameDeep} />
+                    <View style={{ flex: 1 }}>
+                      <TextMed style={{ fontSize: 13.5 }} numberOfLines={1}>{s.primary}</TextMed>
+                      {s.secondary ? <TextBody style={{ fontSize: 11.5 }} numberOfLines={1}>{s.secondary}</TextBody> : null}
+                    </View>
+                  </Tap>
+                ))}
+              </View>
+            ) : null}
+            {searchErr ? (
+              <View style={{ marginTop: 6, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingHorizontal: spacing.md, paddingVertical: 8 }}>
+                <TextBody style={{ fontSize: 12.5 }} color={colors.danger}>{searchErr}</TextBody>
+              </View>
+            ) : null}
+          </View>
           {/* Offline / tiles-failed: never a dead grey box — tell the member what
               happened and keep Confirm usable (it commits their current area). */}
           {mapError ? (

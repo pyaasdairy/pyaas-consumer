@@ -24,6 +24,17 @@ export type Address = {
   pincode: string;
   is_default: boolean;
   created_at: string;
+  /** Who receives the delivery at this door (mandatory in the capture flow). */
+  receiver_name?: string | null;
+  /** Reverse-geocoded label of the pinned spot ("4JCJ+52Q, Kattigenahalli…"). */
+  geo_label?: string | null;
+  // ── Delivery preferences (ride into placeOrder deliveryPrefs) ──────────────
+  ring_bell?: boolean;
+  call_before?: boolean;
+  /** Free-text delivery instructions ("gate code 4321, don't ring after 9"). */
+  instructions?: string | null;
+  /** Sample door photo the member added so the rider finds the exact door. */
+  door_photo_uri?: string | null;
 };
 
 export type OrderStatus =

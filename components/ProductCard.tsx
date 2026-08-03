@@ -10,7 +10,8 @@ import { StackedProductImage } from './StackedProductImage';
 import { VariantSelector } from './VariantSelector';
 import { haptics } from '../lib/haptics';
 import { useFavorites } from '../store/favorites';
-import { useCart } from '../store/cart';
+import { useCart, activeLane } from '../store/cart';
+import { useDeliveryMode } from '../lib/deliveryMode';
 import { captureRestockLead } from '../lib/leads';
 import { defaultVariant } from '../lib/catalog';
 import { discountPct, type Product } from '../constants/products';
@@ -40,7 +41,10 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD' }: 
   const isFav = useFavorites((s) => s.ids.includes(selected.id));
   const toggleFav = useFavorites((s) => s.toggle);
   const addToCart = useCart((s) => s.add);
-  const inCart = useCart((s) => s.lines.find((l) => l.id === selected.id)?.qty ?? 0);
+  // Bag badge counts the ACTIVE lane's cart only — the instant and morning
+  // carts are separate; re-renders on mode switch via useDeliveryMode.
+  useDeliveryMode();
+  const inCart = useCart((s) => s.lines.find((l) => l.id === selected.id && l.lane === activeLane())?.qty ?? 0);
   // Tapping the card opens the SELECTED variant's screen (Daily / Alternate /
   // One-Time). The bag button drops the SELECTED variant straight into the cart.
   const open = () => router.push(`/product/${selected.id}`);

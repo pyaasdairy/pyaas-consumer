@@ -59,18 +59,26 @@ export default function OtpLogin() {
   const digits = () => phone.replace(/\D/g, '').slice(-10);
 
   /**
-   * ZERO-TYPING step 1: the Phone Number Hint chooser (no runtime permission)
-   * opens ON ITS OWN shortly after the screen lands — the member just taps
-   * their number and the code sends itself; no field tap, no typing. It also
-   * re-arms on field focus as a fallback. No-ops gracefully when the native
+   * ZERO-TYPING step 1: the phone-number chooser (the light "Continue with"
+   * picker listing the SIM numbers; no runtime permission) opens when the
+   * member TAPS the number field — never on its own over the landing page.
+   * Picking a number auto-sends the code with no Continue tap. While the
+   * system picker is up, the slideshow collapses (like the keyboard does) so
+   * the Get-started card floats above it and the field is never hidden.
+   * Cancelling ("None of the above") hands over to plain typing and the
+   * picker does not nag again this session. No-ops gracefully when the native
    * module / Play Services is absent; autoComplete="tel" then offers OS
    * autofill and typing still works.
    */
+  const [hintOpen, setHintOpen] = useState(false);
+  const hintDone = useRef(false); // resolved once (picked or dismissed) — don't relaunch
   const launchHint = async () => {
-    if (hintBusy.current || digits().length >= 10) return;
+    if (hintBusy.current || hintDone.current || digits().length >= 10) return;
     hintBusy.current = true;
+    setHintOpen(true);
     try {
       const hinted = await requestPhoneHint();
+      hintDone.current = true;
       if (hinted && hinted.length >= 10 && digits().length < 10) {
         setPhone(hinted);
         Keyboard.dismiss();
@@ -80,17 +88,9 @@ export default function OtpLogin() {
       }
     } finally {
       hintBusy.current = false;
+      setHintOpen(false);
     }
   };
-  // Auto-launch once when the phone step is on screen.
-  const hintLaunched = useRef(false);
-  useEffect(() => {
-    if (step !== 'phone' || hintLaunched.current) return;
-    hintLaunched.current = true;
-    const t = setTimeout(() => { void launchHint(); }, 450);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
 
   /**
    * ZERO-TYPING step 2: while on the code step, auto-read the incoming OTP SMS
@@ -175,12 +175,10 @@ export default function OtpLogin() {
         const pair = await api.post<{ access_token: string; refresh_token: string; profile?: { id: string; full_name?: string | null } }>(
           '/auth/otp/verify', { phone: digits(), code: c });
         await setTokens(pair.access_token, pair.refresh_token);
-        await signInWithPhone(digits());
-        // RETURNING user: hydrate their saved name so the router's complete-profile
-        // gate (needs full_name) passes and they land straight in the app instead of
-        // being forced back through profile setup on every reinstall / new device.
-        const nm = pair.profile?.full_name;
-        if (nm && nm.trim()) await saveProfile({ full_name: nm });
+        // Hand the server-known name straight into the session write (pre-emit)
+        // so the router gate NEVER shows a registered member the name step
+        // again — not even a flash — on any device or reinstall.
+        await signInWithPhone(digits(), pair.profile?.full_name);
       } else if (isMsg91Configured()) {
         // Real SMS OTP via MSG91: verify the code, then open the local session.
         await msg91VerifyOtp(digits(), c);
@@ -202,9 +200,13 @@ export default function OtpLogin() {
         {step === 'phone' ? (
           <>
             {/* Full-bleed landing slideshow with dot indicators. Collapses while
-                the keyboard is up so the field + button stay fully visible. */}
-            {kbUp ? (
-              <View style={{ flex: 1, minHeight: spacing.xl, paddingTop: insets.top }} />
+                the keyboard OR the system number-picker is up so the field +
+                button stay fully visible. The collapsed spacer is a SMALL FIXED
+                strip (never flex:1 — a flexing spacer swallows the shrunken
+                viewport and shoves the card under the keyboard), so the
+                Get-started card floats to the TOP while typing. */}
+            {kbUp || hintOpen ? (
+              <View style={{ height: insets.top + spacing.md }} />
             ) : (
               <View style={{ flex: 1, justifyContent: 'center', paddingTop: insets.top }}>
                 <LandingSlideshow />

@@ -12,6 +12,8 @@ import { haptics } from '../lib/haptics';
 import { useCart } from '../store/cart';
 import { useWallet } from '../store/wallet';
 import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER } from '../lib/api';
+import { listSubscriptions, subscriptionDeliversOn } from '../lib/subscriptions';
+import { tomorrowISO } from '../lib/dates';
 import { refreshCatalog, getMergedProducts } from '../lib/catalog';
 import { useServiceability, joinWaitlist } from '../lib/serviceability';
 import { useDeliveryMode } from '../lib/deliveryMode';
@@ -39,7 +41,7 @@ export default function Cart() {
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
 
-  const lines = useCart((s) => s.lines);
+  const allLines = useCart((s) => s.lines);
   const setQty = useCart((s) => s.setQty);
   const remove = useCart((s) => s.remove);
   const clear = useCart((s) => s.clear);
@@ -54,6 +56,14 @@ export default function Cart() {
   // instant orders broadcast to riders, morning ride the subscription route.
   const mode = useDeliveryMode();
   const lane = mode === 'instant' ? 'instant' : 'morning';
+  // TWO CARTS: this screen shows ONLY the active lane's lines — the ⚡ instant
+  // cart and the morning (one-time add-on) cart never mix.
+  const lines = allLines.filter((l) => l.lane === lane);
+
+  // Morning world: the member's SUBSCRIPTION items arriving tomorrow render as
+  // their own read-only rows (Subscribed ✓ → manage), separate from one-time
+  // add-on lines — exactly the reference "All items for the day" layout.
+  const [subRows, setSubRows] = useState<{ key: string; name: string; variant: string; qty: number; price: number }[]>([]);
 
   const [placing, setPlacing] = useState(false);
   const [err, setErr] = useState('');
@@ -77,9 +87,32 @@ export default function Cart() {
       // Re-check live stock so a line that went OOS since the cart was opened is
       // flagged (and dropped from the bill) before the user can pay for it.
       void refreshCatalog().then(() => revalidateStock(getMergedProducts()));
+      // Morning cart: pull the ACTIVE subscriptions delivering TOMORROW so the
+      // "Your subscription" rows always mirror what will actually arrive.
+      if (lane === 'morning') {
+        listSubscriptions()
+          .then((subs) => {
+            const tmr = tomorrowISO();
+            const byId = new Map(getMergedProducts().map((p) => [p.id, p]));
+            setSubRows(
+              subs
+                .filter((s) => s.status === 'active' && subscriptionDeliversOn(s, tmr))
+                .map((s) => ({
+                  key: s.id,
+                  name: byId.get(s.product_id)?.name ?? s.product_id,
+                  variant: s.variant ?? byId.get(s.product_id)?.variant ?? '',
+                  qty: s.qty,
+                  price: s.unit_price,
+                })),
+            );
+          })
+          .catch(() => setSubRows([]));
+      } else {
+        setSubRows([]);
+      }
       const off = onWalletUnlocked(() => setUnlocked(true));
       return off;
-    }, [refreshWallet, checkSvc, revalidateStock, recheckUnlock])
+    }, [refreshWallet, checkSvc, revalidateStock, recheckUnlock, lane])
   );
 
   const hasOutOfStock = lines.some((l) => l.outOfStock);
@@ -153,7 +186,7 @@ export default function Cart() {
       // for just went out of stock — even if a different line restocked to keep
       // the orderable count equal. Paying `orderable` is then provably safe (every
       // one of its lines is still in stock) and stays consistent with `total`.
-      const freshIds = new Set(useCart.getState().lines.filter((l) => !l.outOfStock).map((l) => l.id));
+      const freshIds = new Set(useCart.getState().lines.filter((l) => l.lane === lane && !l.outOfStock).map((l) => l.id));
       if (orderable.some((l) => !freshIds.has(l.id))) {
         setErr('Some items just went out of stock and were removed. Please review your cart.');
         setPlacing(false);
@@ -178,8 +211,18 @@ export default function Cart() {
         paymentMethod: 'wallet',
         orderType: 'instant',
         lane,
+        // Morning one-time add-ons arrive NEXT morning; instant rides the ⚡ lane.
+        deliveryDate: lane === 'morning' ? tomorrowISO() : null,
+        // The address's delivery preferences ride every order so the rider
+        // sees ring-the-bell / call-before / instructions on the task.
+        deliveryPrefs: {
+          handover: address.ring_bell ? 'RING_BELL' : 'HAND_TO_CUSTOMER',
+          callBefore: !!address.call_before,
+          note: address.instructions ?? undefined,
+          receiver: address.receiver_name ?? undefined,
+        },
       });
-      clear();
+      clear(lane);
       haptics.confirm();
       router.replace(`/order/${orderId}`);
     } catch (e: any) {
@@ -189,17 +232,21 @@ export default function Cart() {
     }
   }
 
-  // ── Empty ────────────────────────────────────────────────────────────────
-  if (lines.length === 0) {
+  // ── Empty (a morning cart with subscription rows still renders below) ─────
+  if (lines.length === 0 && (lane === 'instant' || subRows.length === 0)) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.milk }}>
-        <Header insetsTop={insets.top} />
+        <Header insetsTop={insets.top} lane={lane} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: 12 }}>
           <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="bag-handle-outline" size={38} color={colors.flameDeep} />
           </View>
-          <Serif style={{ fontSize: 22 }}>Your cart is empty</Serif>
-          <TextBody style={{ textAlign: 'center' }}>Add fresh milk and more from the shop, then pay in one tap from your wallet.</TextBody>
+          <Serif style={{ fontSize: 22 }}>{lane === 'instant' ? 'Your instant cart is empty' : 'Your morning cart is empty'}</Serif>
+          <TextBody style={{ textAlign: 'center' }}>
+            {lane === 'instant'
+              ? 'Add fresh milk and more from the ⚡ Instant shop — delivered in ~20 minutes.'
+              : 'Add one-time items from the Morning shop — delivered tomorrow with the 5–7:30 AM run.'}
+          </TextBody>
           <Button title="Start shopping" onPress={() => router.replace('/(tabs)')} style={{ alignSelf: 'stretch', marginTop: 8 }} />
         </View>
       </View>
@@ -208,9 +255,45 @@ export default function Cart() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.cream }}>
-      <Header insetsTop={insets.top} />
+      <Header insetsTop={insets.top} lane={lane} />
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + 200 }} showsVerticalScrollIndicator={false}>
+        {/* MORNING: the member's subscription items arriving tomorrow — their
+            own read-only rows (Subscribed ✓ → manage), never mixed with the
+            one-time add-on lines below. */}
+        {lane === 'morning' && subRows.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            <TextSemi style={{ fontSize: 14.5 }}>Your subscription · arrives tomorrow</TextSemi>
+            <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.soft }}>
+              {subRows.map((r, i) => (
+                <Tap key={r.key} haptic={false} onPress={() => { haptics.select(); router.push('/subscriptions'); }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.md, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="repeat" size={18} color={colors.flameDeep} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <TextSemi style={{ fontSize: 14 }} numberOfLines={1}>{r.name}</TextSemi>
+                      <TextBody style={{ fontSize: 12 }}>{r.variant ? `${r.variant} · ` : ''}{rupee(r.price)}/day</TextBody>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.blueSoft, borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 4 }}>
+                        <Ionicons name="checkmark-circle" size={13} color={colors.blue} />
+                        <TextMed color={colors.blue} style={{ fontSize: 12 }}>Subscribed · ×{r.qty}</TextMed>
+                      </View>
+                      <TextBody color={colors.inkMute} style={{ fontSize: 10.5 }}>Tap to manage</TextBody>
+                    </View>
+                  </View>
+                </Tap>
+              ))}
+            </View>
+            <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>
+              Billed day by day from your wallet — not part of this order's bill.
+            </TextBody>
+            {lines.length > 0 ? (
+              <TextSemi style={{ fontSize: 14.5, marginTop: 4 }}>One-time add-ons · tomorrow morning</TextSemi>
+            ) : null}
+          </View>
+        ) : null}
         {/* Out-of-zone block */}
         {blocked ? (
           <Animated.View entering={FadeIn.duration(240)}>
@@ -252,8 +335,8 @@ export default function Cart() {
                   )}
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                  <Stepper qty={l.qty} onChange={(n) => (n <= 0 ? remove(l.id) : setQty(l.id, n))} min={0} />
-                  <Tap haptic={false} onPress={() => { haptics.select(); remove(l.id); }} style={{ paddingHorizontal: 4 }}>
+                  <Stepper qty={l.qty} onChange={(n) => (n <= 0 ? remove(l.id, l.lane) : setQty(l.id, n, l.lane))} min={0} />
+                  <Tap haptic={false} onPress={() => { haptics.select(); remove(l.id, l.lane); }} style={{ paddingHorizontal: 4 }}>
                     <TextBody color={colors.inkMute} style={{ fontSize: 11.5 }}>Remove</TextBody>
                   </Tap>
                 </View>
@@ -266,7 +349,15 @@ export default function Cart() {
           <TextMed color={colors.danger} style={{ fontSize: 12.5 }}>Out-of-stock items won't be charged or delivered.</TextMed>
         ) : null}
 
-        {/* Price breakdown */}
+        {/* One-time carts always offer a quick hop back to the shop (reference
+            "Add Products" pill) — pure-subscription reviews never show this. */}
+        <Tap haptic={false} onPress={() => { haptics.select(); router.replace('/(tabs)'); }} style={{ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.flameDeep, borderRadius: radius.pill, paddingHorizontal: 18, height: 44, backgroundColor: colors.white }}>
+          <Ionicons name="search" size={15} color={colors.flameDeep} />
+          <TextSemi color={colors.flameDeep} style={{ fontSize: 14 }}>Add more products</TextSemi>
+        </Tap>
+
+        {/* Price breakdown (only when there is a one-time order to pay for) */}
+        {orderable.length > 0 ? (
         <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: 10, ...shadow.soft }}>
           <TextSemi style={{ fontSize: 15, marginBottom: 2 }}>Bill summary</TextSemi>
           <Row label={`Item total (${orderable.reduce((n, l) => n + l.qty, 0)})`} value={rupee(subtotal)} />
@@ -295,6 +386,7 @@ export default function Cart() {
             <TextBody style={{ fontSize: 11.5, flex: 1 }}>Held on your wallet now, charged only after the order is delivered.</TextBody>
           </View>
         </View>
+        ) : null}
 
         {err ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{err}</TextBody> : null}
 
@@ -316,7 +408,8 @@ export default function Cart() {
         </View>
       </ScrollView>
 
-      {/* Sticky wallet-first CTA */}
+      {/* Sticky wallet-first CTA (hidden when there's nothing one-time to pay) */}
+      {orderable.length === 0 ? null : (
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: 'rgba(255,255,255,0.97)', borderTopWidth: 1, borderTopColor: colors.line, gap: 8 }}>
         {locked && !blocked ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
@@ -351,15 +444,27 @@ export default function Cart() {
           </View>
         </Tap>
       </View>
+      )}
     </View>
   );
 }
 
-function Header({ insetsTop }: { insetsTop: number }) {
+function Header({ insetsTop, lane }: { insetsTop: number; lane: 'instant' | 'morning' }) {
   return (
     <View style={{ paddingTop: insetsTop + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.milk, borderBottomWidth: 1, borderBottomColor: colors.line }}>
       <BackButton />
-      <Serif style={{ fontSize: 22, flex: 1 }}>Your cart</Serif>
+      <View style={{ flex: 1 }}>
+        <Serif style={{ fontSize: 22 }}>Your cart</Serif>
+        <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>
+          {lane === 'instant' ? '⚡ Instant · delivered in ~20 min' : 'Morning · delivered tomorrow 5–7:30 AM'}
+        </TextBody>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: lane === 'instant' ? colors.flameSoft : colors.blueSoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 5 }}>
+        <Ionicons name={lane === 'instant' ? 'flash' : 'sunny'} size={13} color={lane === 'instant' ? colors.flameDeep : colors.blue} />
+        <TextMed style={{ fontSize: 12 }} color={lane === 'instant' ? colors.flameDeep : colors.blue}>
+          {lane === 'instant' ? 'Instant' : 'Morning'}
+        </TextMed>
+      </View>
     </View>
   );
 }

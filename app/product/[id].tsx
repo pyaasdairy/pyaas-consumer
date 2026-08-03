@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, ScrollView, Text, TextInput } from 'react-native';
+import { View, ScrollView, Text, TextInput, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +13,7 @@ import { Stars } from '../../components/Stars';
 import { StackedProductImage } from '../../components/StackedProductImage';
 import { ShineSweep, GlowPulse } from '../../components/Fx';
 import { StartDatePicker } from '../../components/StartDatePicker';
-import { discountPct, complianceFor, getReviews } from '../../constants/products';
+import { discountPct, complianceFor, getReviews, backImageFor, type Product } from '../../constants/products';
 import { useCatalog, groupProducts, physicalAttributes } from '../../lib/catalog';
 import { VariantSelector } from '../../components/VariantSelector';
 import { SubscribeSheet, type SubscribeResult } from '../../components/SubscribeSheet';
@@ -272,7 +272,7 @@ export default function ProductDetail() {
         let orderId: string;
         try {
           orderId = await placeOrder({
-            lines: [{ id: product.id, name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
+            lines: [{ id: product.id, lane: laneSel === 'instant' ? ('instant' as const) : ('morning' as const), name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
             address,
             paymentMethod: 'prepaid',
             priority: 'normal',
@@ -364,13 +364,7 @@ export default function ProductDetail() {
             </Tap>
           </View>
           {product.image ? (
-            product.packCount && product.packCount >= 2 ? (
-              <View style={{ width: '100%', height: 280 }}>
-                <StackedProductImage source={product.image} count={product.packCount} width="66%" height="80%" />
-              </View>
-            ) : (
-              <Image source={product.image} style={{ width: '100%', height: 280 }} contentFit="contain" transition={250} />
-            )
+            <ProductPhotoPager product={product} />
           ) : (
             <View style={{ width: '100%', height: 280, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl }}>
               <Serif style={{ fontSize: 26, textAlign: 'center' }} color={colors.flameDeep}>{product.name}</Serif>
@@ -432,8 +426,17 @@ export default function ProductDetail() {
 
           <Divider />
 
-          {/* Milk = daily morning subscription. Everything else = one-time order. */}
-          {subscribable ? (
+          {/* Milk = daily morning subscription. Everything else = one-time order.
+              ⚡ INSTANT WORLD: no subscription setup at all — instant is a pure
+              one-time add-to-cart purchase; subscriptions live in Morning. */}
+          {sharedMode === 'instant' ? (
+            <Animated.View entering={FadeInDown.duration(420).delay(90)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 12 }}>
+              <Ionicons name="flash" size={18} color={colors.flameDeep} />
+              <TextMed style={{ flex: 1, fontSize: 13.5 }} color={colors.ink}>
+                ⚡ Instant delivery · arriving in ~20 minutes (by {instantEta}). One-time order — daily subscriptions live in the Morning tab.
+              </TextMed>
+            </Animated.View>
+          ) : subscribable ? (
             <Animated.View entering={FadeInDown.duration(420).delay(90)} style={{ gap: 10 }}>
               <TextSemi style={{ fontSize: 16 }}>Set up your milk delivery</TextSemi>
               <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -454,8 +457,9 @@ export default function ProductDetail() {
           )}
 
           {/* Delivery lane (one-time orders) / start date (subscriptions).
-              Instant is one-time-only — subscriptions always ride the morning route. */}
-          {isInstant ? (
+              Instant is one-time-only — subscriptions always ride the morning
+              route. In the ⚡ instant world the lane is FIXED (no picker). */}
+          {isInstant && sharedMode !== 'instant' ? (
             <Animated.View entering={FadeInDown.duration(420).delay(120)} style={{ gap: 10 }}>
               <TextSemi style={{ fontSize: 16 }}>Delivery</TextSemi>
               <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -766,6 +770,50 @@ function ProceedButton({ title, loading, onPress }: { title: string; loading: bo
           <ShineSweep dur={2400} travel={300} bandWidth={64} angle="16deg" delay={400} />
         </View>
       </Tap>
+    </View>
+  );
+}
+
+/**
+ * Front + back pack photos in a swipeable pager with sliding dots (the same dot
+ * language as the landing/hero slideshows). Falls back to the single front
+ * image — identical layout, no dots — when we have no real back photo, so
+ * nothing changes for SKUs that were photographed front-only.
+ */
+function ProductPhotoPager({ product }: { product: Product & { packCount?: number } }) {
+  const { width } = useWindowDimensions();
+  const back = backImageFor(product);
+  const [page, setPage] = useState(0);
+  const img = product.image;
+  if (!img) return null; // caller renders the name fallback instead
+  const front =
+    product.packCount && product.packCount >= 2 ? (
+      <View style={{ width, height: 280 }}>
+        <StackedProductImage source={img} count={product.packCount} width="66%" height="80%" />
+      </View>
+    ) : (
+      <Image source={img} style={{ width, height: 280 }} contentFit="contain" transition={250} />
+    );
+  if (!back) return front;
+  return (
+    <View>
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / Math.max(1, width)))}
+      >
+        {front}
+        <Image source={back} style={{ width, height: 280 }} contentFit="contain" transition={250} />
+      </ScrollView>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, marginTop: 10 }}>
+        {[0, 1].map((i) => (
+          <View
+            key={i}
+            style={{ width: i === page ? 22 : 7, height: 7, borderRadius: 4, backgroundColor: i === page ? colors.flameDeep : colors.flameSoft }}
+          />
+        ))}
+      </View>
     </View>
   );
 }

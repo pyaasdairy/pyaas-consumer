@@ -8,9 +8,10 @@ import { TextBody, TextMed, TextSemi, Serif, Tap, Stepper } from './ui';
 import { haptics } from '../lib/haptics';
 import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
 import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
-import { hasExactLocation, type Coords } from '../lib/location';
-import { useUserLocation, currentUserLoc } from '../lib/userLocation';
-import MapPicker from './MapPicker';
+import { hasExactLocation } from '../lib/location';
+import { useUserLocation } from '../lib/userLocation';
+import { AddressCaptureSheet } from './AddressCapture';
+import { listAddresses } from '../lib/api';
 import { isBackendConfigured } from '../lib/apiClient';
 import { currentMandate, createMandate } from '../lib/autopay';
 import { tomorrowISO, addDaysISO, parseISO, formatShort } from '../lib/dates';
@@ -91,10 +92,12 @@ export function SubscribeSheet({
     setBusy(true);
     setErr('');
     try {
-      // EXACT-LOCATION GATE: never start a subscription without a precise delivery
-      // point. If we don't have one, drop the member onto the map (draggable pin)
-      // and resume the subscribe once they confirm it.
-      if (!(await hasExactLocation())) {
+      // COMPLETE-ADDRESS GATE: never start a subscription without a SAVED
+      // complete address (map pin + flat + receiver + city + pincode). A bare
+      // map pin is not enough — the member goes through the full CD-style
+      // capture, and only then on to the wallet step.
+      const addrs = await listAddresses().catch(() => []);
+      if (addrs.length === 0 || !(await hasExactLocation())) {
         haptics.press();
         setMapOpen(true);
         return;
@@ -157,11 +160,10 @@ export function SubscribeSheet({
     }
   }
 
-  // Pin confirmed on the map → save it as the delivery location and resume the
-  // subscribe automatically.
-  async function onMapConfirm(c: Coords) {
+  // Complete address saved (pin + form + preferences) → the capture already set
+  // the exact delivery location; resume the subscribe automatically.
+  function onAddressSaved() {
     setMapOpen(false);
-    await setFromPin(c);
     void confirm();
   }
 
@@ -278,7 +280,7 @@ export function SubscribeSheet({
         </Animated.View>
       </View>
     </Modal>
-    <MapPicker visible={mapOpen} initial={currentUserLoc()?.coords ?? null} onClose={() => setMapOpen(false)} onConfirm={onMapConfirm} />
+    <AddressCaptureSheet visible={mapOpen} onClose={() => setMapOpen(false)} onSaved={onAddressSaved} />
     </>
   );
 }

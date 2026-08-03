@@ -31,7 +31,11 @@ const SRC_DIR = path.join(__dirname, 'native-convenience-src');
 const KOTLIN_FILES = ['PhoneNumberHintModule.kt', 'AppSignatureHelper.kt', 'PyaasConveniencePackage.kt'];
 
 const GRADLE_DEPS = [
-  'implementation("com.google.android.gms:play-services-auth:21.3.0")',
+  // 20.7.0 (NOT 21.x): the legacy Smart Lock hint picker (Credentials/
+  // HintRequest — the light "Continue with" dialog listing both SIM numbers)
+  // was REMOVED in play-services-auth 21.0. 20.7.0 carries BOTH that picker
+  // and the newer Identity Phone Number Hint we fall back to.
+  'implementation("com.google.android.gms:play-services-auth:20.7.0")',
   'implementation("com.google.android.gms:play-services-auth-api-phone:18.2.0")',
 ];
 

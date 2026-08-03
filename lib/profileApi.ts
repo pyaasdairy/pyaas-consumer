@@ -64,6 +64,13 @@ export async function getFullProfile(): Promise<FullProfile | null> {
 }
 
 export async function updateProfile(patch: Partial<Omit<FullProfile, 'id' | 'referral_code'>>): Promise<void> {
+  // Push to the SERVER first (PATCH /me) so the profile — especially full_name —
+  // survives reinstalls and new devices: OTP verify hydrates it back, and a
+  // registered member is NEVER asked their name again. Best-effort: offline
+  // still saves locally below and re-syncs on the next profile edit.
+  if (isBackendConfigured()) {
+    try { await api.patch('/me', patch); } catch { /* offline — local save still lands */ }
+  }
   await saveProfile(patch as Partial<Profile>);
 }
 

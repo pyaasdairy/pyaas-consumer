@@ -1,7 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRows, insertRow, getSingle, putSingle, newId } from './localStore';
-import { requireUserId } from './session';
-import { addPromoCredit, rechargeWallet } from './walletApi';
+import { requireUserId, getUserId, getProfile } from './session';
+import { rechargeWallet } from './walletApi';
 import { WALLET_TEST_TOPUP, testTopup } from './razorpay';
 import { isBackendConfigured } from './apiClient';
 import { createSubscription, listSubscriptions, reactivateSubscription } from './subscriptions';
@@ -18,13 +19,11 @@ export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
  * the member's daily-milk subscription and opens the four-day trial owned by
  * lib/trial (days 1–2 paid, days 3–4 free).
  *
- * Claiming does THREE things (the marketing gimmick is really a subscription
- * funnel):
- *   (a) credits the PROMO balance with the value of the TWO FREE days
- *       (2 × ₹29 = ₹58), idempotent on ref `trial_2plus2:<phone>`, so days 3–4
- *       net out for free in the local demo (the backend zeroes free-day debits
- *       for real);
- *   (b) auto-creates a DAILY subscription for taaza-500ml starting tomorrow and
+ * Claiming does TWO things (the marketing gimmick is really a subscription
+ * funnel). NO money is ever credited — the offer is GOODIES (free milk), not
+ * rupees: the member pays their first 2 delivered days and the backend zeroes
+ * the debits for days 3–4 (trial engine, isTrialProduct):
+ *   (b) auto-creates a DAILY subscription starting tomorrow and
  *       anchors the trial (beginTrial): days 1–2 are paid from the wallet,
  *       days 3–4 are free, and the subscription CONTINUES at ₹29/day until the
  *       member pauses/cancels;
@@ -95,6 +94,36 @@ export async function freePackEligible(phone: string): Promise<{ eligible: boole
   return { eligible: true };
 }
 
+// ── The ₹500 qualifying recharge ─────────────────────────────────────────────
+/** The 2+2 offer REDEEMS only via a single recharge of at least this (one
+ *  time). Smaller recharges (the ₹100 general floor) keep the offer alive and
+ *  visible, but never redeem it. */
+export const OFFER_QUALIFY_RECHARGE = 500;
+const QUALIFIED_KEY_PREFIX = 'pyaas_offer_qualified:';
+
+/** True once this account has made its one-time qualifying recharge (≥₹500 in
+ *  a single top-up). The flag is a one-way ratchet, per account. */
+export async function offerQualified(): Promise<boolean> {
+  const uid = await getUserId();
+  if (!uid) return false;
+  try { return (await AsyncStorage.getItem(QUALIFIED_KEY_PREFIX + uid)) === '1'; } catch { return false; }
+}
+
+/**
+ * Called by every recharge success path with the credited amount. The FIRST
+ * single recharge ≥ OFFER_QUALIFY_RECHARGE marks the account qualified — the
+ * REDEMPTION itself always goes through a review step (the claim flow's
+ * confirm card, or the unlock sync's claim), never silently from a payment.
+ * Smaller amounts change nothing.
+ */
+export async function recordRechargeForOffer(amount: number): Promise<void> {
+  if (amount < OFFER_QUALIFY_RECHARGE) return;
+  const uid = await getUserId();
+  if (!uid) return;
+  try { await AsyncStorage.setItem(QUALIFIED_KEY_PREFIX + uid, '1'); } catch { return; }
+  notifyFreePackChanged();
+}
+
 // Module-level in-flight mutex: a double-tap (or the flow mounted on several
 // screens at once) must never run two claims concurrently — the second caller
 // simply awaits the first claim's result. Single JS thread makes this promise
@@ -117,24 +146,24 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
   const uid = await requireUserId();
   const gate = await freePackEligible(phone);
   if (!gate.eligible) return { ok: false, value: 0, reason: gate.reason };
+  // THE ₹500 RULE: the offer stays pending (still claimable, still shown) until
+  // the account's one-time qualifying recharge — a SINGLE top-up of at least
+  // ₹500 — has landed. Nothing is burned here on an unqualified attempt.
+  if (!(await offerQualified())) {
+    return { ok: false, value: 0, reason: `Add ₹${OFFER_QUALIFY_RECHARGE} in one recharge to unlock this offer.` };
+  }
   const deviceId = await getDeviceId();
   const p = normPhone(phone);
-  // (a) Grant the 2-free-days promo credit FIRST, idempotent on the phone. In backend
-  // mode this either lands on the server or is durably parked for replay
-  // (walletApi pending_promos); a HARD failure throws before the claim row is
-  // written below, so a failed claim stays claimable instead of burning the
-  // one-per-device gate with no money behind it.
-  await addPromoCredit(FREE_PACK_VALUE, {
-    ref_id: `trial_2plus2:${p}`,
-    remark: `Trial · ${TRIAL_FREE_DAYS} free days of PYAAS Gold full cream milk 500 ml`,
-  });
-  // Record the claim (device-global) only now that the credit path succeeded.
+  // NO money is credited for the trial — the offer is GOODIES (free milk), not
+  // rupees. The member pays their first 2 delivered days; the BACKEND zeroes
+  // the debits for the 2 free days (trial engine, isTrialProduct). The wallet
+  // is never touched here. Record the claim (device-global).
   await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
     phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
   });
   // (b) Auto-start the daily subscription (first delivery tomorrow) and anchor
-  // the trial. Days 1–2 are paid; days 3–4 are free (backend zeroes the debit,
-  // the local promo credit covers it); it keeps running at ₹29/day until
+  // the trial. Days 1–2 are paid; days 3–4 are free (the backend zeroes those
+  // days' debits — no wallet credit involved); it keeps running at ₹29/day until
   // paused/cancelled. Reuses an existing daily sub for the SKU instead of
   // doubling the member's milk — and REACTIVATES it (fresh start date,
   // deliveries from tomorrow) if it was paused, so "your subscription is LIVE"

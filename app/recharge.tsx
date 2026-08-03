@@ -14,6 +14,7 @@ import { useAuth } from '../lib/auth';
 import { rechargeBonus } from '../lib/pricing';
 import { PREPAID_TARGET } from '../lib/prepaid';
 import { rechargeWallet } from '../lib/walletApi';
+import { recordRechargeForOffer } from '../lib/freePack';
 import { reconcileWithBalance } from '../lib/subscriptions';
 import {
   createTopupOrder,
@@ -71,7 +72,10 @@ export default function Recharge() {
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
   const params = useLocalSearchParams<{ amount?: string; min?: string; returnTo?: string; reason?: string }>();
-  const min = Math.max(0, Math.round(Number(params.min) || 0));
+  // Global floor: ₹100 is the smallest recharge anywhere in the app. A caller's
+  // shortfall (`min` param) can only RAISE the floor, never lower it.
+  const MIN_RECHARGE = 100;
+  const min = Math.max(MIN_RECHARGE, Math.round(Number(params.min) || 0));
   const returnTo = typeof params.returnTo === 'string' ? params.returnTo : '';
   const reason = typeof params.reason === 'string' ? params.reason : '';
 
@@ -146,6 +150,9 @@ export default function Recharge() {
         await rechargeWallet(value, method.current, r.razorpay_payment_id);
       }
       await refresh();
+      // ₹500 RULE: a single recharge ≥₹500 is the one-time qualifier that
+      // unlocks (and auto-redeems) the 2+2 welcome offer.
+      try { await recordRechargeForOffer(value); } catch { /* non-fatal */ }
       // Topping up may re-fund subscriptions paused for low balance.
       try { await reconcileWithBalance(useWallet.getState().balance); } catch { /* non-fatal */ }
       haptics.confirm();

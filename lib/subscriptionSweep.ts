@@ -116,6 +116,7 @@ async function runSweep(): Promise<number> {
         // Mirrors the product screen's subscription first-delivery order.
         lines: [{
           id: product.id,
+          lane: 'morning' as const,
           name: product.name,
           variant: sub.variant ?? product.variant,
           price: sub.unit_price,

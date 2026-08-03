@@ -13,6 +13,7 @@ import { useWallet } from '../store/wallet';
 import { useAuth } from '../lib/auth';
 import { rechargeBonus } from '../lib/pricing';
 import { rechargeWallet } from '../lib/walletApi';
+import { recordRechargeForOffer } from '../lib/freePack';
 import { reconcileWithBalance } from '../lib/subscriptions';
 import { createTopupOrder, checkoutHtml, verifyTopup, creditIsServerSide, WALLET_TEST_TOPUP, testTopup, type CheckoutResult } from '../lib/razorpay';
 
@@ -67,6 +68,9 @@ export default function Payment() {
         await rechargeWallet(value, method.current, r.razorpay_payment_id);
       }
       await refresh();
+      // ₹500 RULE: a single recharge ≥₹500 is the one-time qualifier that
+      // unlocks (and auto-redeems) the 2+2 welcome offer.
+      try { await recordRechargeForOffer(value); } catch { /* non-fatal */ }
       // Topping up may re-fund subscriptions paused for low balance.
       try { await reconcileWithBalance(useWallet.getState().balance); } catch { /* non-fatal */ }
       haptics.confirm();
@@ -81,6 +85,8 @@ export default function Payment() {
     setError('');
     method.current = m;
     if (value <= 0) return;
+    // Global floor: ₹100 is the smallest recharge anywhere in the app.
+    if (value < 100) { setError('Minimum recharge is ₹100.'); return; }
     // TEST mode: credit directly, no payment gateway (see razorpay.ts).
     if (WALLET_TEST_TOPUP) {
       setCrediting(true);

@@ -33,6 +33,7 @@ import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
 import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
 import { useAuth } from '../../lib/auth';
+import { haptics } from '../../lib/haptics';
 
 // The free-trial pack shown on every funnel surface: PYAAS Gold FULL CREAM.
 const FREE_PACK_IMG = require('../../assets/products/gold.png');
@@ -244,15 +245,25 @@ export default function Shop() {
     const list = cat === 'all' ? groups : groups.filter((g) => g.base.category === cat);
     // A group is in stock while ANY of its size variants is orderable. Sort so
     // in-stock groups lead and out-of-stock ones sink to the bottom, and pin
-    // PYAAS Taaza (the hero SKU) to the very top. Array.sort is stable (Hermes),
-    // so within each tier the authored catalog order is preserved.
+    // PYAAS Taaza (the hero SKU) to the very top. WITHIN the out-of-stock tier
+    // the order is: PYAAS-branded packs (ids `pyaas-*` — the white PYAAS
+    // pouches/cartons) first, then the Parag range, with the partner
+    // (manufacturer-tagged) teasers last. Array.sort is stable (Hermes), so
+    // within each bucket the authored catalog order is preserved.
     const inStock = (g: GroupedProduct) => g.variants.some((v) => !v.outOfStock);
     const isTaaza = (g: GroupedProduct) => g.base.id === 'taaza-500ml' || /taaza/i.test(g.base.name);
+    const isPyaasBrand = (g: GroupedProduct) => g.variants.some((v) => v.id.startsWith('pyaas-'));
+    const isPartner = (g: GroupedProduct) => g.variants.some((v) => !!v.manufacturer);
     return [...list].sort((a, b) => {
       if (isTaaza(a) !== isTaaza(b)) return isTaaza(a) ? -1 : 1;
       const sa = inStock(a) ? 0 : 1;
       const sb = inStock(b) ? 0 : 1;
-      return sa - sb;
+      if (sa !== sb) return sa - sb;
+      if (sa === 1) {
+        if (isPyaasBrand(a) !== isPyaasBrand(b)) return isPyaasBrand(a) ? -1 : 1;
+        if (isPartner(a) !== isPartner(b)) return isPartner(a) ? 1 : -1;
+      }
+      return 0;
     });
   }, [cat, groups]);
   const popular = useMemo(() => products.filter((p) => p.mostOrdered), [products]);
@@ -488,6 +499,11 @@ export default function Shop() {
       <HomeHeader firstName={firstName} />
       <BottomBar />
 
+      {/* Floating "View cart" bar — appears ONLY when the ACTIVE lane's cart
+          has items (⚡ instant and morning carts are separate), sitting just
+          above the bottom bar in both modes. */}
+      <ViewCartBar bottomClearance={bottomClearance} />
+
       {/* Persistent promo loop · re-evaluates low-wallet / Become-VIP on every
           Home focus (dismissals reset so a banner re-shows next Home visit). */}
       <PromoGate />
@@ -579,5 +595,32 @@ function ModeSegment({ active, onPress, icon, label, sub, badge, a11yLabel, disa
         ) : null}
       </View>
     </Tap>
+  );
+}
+
+/**
+ * Floating "View cart" bar (both modes): shows the ACTIVE lane's item count and
+ * opens the cart. Renders nothing while that lane's cart is empty, so the home
+ * layout is untouched until the member actually adds something.
+ */
+function ViewCartBar({ bottomClearance }: { bottomClearance: number }) {
+  const router = useRouter();
+  const mode = useDeliveryMode();
+  const lane = mode === 'instant' ? 'instant' : 'morning';
+  const count = useCart((s) => s.lines.filter((l) => l.lane === lane).reduce((n, l) => n + l.qty, 0));
+  if (count === 0) return null;
+  return (
+    <View style={{ position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: bottomClearance - 6 }}>
+      <Tap onPress={() => { haptics.press(); router.push('/cart'); }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameDeep, borderRadius: radius.pill, paddingHorizontal: 18, height: 52, ...shadow.card }}>
+          <Ionicons name="bag-handle" size={18} color={colors.white} />
+          <TextSemi color={colors.white} style={{ fontSize: 14.5, flex: 1 }}>
+            {count} {count === 1 ? 'item' : 'items'} · {mode === 'instant' ? '⚡ Instant cart' : 'Morning cart'}
+          </TextSemi>
+          <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>View cart</TextSemi>
+          <Ionicons name="chevron-forward" size={16} color={colors.white} />
+        </View>
+      </Tap>
+    </View>
   );
 }
