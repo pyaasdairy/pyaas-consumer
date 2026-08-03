@@ -166,6 +166,7 @@ export default function ProductDetail() {
   const [gstin, setGstin] = useState('');
   const refreshWallet = useWallet((s) => s.refresh);
   const addToCart = useCart((s) => s.add);
+  const setCartQty = useCart((s) => s.setQty);
   // Monsoon surcharge (₹) the serving store charges on INSTANT orders (0 = none).
   const monsoonRupees = useServiceability((s) => s.monsoonRupees);
 
@@ -371,11 +372,18 @@ export default function ProductDetail() {
       setShowSubscribe(true);
       return;
     }
-    // One-time / instant → ADD TO CART and review the CD-style bill (no direct
-    // order). The chosen lane (instant vs morning) rides the shared delivery mode,
-    // and the cart runs the wallet-first + serviceability gate before placing.
+    // One-time / instant → the page's count IS this lane's bag count (it was
+    // seeded from the line and maybe edited here), so an existing line is SET
+    // to it — bag ×3 + page 3 lands as 3, never stacked into 6. A product not
+    // in the bag yet is added fresh. Then review the CD-style bill in the cart
+    // (wallet-first + serviceability gates run there before placing).
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    addToCart(product, qty);
+    const cartLane: 'instant' | 'morning' = laneSel === 'instant' ? 'instant' : 'morning';
+    if (cartLines.some((l) => l.id === product.id && l.lane === cartLane)) {
+      setCartQty(product.id, qty, cartLane);
+    } else {
+      addToCart(product, qty, cartLane);
+    }
     router.push('/cart');
   }
 
