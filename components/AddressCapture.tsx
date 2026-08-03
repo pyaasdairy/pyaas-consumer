@@ -197,7 +197,9 @@ export function AddressCaptureSheet({
   // server-side). Blocking on svcChecking left the button dead for up to 15s
   // on a slow network, which read as "the form won't submit".
   const pinOk = coords != null;
-  const flatOk = flat.trim().length >= 3;
+  // Any non-empty house/flat number is valid — "7", "B2" and "Flat 402" are all
+  // real doors; a ≥3-char rule silently dead-locked Save for short numbers.
+  const flatOk = flat.trim().length >= 1;
   const receiverOk = receiver.trim().length >= 2;
   const cityOk = city.trim().length >= 2;
   const pinCodeOk = pincode.trim().replace(/\D/g, '').length === 6;
