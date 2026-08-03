@@ -14,12 +14,16 @@ import { useUserLocation } from '../lib/userLocation';
 
 /** Time-of-day greeting (incl. a playful late-night line). */
 function greetingFor(name: string): string {
+  // Short lines on purpose: the greeting shares its row with the logo and the
+  // wallet chip, so long copy would shrink to an unreadable size on small
+  // screens. First name only, no trailing clauses.
+  const n = name.trim() || 'there';
   const h = new Date().getHours();
-  if (h >= 5 && h < 12) return `Good morning, ${name}`;
-  if (h >= 12 && h < 17) return `Good afternoon, ${name}`;
-  if (h >= 17 && h < 22) return `Good evening, ${name}`;
-  if (h >= 22 || h < 3) return `Why up so late, ${name}?`;
-  return `Early start, ${name}?`; // 3–5 AM
+  if (h >= 5 && h < 12) return `Good morning, ${n}`;
+  if (h >= 12 && h < 17) return `Good afternoon, ${n}`;
+  if (h >= 17 && h < 22) return `Good evening, ${n}`;
+  if (h >= 22 || h < 3) return `Up late, ${n}?`;
+  return `Early start, ${n}?`; // 3–5 AM
 }
 
 /**
@@ -53,7 +57,7 @@ export function HomeHeader({ firstName }: { firstName: string }) {
             </Tap>
             {/* adjustsFontSizeToFit: the greeting shrinks instead of ellipsizing,
                 so it fits any name on any display width. */}
-            <Serif style={{ fontSize: 21, lineHeight: 26, letterSpacing: -0.3 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{greetingFor(firstName)}</Serif>
+            <Serif style={{ fontSize: 21, lineHeight: 26, letterSpacing: -0.3 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{greetingFor(firstName)}</Serif>
           </View>
         </View>
         {/* Right side: ONLY the wallet chip — no cart button, no avatar. The

@@ -426,7 +426,10 @@ export default function Recharge() {
 
       {/* Razorpay WebView Standard Checkout overlay (fallback path) */}
       <Modal visible={!!checkout} animationType="slide" onRequestClose={confirmCancelPayment} presentationStyle="fullScreen">
-        <View style={{ flex: 1, backgroundColor: colors.cream }}>
+        {/* paddingBottom: the fullscreen modal draws edge-to-edge, so without
+            the bottom inset Razorpay's sticky Continue bar sits UNDER the
+            system navigation bar and can't be tapped. */}
+        <View style={{ flex: 1, backgroundColor: colors.cream, paddingBottom: insets.bottom }}>
           <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.milk, borderBottomWidth: 1, borderBottomColor: colors.line }}>
             {/* Back = cancel (with confirm), top-left. */}
             <Tap onPress={confirmCancelPayment} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>

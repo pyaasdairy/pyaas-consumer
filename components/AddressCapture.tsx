@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Modal, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Modal, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Keyboard, Platform, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -60,6 +60,35 @@ export function AddressCaptureSheet({
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+
+  // ── Keyboard handling ──────────────────────────────────────────────────────
+  // This sheet is a statusBarTranslucent Modal: on Android such windows do NOT
+  // resize for the keyboard (the app-wide adjustResize never applies inside
+  // them), so without help the keyboard just covers whatever field was tapped.
+  // We track the keyboard height ourselves, pad the scroll area by it, and
+  // scroll the focused input into view the moment the keyboard lands.
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const { height: winH } = useWindowDimensions();
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
+      const h = e.endCoordinates?.height ?? 0;
+      setKbHeight(h);
+      // Bring the focused field fully above the keyboard (24px breathing room).
+      requestAnimationFrame(() => {
+        const focused = TextInput.State.currentlyFocusedInput?.();
+        if (!focused) return;
+        focused.measureInWindow((_x: number, y: number, _w: number, fieldH: number) => {
+          const visibleBottom = winH - h - 24;
+          const overlap = y + fieldH - visibleBottom;
+          if (overlap > 0) scrollRef.current?.scrollTo({ y: scrollYRef.current + overlap, animated: true });
+        });
+      });
+    });
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, [winH]);
 
   // ── Serviceability of the PINNED spot (the 5 km store fence) ───────────────
   // The home gate checks the BROWSING location; this checks the actual pinned
@@ -125,8 +154,19 @@ export function AddressCaptureSheet({
     if (!coords) onClose();
   }
 
+  // "Add a door photo" opens the CAMERA (that's what the label promises); the
+  // photo library is the graceful fallback when camera permission is denied or
+  // the camera is unavailable (emulator). Optional field — never blocks.
   async function addDoorPhoto() {
     try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.granted) {
+        const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.6 });
+        if (shot.canceled) return; // deliberate cancel — don't bounce them into the gallery
+        const uri = shot.assets?.[0]?.uri;
+        if (uri) { setDoorPhoto(uri); haptics.select(); return; }
+      }
+      // Permission denied / no camera → photo library instead of a dead tap.
       const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
       if (res.canceled || !res.assets?.length) return;
       const uri = res.assets[0]?.uri;
@@ -135,13 +175,18 @@ export function AddressCaptureSheet({
   }
 
   // Mandatory: pin, flat/house, receiver name, city, 6-digit pincode.
-  // Optional: locality/landmark, photo, instructions.
+  // Optional: locality/landmark, photo, instructions, BOTH delivery-preference
+  // toggles (any combination, including none, is valid).
+  // NOTE: an IN-FLIGHT serviceability check must never block Save — only an
+  // explicit out-of-zone verdict does (fail-open; placeOrder re-guards
+  // server-side). Blocking on svcChecking left the button dead for up to 15s
+  // on a slow network, which read as "the form won't submit".
   const pinOk = coords != null;
   const flatOk = flat.trim().length >= 3;
   const receiverOk = receiver.trim().length >= 2;
   const cityOk = city.trim().length >= 2;
   const pinCodeOk = pincode.trim().replace(/\D/g, '').length === 6;
-  const canSave = pinOk && flatOk && receiverOk && cityOk && pinCodeOk && !svcBlocked && !svcChecking;
+  const canSave = pinOk && flatOk && receiverOk && cityOk && pinCodeOk && !svcBlocked;
 
   async function save() {
     if (saving) return;
@@ -149,7 +194,6 @@ export function AddressCaptureSheet({
     if (!canSave) {
       setErr(
         !pinOk ? 'Set your delivery location on the map first.'
-        : svcChecking ? 'Checking delivery availability…'
         : !flatOk ? 'Please add your flat / house number.'
         : !receiverOk ? 'Please add the receiver’s name.'
         : !cityOk ? 'Please add your city.'
@@ -202,7 +246,14 @@ export function AddressCaptureSheet({
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + spacing.xl }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollRef}
+          onScroll={(e) => { scrollYRef.current = e.nativeEvent.contentOffset.y; }}
+          scrollEventThrottle={16}
+          contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + spacing.xl + kbHeight }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           {/* The pinned spot, in words — tap to adjust on the map. */}
           <Tap onPress={() => setMapOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: coords ? colors.blueSoft : colors.flameSoft, borderRadius: radius.md, borderWidth: 1.5, borderColor: coords ? colors.blue : colors.flameDeep, paddingHorizontal: 14, paddingVertical: 12 }}>
             <Ionicons name={coords ? 'location' : 'map'} size={19} color={coords ? colors.blue : colors.flameDeep} />

@@ -267,7 +267,8 @@ export default function OrderTracking() {
                   <Serif style={{ fontSize: 22, lineHeight: 26 }} color={colors.flameDeep}>Arriving by {formatClock(eta)}</Serif>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Pill label="⚡ INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
-                    <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>
+                    {/* flex:1 so the caption wraps INSIDE the card instead of leaking off the edge */}
+                    <TextBody style={{ fontSize: 12, flex: 1 }} color={colors.inkSoft}>
                       {order.payment_method === 'cod' ? 'Cash on delivery · keep the amount ready' : '~20 min express delivery'}
                     </TextBody>
                   </View>

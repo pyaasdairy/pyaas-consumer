@@ -11,7 +11,7 @@ import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../../components/
 import { ProductCard } from '../../components/ProductCard';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
 import { WelcomeOffer, welcomeOfferSeen, markWelcomeOfferSeen } from '../../components/WelcomeOffer';
-import { ClaimPackFlow } from '../../components/ClaimPackFlow';
+import { ClaimPackFlow, claimFlowOnScreen } from '../../components/ClaimPackFlow';
 import { ShopSkeleton } from '../../components/Skeleton';
 import { HomeHeader, useHomeHeaderHeight } from '../../components/HomeHeader';
 import { BottomBar, useBottomBarClearance } from '../../components/BottomBar';
@@ -163,11 +163,14 @@ export default function Shop() {
   const autoOpenedClaim = React.useRef(false);
   useEffect(() => {
     if (autoOpenedClaim.current || !freshUser || !claimEligible) return;
+    // The tabs-level ClaimPackGate may already be showing the flow — never
+    // stack this screen's own instance (or the welcome offer) on top of it.
+    if (claimFlowOnScreen()) return;
     const uid = profile?.id;
     if (!uid) return;
     autoOpenedClaim.current = true;
     void welcomeOfferSeen(uid).then((seen) => {
-      if (seen) { setClaimOpen(true); return; }
+      if (seen) { if (!claimFlowOnScreen()) setClaimOpen(true); return; }
       void markWelcomeOfferSeen(uid);
       setWelcomeOpen(true);
     });

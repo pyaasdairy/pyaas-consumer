@@ -1,4 +1,4 @@
-import { requireUserId } from './session';
+import { requireUserId, getUserId } from './session';
 import { getRows, setRows, getSingle, putSingle, newId } from './localStore';
 import { rechargeBonus, LOW_BALANCE_THRESHOLD } from './pricing';
 import { api, isBackendConfigured } from './apiClient';
@@ -337,6 +337,48 @@ export async function getSpendSummary(): Promise<{ dailyBurn: number; daysRemain
   const { available } = await getBalances();
   const daysRemaining = dailyBurn > 0 ? Math.floor(available / dailyBurn) : null;
   return { dailyBurn, daysRemaining };
+}
+
+/**
+ * RETIRED-BONUS CLEANUP — recharge bonuses are discontinued ("you get exactly
+ * what you pay"), but a device that recharged on an OLDER build may still hold
+ * a granted "Recharge bonus" promo row. This reverses every such row exactly
+ * once (idempotent per row id), capped at the promo balance actually left so
+ * the ledger can never go negative. Local mode only; the server owns backend
+ * wallets. Called from the wallet store on refresh.
+ */
+export async function reverseRetiredRechargeBonuses(): Promise<void> {
+  if (isBackendConfigured()) return;
+  const uid = await getUserId();
+  if (!uid) return;
+  const rows = await getRows<WalletLedgerRow>(LEDGER_TABLE, uid);
+  const legacy = rows.filter(
+    (r) =>
+      r.type === 'reward' &&
+      r.bucket === 'promo' &&
+      r.status === 'success' &&
+      (r.remark ?? '').startsWith('Recharge bonus') &&
+      !hasEntryFor(rows, `bonus_reversal:${r.id}`),
+  );
+  if (legacy.length === 0) return;
+  let promoLeft = settledBucket(rows, 'promo');
+  const drafts: LedgerDraft[] = [];
+  for (const r of legacy) {
+    // Reverse what's still reversible; a 0-amount marker still records the row
+    // as handled when the bonus was already spent.
+    const amt = Math.min(r.amount, Math.max(0, promoLeft));
+    promoLeft -= amt;
+    drafts.push({
+      type: 'debit',
+      amount: amt,
+      bucket: 'promo',
+      ref_id: `bonus_reversal:${r.id}`,
+      ref_type: 'adjustment',
+      source: 'system',
+      remark: 'Recharge bonus reversed (offer discontinued)',
+    });
+  }
+  await append(uid, drafts);
 }
 
 // ── Public writes ────────────────────────────────────────────────────────────

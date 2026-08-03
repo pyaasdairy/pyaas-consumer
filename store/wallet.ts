@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { getUserId } from '../lib/session';
-import { getBalances, replayPendingPromos } from '../lib/walletApi';
+import { getBalances, replayPendingPromos, reverseRetiredRechargeBonuses } from '../lib/walletApi';
 import { syncWalletUnlock } from '../lib/walletGate';
 
 /**
@@ -39,6 +39,9 @@ export const useWallet = create<WalletState>((set) => ({
       // reading the server balance, so a promo that failed at claim time shows
       // up the moment the wallet next refreshes. No-op offline / local mode.
       await replayPendingPromos().catch(() => { /* still offline — retried next refresh */ });
+      // Claw back any "Recharge bonus" a retired build granted — top-ups credit
+      // exactly what was paid, nothing extra (idempotent, local mode only).
+      await reverseRetiredRechargeBonuses().catch(() => { /* retried next refresh */ });
       const b = await getBalances();
       // ₹500 gate: the first refresh that sees the balance at/over the target
       // unlocks purchasing and auto-starts the 7-day starter plan (idempotent).

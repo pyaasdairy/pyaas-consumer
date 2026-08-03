@@ -39,7 +39,23 @@ type Step = 'intro' | 'confirm' | 'fund' | 'done' | 'signin' | 'ineligible';
  * (ClaimPackGate), from the home claim card and when a member starts their
  * PYAAS Plus trial. All money movement is in lib/freePack (idempotent).
  */
+// ── Single-instance guard ────────────────────────────────────────────────────
+// The flow is mounted in TWO places (the tabs-level ClaimPackGate and the home
+// screen's own instance). Without coordination both can open at once and the
+// sheets stack on top of each other. This module-level counter lets every
+// opener check "is one already on screen?" before showing another.
+let openFlows = 0;
+export function claimFlowOnScreen(): boolean {
+  return openFlows > 0;
+}
+
 export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: { visible: boolean; onClose: () => void; onClaimed?: () => void; onStartShopping?: () => void }) {
+  // Register this instance while its `visible` prop is up (see openFlows above).
+  useEffect(() => {
+    if (!visible) return;
+    openFlows += 1;
+    return () => { openFlows -= 1; };
+  }, [visible]);
   const { profile } = useAuth();
   const router = useRouter();
   const refreshWallet = useWallet((s) => s.refresh);
@@ -378,6 +394,9 @@ export function ClaimPackGate() {
   // so it doubles as the effect / focus cleanup below.
   const recheck = useCallback(() => {
     if (openedRef.current) return () => {}; // already open — never hide it mid-flow
+    // Another instance (the home screen's) is already showing the flow — never
+    // stack a second sheet on top of it.
+    if (claimFlowOnScreen()) return () => {};
     if (!phone) { setVisible(false); return () => {}; }
     let cancelled = false;
     shouldShowFreePack(phone)
@@ -407,10 +426,12 @@ export function ClaimPackGate() {
 }
 
 function PrimaryButton({ title, onPress, disabled, loading }: { title: string; onPress: () => void; disabled?: boolean; loading?: boolean }) {
+  // alignSelf 'stretch' + horizontal padding: inside centered step layouts the
+  // pill otherwise shrink-wraps its label and the text touches the edges.
   return (
-    <Tap onPress={disabled || loading ? undefined : onPress} style={{ height: 52, borderRadius: radius.pill, backgroundColor: disabled ? colors.line : colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: disabled ? 0.7 : 1, ...shadow.soft }}>
+    <Tap onPress={disabled || loading ? undefined : onPress} style={{ height: 52, alignSelf: 'stretch', paddingHorizontal: 24, borderRadius: radius.pill, backgroundColor: disabled ? colors.line : colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: disabled ? 0.7 : 1, ...shadow.soft }}>
       {loading ? <ActivityIndicator color={colors.white} /> : null}
-      <TextSemi color={colors.white} style={{ fontSize: 16 }}>{title}</TextSemi>
+      <TextSemi color={colors.white} style={{ fontSize: 16 }} numberOfLines={1}>{title}</TextSemi>
     </Tap>
   );
 }
