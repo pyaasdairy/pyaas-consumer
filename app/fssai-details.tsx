@@ -18,13 +18,13 @@ export default function FssaiDetails() {
           ],
         },
       ]}
-      footerNote="The FSSAI licence number, GSTIN, manufacturer name and address shown here are placeholders. They must be replaced with the operator's registered values, and the manufacturer FSSAI licences of each member dairy displayed as required, before public release."
+      footerNote="The FSSAI licence shown is the manufacturer's (PARAG, Lucknow Producers Co-operative Milk Union Ltd), as printed on every pack. The GSTIN, registered address and customer care number are placeholders to be replaced with the operator's registered values before public release."
     >
       <DocCard>
         <DocLinkRow
           icon={<Ionicons name="shield-checkmark-outline" size={20} color={colors.flameDeep} />}
-          label="FSSAI licence number (placeholder)"
-          value={`${SELLER.fssai} · placeholder, pending registration`}
+          label="FSSAI licence number"
+          value={`${SELLER.fssai} · Lucknow Producers Co-operative Milk Union Ltd (PARAG)`}
         />
         <DocLinkRow
           icon={<Ionicons name="receipt-outline" size={20} color={colors.flameDeep} />}

@@ -246,8 +246,8 @@ export default function Cart() {
           <Serif style={{ fontSize: 22 }}>{lane === 'instant' ? 'Your instant cart is empty' : 'Your morning cart is empty'}</Serif>
           <TextBody style={{ textAlign: 'center' }}>
             {lane === 'instant'
-              ? 'Add fresh milk and more from the ⚡ Instant shop — delivered in ~20 minutes.'
-              : 'Add one-time items from the Morning shop — delivered tomorrow with the 5–7:30 AM run.'}
+              ? 'Add fresh milk and more from the ⚡ Instant shop, delivered in ~20 minutes.'
+              : 'Add one-time items from the Morning shop, delivered tomorrow with the 5–7:30 AM run.'}
           </TextBody>
           <Button title="Start shopping" onPress={() => router.replace('/(tabs)')} style={{ alignSelf: 'stretch', marginTop: 8 }} />
         </View>
@@ -289,7 +289,7 @@ export default function Cart() {
               ))}
             </View>
             <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>
-              Billed day by day from your wallet — not part of this order's bill.
+              Billed day by day from your wallet, not part of this order's bill.
             </TextBody>
             {lines.length > 0 ? (
               <TextSemi style={{ fontSize: 14.5, marginTop: 4 }}>One-time add-ons · tomorrow morning</TextSemi>

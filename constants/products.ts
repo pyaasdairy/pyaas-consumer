@@ -73,7 +73,7 @@ export const COMPLIANCE = {
   brand: 'PYAAS',
   manufacturer: 'PYAAS Dairy Private Limited', // PLACEHOLDER — founder to confirm legal entity
   manufacturerAddress: 'PYAAS Dairy, Lucknow, Uttar Pradesh', // PLACEHOLDER — founder to confirm
-  fssaiLicense: '10012345000000',   // PLACEHOLDER - confirm the real FSSAI licence number
+  fssaiLicense: '12722999000171',   // PARAG (Lucknow Producers Co-op Milk Union) licence, as printed on-pack
   gstin: '09AAAAA0000A1Z5',         // PLACEHOLDER - confirm the real GSTIN
   customerCare: CARE_PHONE,         // single source: lib/support.ts (PLACEHOLDER until founder confirms)
   customerCareEmail: 'care@pyaasdairy.in', // PLACEHOLDER — founder to confirm
@@ -185,7 +185,8 @@ const IMG = {
 // Only SKUs we actually photographed get a back; the rest fall back to the printed
 // PackBack card. Keyed to the SAME front image so it maps to every size of a line.
 const IMG_BACK = {
-  taaza: require('../assets/products/taaza-back.jpg'),
+  // PNG with the studio background cut out — only the pouch shows on the tile.
+  taaza: require('../assets/products/taaza-back.png'),
   ghee: require('../assets/products/ghee-back.jpg'),
   chaach: require('../assets/products/chaach-back.jpg'),
   dahi: require('../assets/products/dahi-back.jpg'),

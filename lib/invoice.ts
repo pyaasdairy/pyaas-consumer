@@ -36,9 +36,10 @@ export const SELLER = {
   // 09 = Uttar Pradesh (PYAAS registered in UP → intra-state CGST + SGST).
   gstin: '09AAAAA0000A1Z5',
   gstin_is_placeholder: true,
-  // PLACEHOLDER FSSAI licence (14 digits). Replace with the real licence no.
-  fssai: '10000000000000',
-  fssai_is_placeholder: true,
+  // PARAG (Lucknow Producers Co-operative Milk Union Ltd) FSSAI licence — the
+  // manufacturer's licence as printed on the Parag Taaza pack.
+  fssai: '12722999000171',
+  fssai_is_placeholder: false,
   address: 'PYAAS Dairy, Lucknow, Uttar Pradesh 226001',
   state: 'Uttar Pradesh',
   state_code: '09', // GST state code for the place of the seller (UP)
@@ -52,13 +53,14 @@ export const SELLER = {
 // PLACEHOLDERS — founder to confirm the legal entity, its registered numbers
 // and address, then flip the flags.
 export const MANUFACTURER = {
-  name: 'PYAAS Dairy Private Limited', // PLACEHOLDER — founder to confirm legal entity
-  brand: 'PYAAS',
-  gstin: '09PPPPP0000P1Z5',
+  // The dairy actually making the launch-range milk: PARAG (as on-pack).
+  name: 'Lucknow Producers Co-operative Milk Union Ltd',
+  brand: 'PARAG',
+  gstin: '09PPPPP0000P1Z5', // PLACEHOLDER — confirm the Union's GSTIN
   gstin_is_placeholder: true,
-  fssai: '10012345000000',
-  fssai_is_placeholder: true,
-  address: 'PYAAS Dairy, Lucknow, Uttar Pradesh 226001', // PLACEHOLDER
+  fssai: '12722999000171', // as printed on the Parag Taaza pack
+  fssai_is_placeholder: false,
+  address: 'Plot No. 166, 167, 13 Km Stone Sultanpur Road, Gosaiganj, Lucknow (U.P.) 226002',
 } as const;
 
 // ── Indicative GST rates + HSN by product category ───────────────────────────
