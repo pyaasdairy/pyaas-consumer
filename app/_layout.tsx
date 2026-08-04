@@ -14,6 +14,7 @@ import {
 } from '@expo-google-fonts/bricolage-grotesque';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { setOnAuthExpired } from '../lib/apiClient';
+import { runOneTimeLocalReset } from '../lib/localReset';
 import { colors } from '../lib/theme';
 import { Splash } from '../components/Splash';
 import { AppErrorBoundary } from '../components/AppErrorBoundary';
@@ -37,6 +38,14 @@ function RootNavigator() {
       // Keep the local session alive; nothing to do beyond the client's own
       // token cleanup. (Never call signOut() here.)
     });
+  }, []);
+
+  // ONE-TIME versioned local reset (first launch of a new data version only):
+  // clears stale local rows from older builds — the LOGIN survives — then
+  // re-hydrates addresses + subscriptions from the backend. Every later
+  // launch is a no-op; screens refetch on focus, so a mid-boot race is safe.
+  useEffect(() => {
+    void runOneTimeLocalReset();
   }, []);
   const [maxWaited, setMaxWaited] = useState(false);
   // Premium type identity (Hanken Grotesk + Bricolage Grotesque), loaded at
