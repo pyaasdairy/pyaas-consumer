@@ -7,21 +7,21 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts, rupee } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
-import { shouldShowFreePack, snoozeFreePack, freePackEligible, offerQualified, OFFER_QUALIFY_RECHARGE, FREE_PACK_DAILY_PRICE, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
+import { shouldShowFreePack, snoozeFreePack, freePackEligible, OFFER_QUALIFY_RECHARGE, FREE_PACK_DAILY_PRICE, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
 import { listSubscriptions } from '../lib/subscriptions';
 import { useAuth } from '../lib/auth';
 import { useUserLocation } from '../lib/userLocation';
-import { useWallet } from '../store/wallet';
 
 const FREE_PACK_IMG = require('../assets/products/gold.png');
 
-// The popup is ONLY the funnel DOOR now: the intro sells, the gates route —
-// the subscription itself is created on the FULL-CREAM PRODUCT PAGE (the
-// standard SubscribeSheet: quantity, frequency, start date, REVIEW → confirm;
-// attachTrialAfterSubscribe hooks the 2+2 on after that confirm). 'subscribed'
-// shows when a gold sub is already ACTIVE; 'ineligible' when the trial is
-// completed; 'fund' gates on the one-time ₹500 qualifying recharge.
-type Step = 'intro' | 'fund' | 'signin' | 'ineligible' | 'subscribed';
+// The popup is ONLY the funnel DOOR now: the intro sells, then it hands over
+// to the FULL-CREAM PRODUCT PAGE, where the standard SubscribeSheet runs the
+// STRICT gate order — 1) delivery address (saved + pinned) → 2) funds (the
+// ₹500 qualifying recharge / top-up, only when short) → 3) review → Confirm
+// LAST (the only step that creates; attachTrialAfterSubscribe hooks the 2+2
+// on). 'subscribed' shows when a gold sub is already ACTIVE; 'ineligible'
+// when the trial is completed.
+type Step = 'intro' | 'signin' | 'ineligible' | 'subscribed';
 
 // THE ₹500 RULE: the 2+2 offer redeems ONLY after the account's one-time
 // qualifying recharge — a SINGLE top-up of ≥ OFFER_QUALIFY_RECHARGE. Smaller
@@ -58,7 +58,6 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   }, [visible]);
   const { profile } = useAuth();
   const router = useRouter();
-  const refreshWallet = useWallet((s) => s.refresh);
   const [step, setStep] = useState<Step>('intro');
   const [busy, setBusy] = useState(false);
   // Synchronous re-entry guard: setBusy only disables the button after a
@@ -66,12 +65,6 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   const busyRef = useRef(false);
   const [err, setErr] = useState('');
   const [blockReason, setBlockReason] = useState('');
-  // We temporarily hide this modal while the full-screen recharge route is on top
-  // (a native Modal would otherwise cover it), then reveal it again on return.
-  const [navHidden, setNavHidden] = useState(false);
-  // True while we are waiting for the member to fund the wallet (the ₹500
-  // qualifying recharge). Read on screen re-focus to resume into the handover.
-  const awaitingFundsRef = useRef(false);
 
   // Reset to a clean intro each time it opens.
   useEffect(() => {
@@ -79,8 +72,6 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
       setStep('intro');
       setErr('');
       setBlockReason('');
-      setNavHidden(false);
-      awaitingFundsRef.current = false;
     }
   }, [visible]);
 
@@ -110,13 +101,8 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
         setStep('subscribed');
         return;
       }
-      // ₹500 RULE: the offer redeems only via the one-time qualifying recharge
-      // (a single ≥₹500 top-up) — not by any balance level.
-      await refreshWallet();
-      if (!(await offerQualified())) {
-        goAddFunds();
-        return;
-      }
+      // Hand over. The ₹500 qualifying recharge is asked on the product page
+      // AFTER the delivery address — location always comes first.
       goProductPage();
     } catch (e: any) {
       setErr(e?.message ?? 'Could not start just now. Please try again.');
@@ -134,46 +120,6 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
     router.push(`/product/${FREE_PACK_PRODUCT_ID}?freq=daily&subscribe=1`);
   }
 
-  // Route to the wallet recharge screen for at least the shortfall, hiding this
-  // modal while that full-screen route is on top. On return (screen re-focus) we
-  // reveal the modal again and, once funded, finish the claim.
-  function goAddFunds() {
-    // The qualifying recharge is a SINGLE ≥₹500 top-up (recordRechargeForOffer
-    // marks the account and auto-redeems the pending offer on success).
-    const qs = new URLSearchParams({
-      min: String(OFFER_QUALIFY_RECHARGE),
-      amount: String(OFFER_QUALIFY_RECHARGE),
-      reason: 'to unlock your 2+2 offer',
-    }).toString();
-    awaitingFundsRef.current = true;
-    setStep('fund');
-    setNavHidden(true);
-    haptics.press();
-    router.push(`/recharge?${qs}`);
-  }
-
-  // Resume-on-return: when the recharge route pops back to us, reveal the modal
-  // and, once the ≥₹500 qualifying recharge has landed, hand straight over to
-  // the product page (the member reviews + confirms there).
-  useFocusEffect(
-    useCallback(() => {
-      let on = true;
-      setNavHidden(false);
-      if (visible && awaitingFundsRef.current) {
-        (async () => {
-          try { await refreshWallet(); } catch { /* retried on next focus */ }
-          if (!on) return;
-          if (await offerQualified()) {
-            awaitingFundsRef.current = false;
-            goProductPage();
-          }
-        })();
-      }
-      return () => { on = false; };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [visible, refreshWallet]),
-  );
-
   // "Start shopping" always lands on the products/shop list first.
   function startShopping() {
     if (onStartShopping) { onStartShopping(); return; }
@@ -183,7 +129,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
 
   return (
     <>
-    <Modal visible={visible && !navHidden} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg }}>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, overflow: 'hidden', maxHeight: '88%', ...shadow.card }}>
@@ -203,9 +149,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   ? 'Trial already completed'
                   : step === 'signin'
                     ? 'Sign in to start'
-                    : step === 'fund'
-                      ? 'Add funds to start'
-                      : `Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} FREE`}
+                    : `Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} FREE`}
             </Serif>
             <TextBody color={colors.inkSoft} style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
               {step === 'ineligible' || step === 'signin' || step === 'subscribed'
@@ -232,24 +176,6 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                 <PrimaryButton title={busy ? 'Checking…' : 'Start my subscription'} loading={busy} onPress={() => { void startFromIntro(); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Maybe later</TextMed>
-                </Tap>
-              </Animated.View>
-            ) : null}
-
-            {step === 'fund' ? (
-              /* Prepaid gate: the subscription starts only after the wallet is
-                 funded. Adding money routes to recharge, then we resume here. */
-              <Animated.View entering={FadeInDown.duration(260)} style={{ gap: spacing.md, alignItems: 'center' }}>
-                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="wallet" size={30} color={colors.flameDeep} />
-                </View>
-                <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Almost there. Add {rupee(OFFER_QUALIFY_RECHARGE)} in one recharge and your 2+2 offer unlocks right away. Milk is just {rupee(FREE_PACK_DAILY_PRICE)}/day from your balance, pause anytime.
-                </TextBody>
-                {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
-                <PrimaryButton title={busy ? 'Starting…' : 'Add funds'} loading={busy} onPress={goAddFunds} />
-                <Tap haptic={false} onPress={() => setStep('intro')} style={{ alignItems: 'center', paddingVertical: 4 }}>
-                  <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Back</TextMed>
                 </Tap>
               </Animated.View>
             ) : null}

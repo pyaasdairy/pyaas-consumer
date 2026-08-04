@@ -11,7 +11,8 @@ import { ShineSweep } from '../components/Fx';
 import { haptics } from '../lib/haptics';
 import { useCart } from '../store/cart';
 import { useWallet } from '../store/wallet';
-import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER } from '../lib/api';
+import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER, type Address } from '../lib/api';
+import { AddressCaptureSheet } from '../components/AddressCapture';
 import { listSubscriptions, listVacations, subscriptionDueOn } from '../lib/subscriptions';
 import { tomorrowISO } from '../lib/dates';
 import { refreshCatalog, getMergedProducts } from '../lib/catalog';
@@ -79,10 +80,26 @@ export default function Cart() {
       .catch(() => setUnlocked(true)); // fail-open: never brick checkout on a read error
   }, []);
 
+  // ADDRESS-FIRST: checkout's FIRST gate is a SAVED delivery address with its
+  // map pin (saved address rows only — a loose local GPS pin never counts).
+  // Only then comes the wallet (unlock / top-up), then the order itself.
+  const [needsAddr, setNeedsAddr] = useState(false);
+  const [capOpen, setCapOpen] = useState(false);
+  const hasPin = (a: Address) => {
+    const g = a as unknown as { lat?: number | null; lng?: number | null };
+    return g.lat != null && g.lng != null;
+  };
+  const recheckAddr = useCallback(() => {
+    listAddresses()
+      .then((rows) => setNeedsAddr(!rows.some(hasPin)))
+      .catch(() => setNeedsAddr(false)); // label fail-open; place() re-guards
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void refreshWallet().then(recheckUnlock);
       recheckUnlock();
+      recheckAddr();
       void checkSvc();
       // Re-check live stock so a line that went OOS since the cart was opened is
       // flagged (and dropped from the bill) before the user can pay for it.
@@ -174,6 +191,12 @@ export default function Cart() {
 
   async function place() {
     if (placing || orderable.length === 0 || blocked) return;
+    // 1) ADDRESS FIRST — a saved address with its map pin, before ANY wallet
+    //    ask. No pinned address → capture it, then resume this flow.
+    const addrRows = await listAddresses().catch(() => [] as Address[]);
+    const savedAddr = addrRows.find((a) => a.is_default && hasPin(a)) ?? addrRows.find(hasPin);
+    if (!savedAddr) { setCapOpen(true); return; }
+    // 2) FUNDS SECOND — unlock target, then order cover.
     if (locked) { goUnlock(); return; }
     setPlacing(true);
     setErr('');
@@ -199,13 +222,7 @@ export default function Cart() {
       await refreshWallet();
       if (useWallet.getState().balance < total) { setPlacing(false); goRecharge(); return; }
 
-      const addrs = await listAddresses();
-      const address = addrs.find((a) => a.is_default) ?? addrs[0];
-      if (!address) {
-        setErr('Add a delivery address to place your order.');
-        router.push('/address');
-        return;
-      }
+      const address = savedAddr; // pinned + saved — guaranteed by gate 1 above
 
       const orderId = await placeOrder({
         lines: orderable,
@@ -413,22 +430,28 @@ export default function Cart() {
       {/* Sticky wallet-first CTA (hidden when there's nothing one-time to pay) */}
       {orderable.length === 0 ? null : (
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: 'rgba(255,255,255,0.97)', borderTopWidth: 1, borderTopColor: colors.line, gap: 8 }}>
-        {locked && !blocked ? (
+        {/* Gate order: 1) address → 2) unlock/funds → 3) place. Each banner and
+            the CTA only surface the CURRENT missing step. */}
+        {needsAddr && !blocked ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
+            <Ionicons name="location" size={16} color={colors.flameDeep} />
+            <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>First, set your delivery address — then fund the wallet and confirm.</TextMed>
+          </View>
+        ) : locked && !blocked ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
             <Ionicons name="gift" size={16} color={colors.flameDeep} />
             <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>
               Fund your wallet to {rupee(WALLET_UNLOCK_TARGET)} to unlock ordering. Your 7-day starter plan begins right away, first {STARTER_FREE_DAYS} days on us.
             </TextMed>
           </View>
-        ) : null}
-        {!locked && short > 0 && !blocked ? (
+        ) : !locked && short > 0 && !blocked ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
             <Ionicons name="wallet" size={16} color={colors.flameDeep} />
             <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>Low balance. Recharge {rupee(short)} to pay for this order.</TextMed>
           </View>
         ) : null}
 
-        <Tap onPress={blocked ? undefined : locked ? goUnlock : short > 0 ? goRecharge : place} disabled={placing || blocked || orderable.length === 0}>
+        <Tap onPress={blocked ? undefined : needsAddr ? () => { haptics.press(); setCapOpen(true); } : locked ? goUnlock : short > 0 ? goRecharge : place} disabled={placing || blocked || orderable.length === 0}>
           <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: blocked || orderable.length === 0 ? colors.inkMute : colors.flameDeep, height: 56, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: placing ? 0.85 : 1, ...shadow.card }}>
             {placing ? <ActivityIndicator color={colors.white} /> : null}
             <TextSemi color={colors.white} style={{ fontSize: 16.5, ...tabular }}>
@@ -436,17 +459,31 @@ export default function Cart() {
                 ? 'Unavailable in your area'
                 : placing
                   ? 'Placing order…'
-                  : locked
-                    ? `Add ${rupee(unlockShort)} to unlock ordering`
-                    : short > 0
-                      ? `Recharge ${rupee(short)} to continue`
-                      : `Place order · ${rupee(total)}`}
+                  : needsAddr
+                    ? 'Add delivery address'
+                    : locked
+                      ? `Add ${rupee(unlockShort)} to unlock ordering`
+                      : short > 0
+                        ? `Recharge ${rupee(short)} to continue`
+                        : `Place order · ${rupee(total)}`}
             </TextSemi>
             {!placing && !blocked ? <ShineSweep dur={2400} travel={340} bandWidth={70} angle="16deg" delay={400} /> : null}
           </View>
         </Tap>
       </View>
       )}
+
+      {/* Address capture (gate 1) — on save, the flow resumes automatically:
+          place() re-runs and lands on the NEXT missing gate (funds or place). */}
+      <AddressCaptureSheet
+        visible={capOpen}
+        onClose={() => setCapOpen(false)}
+        onSaved={() => {
+          setCapOpen(false);
+          setNeedsAddr(false);
+          void place();
+        }}
+      />
     </View>
   );
 }

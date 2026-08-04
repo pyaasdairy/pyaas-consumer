@@ -7,7 +7,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap, Stepper } from './ui';
 import { haptics } from '../lib/haptics';
 import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
-import { attachTrialAfterSubscribe } from '../lib/freePack';
+import { attachTrialAfterSubscribe, offerCompleted, offerQualified, OFFER_QUALIFY_RECHARGE, FREE_PACK_PRODUCT_ID } from '../lib/freePack';
 import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 import { hasExactLocation } from '../lib/location';
 import { useUserLocation } from '../lib/userLocation';
@@ -94,21 +94,57 @@ export function SubscribeSheet({
 
   const perDelivery = unitPrice * qty;
 
-  // Edit → the review card: resolve the delivery address for display (the hard
-  // gates — complete address + wallet — still run at confirm, exactly as before).
+  const hasPin = (a: Address) => {
+    const g = a as unknown as { lat?: number | null; lng?: number | null };
+    return g.lat != null && g.lng != null;
+  };
+
+  // Recharge hop with the full selections carried in returnTo, so the funded
+  // member lands back on THIS product with the sheet re-opened.
+  function goRecharge(min: number, amount: number, reason: string) {
+    const rt = `/product/${product.id}?qty=${qty}&freq=${freq}&start=${startDate}&subscribe=1`;
+    const qs = `min=${min}&amount=${amount}&returnTo=${encodeURIComponent(rt)}&reason=${encodeURIComponent(reason)}`;
+    haptics.press();
+    onClose();
+    router.push(`/recharge?${qs}`);
+  }
+
+  // THE GATE CHAIN (strict order): 1) ADDRESS — a SAVED address with its map
+  // pin (saved rows only; a loose local GPS pin never counts) → 2) FUNDS —
+  // the ₹500 qualifying recharge for a still-open 2+2 gold candidate, else
+  // the unlock/2-day-cover top-up, ONLY when actually short → 3) the REVIEW
+  // card, where "Confirm subscription" is the LAST action and the only one
+  // that creates anything. A member with address + funds sails straight to
+  // review with no asks.
   async function goReview() {
     haptics.press();
     setErr('');
-    try {
-      const addrs = await listAddresses().catch(() => [] as Address[]);
-      const hasPin = (a: Address) => {
-        const g = a as unknown as { lat?: number | null; lng?: number | null };
-        return g.lat != null && g.lng != null;
-      };
-      setReviewAddr(addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin) ?? null);
-    } catch {
-      setReviewAddr(null);
+    // 1) ADDRESS FIRST.
+    const addrs = await listAddresses().catch(() => [] as Address[]);
+    const pick = addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin);
+    if (!pick) {
+      setMapOpen(true); // capture → onAddressSaved resumes this chain
+      return;
     }
+    setReviewAddr(pick);
+    // 2) FUNDS SECOND.
+    await refreshWallet();
+    const bal = useWallet.getState().balance;
+    // 2+2 candidate on the offer SKU who hasn't done the one-time ≥₹500
+    // qualifying recharge → that recharge IS the requirement (at a time —
+    // balance level is irrelevant to qualification).
+    if (product.id === FREE_PACK_PRODUCT_ID && freq === 'daily' && !(await offerCompleted()) && !(await offerQualified())) {
+      goRecharge(OFFER_QUALIFY_RECHARGE, OFFER_QUALIFY_RECHARGE, 'to unlock your 2+2 offer');
+      return;
+    }
+    const unlocked = await purchasesUnlocked(bal);
+    const need = Math.max(minWalletToStart(perDelivery), unlocked ? 0 : WALLET_UNLOCK_TARGET);
+    if (bal < need) {
+      const short = Math.max(1, Math.ceil(need - bal));
+      goRecharge(short, Math.max(100, Math.ceil(short / 50) * 50), 'to start this subscription');
+      return;
+    }
+    // 3) Everything resolved → review; Confirm creates.
     setStage('review');
   }
 
@@ -118,12 +154,11 @@ export function SubscribeSheet({
     setBusy(true);
     setErr('');
     try {
-      // COMPLETE-ADDRESS GATE: never start a subscription without a SAVED
-      // complete address (map pin + flat + receiver + city + pincode). A bare
-      // map pin is not enough — the member goes through the full CD-style
-      // capture, and only then on to the wallet step.
-      const addrs = await listAddresses().catch(() => []);
-      if (addrs.length === 0 || !(await hasExactLocation())) {
+      // BACKSTOP GATES (the review chain already ran these; a race — address
+      // deleted mid-flow, balance spent from another screen — re-guards here).
+      // Address: a SAVED row with its map pin; a loose local GPS pin never counts.
+      const addrs = await listAddresses().catch(() => [] as Address[]);
+      if (!addrs.some(hasPin)) {
         haptics.press();
         setMapOpen(true);
         return;
@@ -188,11 +223,11 @@ export function SubscribeSheet({
     }
   }
 
-  // Complete address saved (pin + form + preferences) → the capture already set
-  // the exact delivery location; resume the subscribe automatically.
+  // Complete address saved (pin + form + preferences) → resume the GATE CHAIN
+  // (funds next if short, else land on the review card — Confirm stays last).
   function onAddressSaved() {
     setMapOpen(false);
-    void confirm();
+    void goReview();
   }
 
   return (
@@ -313,7 +348,7 @@ export function SubscribeSheet({
             <View style={{ backgroundColor: colors.wash, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
               <ReviewRow icon="cube" label={product.name} value={`${qty} × ${product.variant} · ${FREQS.find((f) => f.key === freq)?.label ?? freq}`} />
               <ReviewRow icon="calendar" label="First delivery" value={`${formatShort(startDate)} · 5–7:30 AM`} highlight />
-              <ReviewRow icon="location" label="Delivering to" value={reviewAddr ? `${reviewAddr.line1}${reviewAddr.line2 ? ', ' + reviewAddr.line2 : ''}, ${reviewAddr.city} - ${reviewAddr.pincode}` : 'Add your address at confirmation'} />
+              <ReviewRow icon="location" label="Delivering to" value={reviewAddr ? `${reviewAddr.line1}${reviewAddr.line2 ? ', ' + reviewAddr.line2 : ''}, ${reviewAddr.city} - ${reviewAddr.pincode}` : '—'} />
               <ReviewRow icon="cash" label="To pay per delivery" value={`${rupee(perDelivery)} · charged after each delivery, from your wallet`} highlight />
             </View>
             {/* Policy — the exact terms, no surprises. */}
