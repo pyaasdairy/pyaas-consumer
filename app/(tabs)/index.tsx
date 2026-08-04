@@ -589,7 +589,7 @@ function ModeSegment({ active, onPress, icon, label, sub, badge, a11yLabel, disa
       accessibilityRole="button"
       accessibilityState={{ selected: active, disabled: !!disabled }}
       accessibilityLabel={a11yLabel ?? label}
-      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, backgroundColor: active ? colors.action : 'transparent', opacity: disabled ? 0.42 : 1 }}
+      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, backgroundColor: active ? colors.action : 'transparent', opacity: disabled ? 0.42 : 1, ...(active ? shadow.soft : null) }}
     >
       <Ionicons name={icon} size={15} color={active ? colors.onAction : colors.flameDeep} />
       <View style={{ alignItems: 'flex-start' }}>

@@ -9,6 +9,7 @@ import { Serif, TextBody, TextMed, TextSemi, Tap, BackButton } from '../componen
 import { StartDatePicker } from '../components/StartDatePicker';
 import { todayISO, addDaysISO, formatShort } from '../lib/dates';
 import { listVacations, addVacation, deleteVacation, type Vacation } from '../lib/subscriptions';
+import { ConfirmSheet, type ConfirmConfig } from '../components/ConfirmSheet';
 
 function fmt(d: string): string {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -34,6 +35,7 @@ export default function Vacations() {
   const [from, setFrom] = useState(todayISO());
   const [to, setTo] = useState(todayISO());
   const [picker, setPicker] = useState<null | 'from' | 'to'>(null);
+  const [confirm, setConfirm] = useState<ConfirmConfig | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,8 +65,7 @@ export default function Vacations() {
     setPicker(null);
   }
 
-  async function schedule() {
-    if (to < from) { setErr('The end date can’t be before the start date.'); return; }
+  async function doSchedule() {
     setBusy(true); setErr('');
     try {
       await addVacation({ startDate: from, endDate: to, reason: 'Away from home' });
@@ -74,6 +75,19 @@ export default function Vacations() {
       await load();
     } catch (e: any) { setErr(e?.message ?? 'Could not schedule the pause. Please try again.'); }
     finally { setBusy(false); }
+  }
+
+  // Validate, then confirm — the backend is only hit after "Set vacation".
+  function schedule() {
+    if (to < from) { setErr('The end date can’t be before the start date.'); return; }
+    setConfirm({
+      title: 'Set vacation?',
+      message: 'Deliveries pause for the dates you chose. You can remove it anytime.',
+      confirmLabel: 'Set vacation',
+      cancelLabel: 'Not now',
+      icon: 'airplane-outline',
+      onConfirm: () => { setConfirm(null); void doSchedule(); },
+    });
   }
 
   async function remove(id: string) {
@@ -157,6 +171,8 @@ export default function Vacations() {
           onClose={() => setPicker(null)}
         />
       ) : null}
+
+      <ConfirmSheet config={confirm} onDismiss={() => setConfirm(null)} />
     </View>
   );
 }

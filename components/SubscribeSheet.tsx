@@ -337,7 +337,7 @@ export function SubscribeSheet({
             {/* Edit → the review page (nothing is created yet) */}
             <Tap onPress={() => { void goReview(); }} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
               <Ionicons name="receipt-outline" size={19} color={colors.white} />
-              <TextSemi color={colors.white} style={{ fontSize: 16 }}>{`Review subscription · ${rupee(perDelivery)}/delivery`}</TextSemi>
+              <TextSemi color={colors.white} style={{ fontSize: 16 }}>Review subscription</TextSemi>
             </Tap>
             <TextBody style={{ fontSize: 11, textAlign: 'center' }} color={colors.inkMute}>Paid from your PYAAS Wallet · keep at least {MIN_SUB_DAYS_COVER} days funded · pause, skip or cancel anytime.</TextBody>
             </>) : null}

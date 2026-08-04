@@ -9,6 +9,7 @@ import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-
 import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackButton } from '../components/ui';
 import { SkeletonBlock } from '../components/Skeleton';
+import { ConfirmSheet, type ConfirmConfig } from '../components/ConfirmSheet';
 import { PRODUCTS, getProduct } from '../constants/products';
 import { listSubscriptions, createSubscription, setSubscriptionStatus, updateSubscription, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, NEEDS_EXACT_LOCATION, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
@@ -31,6 +32,7 @@ export default function Subscriptions() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [lowBalance, setLowBalance] = useState(false);
+  const [confirm, setConfirm] = useState<ConfirmConfig | null>(null);
   const [detailSub, setDetailSub] = useState<Subscription | null>(null);
   const refreshWallet = useWallet((s) => s.refresh);
 
@@ -98,13 +100,29 @@ export default function Subscriptions() {
     finally { setBusy(false); }
   }
 
-  async function toggle(s: Subscription) {
+  async function doToggle(s: Subscription) {
     setBusy(true); setErr('');
     try {
       await setSubscriptionStatus(s.id, s.status === 'active' ? 'paused' : 'active');
       await load();
     } catch (e: any) { setErr(e?.message ?? 'Could not update the subscription.'); }
     finally { setBusy(false); }
+  }
+
+  // Pausing asks first — the backend is only hit after "Pause". Resuming is immediate.
+  function toggle(s: Subscription) {
+    if (s.status === 'active') {
+      setConfirm({
+        title: 'Pause subscription?',
+        message: 'No deliveries go out until you resume it. You can resume anytime.',
+        confirmLabel: 'Pause deliveries',
+        cancelLabel: 'Keep active',
+        icon: 'pause-circle-outline',
+        onConfirm: () => { setConfirm(null); void doToggle(s); },
+      });
+      return;
+    }
+    void doToggle(s);
   }
 
   return (
@@ -273,7 +291,7 @@ export default function Subscriptions() {
             <Button title="Cancel" variant="ghost" onPress={() => setAdding(false)} />
           </View>
         ) : (
-          <Button title="+ New subscription" variant="outline" onPress={() => setAdding(true)} />
+          <Button title="+ New subscription" variant="outline" onPress={() => router.replace('/(tabs)')} />
         )}
       </ScrollView>
 
@@ -299,11 +317,23 @@ export default function Subscriptions() {
           }).toString();
           router.push(`/recharge?${qs}`);
         };
-        const cancelSub = async () => {
+        const doCancel = async () => {
           close(); setBusy(true); setErr('');
           try { await setSubscriptionStatus(d.id, 'cancelled'); await load(); }
           catch (e: any) { setErr(e?.message ?? 'Could not cancel the subscription.'); }
           finally { setBusy(false); }
+        };
+        // Confirm first — the backend is only hit after "Cancel subscription".
+        const cancelSub = () => {
+          close(); // dismiss the manage sheet first, then confirm over the main screen
+          setConfirm({
+            title: 'Cancel subscription?',
+            message: 'This stops all future deliveries. You can subscribe again anytime.',
+            confirmLabel: 'Cancel subscription',
+            cancelLabel: 'Keep subscription',
+            icon: 'close-circle-outline',
+            onConfirm: () => { setConfirm(null); void doCancel(); },
+          });
         };
         const editQty = async (n: number) => {
           if (n < 1 || n > 10 || n === d.qty) return;
@@ -396,6 +426,8 @@ export default function Subscriptions() {
           </Modal>
         );
       })() : null}
+
+      <ConfirmSheet config={confirm} onDismiss={() => setConfirm(null)} />
     </View>
   );
 }

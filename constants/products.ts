@@ -221,8 +221,8 @@ export const PRODUCTS: Product[] = [
   // ── Milk ──────────────────────────────────────────────────────────────────
   {
     id: 'taaza-500ml',
-    name: 'Toned Milk - PYAAS Taaza',
-    variant: '500ml Pouch',
+    name: 'Toned Milk - Parag Taaza',
+    variant: '500ml',
     category: 'milk',
     price: 29,
     unit: '500 ml',
@@ -234,8 +234,8 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: 'taaza-1l',
-    name: 'Toned Milk - PYAAS Taaza',
-    variant: '1L Pouch',
+    name: 'Toned Milk - Parag Taaza',
+    variant: '1L',
     category: 'milk',
     price: 57,
     unit: '1 L',
@@ -246,22 +246,9 @@ export const PRODUCTS: Product[] = [
     subscribable: true,
   },
   {
-    id: 'taaza-5l',
-    name: 'Toned Milk - PYAAS Taaza',
-    variant: '5L Bulk Pack',
-    category: 'milk',
-    price: 285,
-    unit: '5 L',
-    tag: '3% Fat · Toned · Bulk pack',
-    description:
-      'A 5 litre bulk pack of PYAAS Taaza toned milk for large households, tea stalls and kitchens that go through milk fast.',
-    image: IMG.taaza,
-    subscribable: true,
-  },
-  {
     id: 'gold-500ml',
-    name: 'Full Cream Milk - PYAAS Gold',
-    variant: '500ml Pouch',
+    name: 'Full Cream Milk - Parag Gold',
+    variant: '500ml',
     category: 'milk',
     price: 35,
     unit: '500 ml',
@@ -273,8 +260,8 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: 'gold-1l',
-    name: 'Full Cream Milk - PYAAS Gold',
-    variant: '1L Pouch',
+    name: 'Full Cream Milk - Parag Gold',
+    variant: '1L',
     category: 'milk',
     price: 69,
     unit: '1 L',
@@ -288,8 +275,8 @@ export const PRODUCTS: Product[] = [
   // cream. Specs read off the pack; price indicative (founder to confirm).
   {
     id: 'shakti-500ml',
-    name: 'Standardised Milk - PYAAS Shakti',
-    variant: '500ml Pouch',
+    name: 'Standardised Milk - Parag Shakti',
+    variant: '500ml',
     category: 'milk',
     price: 32,
     unit: '500 ml',
@@ -302,8 +289,8 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: 'shakti-1l',
-    name: 'Standardised Milk - PYAAS Shakti',
-    variant: '1L Pouch',
+    name: 'Standardised Milk - Parag Shakti',
+    variant: '1L',
     category: 'milk',
     price: 62,
     unit: '1 L',
@@ -318,8 +305,8 @@ export const PRODUCTS: Product[] = [
   // ── Super Tea · milk made for chai ────────────────────────────────────────
   {
     id: 'chai-special-500ml',
-    name: 'Chai Special - PYAAS',
-    variant: '500ml Pouch',
+    name: 'Chai Special - Parag',
+    variant: '500ml',
     category: 'super_tea',
     price: 32,
     unit: '500 ml',
@@ -945,7 +932,6 @@ type ProductMeta = { rating: number; ratingCount: number; mostOrdered?: boolean;
 const META: Record<string, ProductMeta> = {
   'taaza-500ml': { rating: 4.7, ratingCount: 2140, mostOrdered: true },
   'taaza-1l': { rating: 4.8, ratingCount: 3860, mostOrdered: true },
-  'taaza-5l': { rating: 4.5, ratingCount: 412, packCount: 3 },
   'gold-500ml': { rating: 4.6, ratingCount: 1580, mostOrdered: true },
   'gold-1l': { rating: 4.8, ratingCount: 2670, mostOrdered: true },
   'shakti-500ml': { rating: 4.4, ratingCount: 690 },
