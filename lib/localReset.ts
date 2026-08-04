@@ -33,23 +33,46 @@ const PRESERVE = new Set<string>([
   VERSION_KEY,
 ]);
 
+// ── STRICT ONCE-ONLY GUARDS (three independent layers) ──────────────────────
+// 1. PERSISTED: the stored VERSION_KEY — once stamped, every future launch of
+//    this version is a read-and-return no-op. The stamp is written BEFORE the
+//    best-effort hydration, so a hydration failure can never re-arm the wipe.
+// 2. PER-PROCESS: `resetRan` — even if the boot effect re-mounts within one
+//    app session, the second call returns immediately without touching storage.
+// 3. CONCURRENCY: `resetInFlight` — simultaneous callers (e.g. a double-fired
+//    effect) share the SAME single run; two wipes can never race.
+// There is exactly ONE call site (the root layout's boot effect) — this
+// function must never be called from anywhere else.
+let resetRan = false;
+let resetInFlight: Promise<boolean> | null = null;
+
 /** Run at boot. Returns true when a reset actually happened (first launch of
- *  this version); false on every later launch — a fast no-op. Error-soft. */
-export async function runOneTimeLocalReset(): Promise<boolean> {
-  try {
-    const seen = await AsyncStorage.getItem(VERSION_KEY);
-    if (seen === LOCAL_DATA_VERSION) return false;
-    const keys = await AsyncStorage.getAllKeys();
-    const drop = keys.filter((k) => !PRESERVE.has(k));
-    if (drop.length > 0) await AsyncStorage.multiRemove(drop);
-    await AsyncStorage.setItem(VERSION_KEY, LOCAL_DATA_VERSION);
-    // Server truth back into the local cache — best-effort, each independent.
-    try { await hydrateAddresses(); } catch { /* re-captured on next flow */ }
-    try { await hydrateSubscriptions(); } catch { /* backend worker unaffected */ }
-    return true;
-  } catch {
-    return false; // never block boot on a storage blip
-  }
+ *  this version); false on every later call — a fast no-op. Error-soft. */
+export function runOneTimeLocalReset(): Promise<boolean> {
+  if (resetRan) return Promise.resolve(false); // layer 2: once per process
+  if (resetInFlight) return resetInFlight; // layer 3: concurrent callers share one run
+  resetInFlight = (async () => {
+    try {
+      const seen = await AsyncStorage.getItem(VERSION_KEY);
+      if (seen === LOCAL_DATA_VERSION) return false; // layer 1: already done, forever
+      const keys = await AsyncStorage.getAllKeys();
+      const drop = keys.filter((k) => !PRESERVE.has(k));
+      if (drop.length > 0) await AsyncStorage.multiRemove(drop);
+      // Stamp IMMEDIATELY after the wipe — from this moment the reset can
+      // never run again, whatever happens to the hydration below.
+      await AsyncStorage.setItem(VERSION_KEY, LOCAL_DATA_VERSION);
+      // Server truth back into the local cache — best-effort, each independent.
+      try { await hydrateAddresses(); } catch { /* re-captured on next flow */ }
+      try { await hydrateSubscriptions(); } catch { /* backend worker unaffected */ }
+      return true;
+    } catch {
+      return false; // never block boot on a storage blip
+    } finally {
+      resetRan = true; // the process latch closes no matter what
+      resetInFlight = null;
+    }
+  })();
+  return resetInFlight;
 }
 
 /** Pull the member's saved addresses (the DB copy) into the local cache, so
