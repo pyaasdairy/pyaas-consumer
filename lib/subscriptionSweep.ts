@@ -28,7 +28,7 @@ import { isBackendConfigured } from './apiClient';
  *
  * The DEBIT then rides the existing delivered-order settle path
  * (settleDeliveredOrders → debitWallet, rewards-first on the server). Under the
- * 3+3 trial the paid days (1–3) charge the wallet and the free days (4–6) are
+ * 2+2 trial the paid days (1–2) charge the wallet and the free days (3–4) are
  * zeroed by the backend (the local promo credit covers them), then it continues
  * daily. In local (no-backend) mode placeOrder debits the wallet immediately —
  * same rewards-first ledger.

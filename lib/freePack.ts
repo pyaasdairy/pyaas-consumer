@@ -51,8 +51,8 @@ export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 // The free-trial pack is PYAAS Gold FULL CREAM 500 ml (image assets/products/gold.png).
 export const FREE_PACK_PRODUCT_ID = 'gold-500ml';
 /** ₹/day of the funnel SKU (falls back to the launch price if the SKU moves). */
-export const FREE_PACK_DAILY_PRICE = getProduct(FREE_PACK_PRODUCT_ID)?.price ?? 29;
-/** Promo credit granted on claim: the value of the TWO FREE days (2 × ₹29). */
+export const FREE_PACK_DAILY_PRICE = getProduct(FREE_PACK_PRODUCT_ID)?.price ?? 35;
+/** Value of the TWO FREE days (2 × the daily price) — shown as the pack's worth. */
 export const FREE_PACK_VALUE = FREE_PACK_DAILY_PRICE * TRIAL_FREE_DAYS;
 /** Test-mode wallet top-up so the paid-day subscription charges demonstrably succeed. */
 const TEST_TOPUP_AMOUNT = 200;
