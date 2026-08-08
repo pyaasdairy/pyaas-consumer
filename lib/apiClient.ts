@@ -31,6 +31,22 @@ export function isBackendConfigured(): boolean {
   return API_URL.length > 0;
 }
 
+/**
+ * Resolve a backend media reference to an absolute URL an <Image> can load.
+ * The catalog seed stores paths RELATIVE to the consumer API base (e.g.
+ * "catalog/img/taaza.png") so the same seed works across environments; here we
+ * join them onto API_URL. An already-absolute http(s) URL (e.g. a store-added
+ * B2 shot) passes through untouched. Returns undefined when there is no base to
+ * resolve against (offline / backend not configured) so callers fall back to
+ * the bundled asset rather than requesting a broken URL.
+ */
+export function resolveMediaUrl(u: string | undefined | null): string | undefined {
+  if (!u) return undefined;
+  if (/^https?:\/\//i.test(u)) return u;
+  if (!API_URL) return undefined;
+  return `${API_URL}/${String(u).replace(/^\/+/, '')}`;
+}
+
 /** Error carrying the HTTP status so callers can tell a real 404 from a network blip. */
 export class HttpError extends Error {
   status: number;

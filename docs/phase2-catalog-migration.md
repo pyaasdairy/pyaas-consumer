@@ -38,7 +38,8 @@ So: **seed the 48 bundled SKUs into that same collection** and they ride the exa
 Behind `EXPO_PUBLIC_CATALOG_BACKEND_AUTHORITATIVE` (off = today's behavior exactly):
 
 1. **Dedup-by-id merge** in `applyOverlay` (`lib/catalog.ts:119`): when a backend addition's id matches a bundled SKU, treat it as an **override of that bundled row** (take backend name/price/stock/fields; fall back to bundled `image` only if backend has no `photo_url`). ~15 lines. Keeps every call site's contract; no duplicate tiles.
-2. **Image resolution precedence** (inside `toAddition`/merge so `image` is resolved before render): `backend photo_url (B2) → IMG_BY_ID[id] (bundled fallback) → name-only tile`. Same for back: `back_photo_url → IMG_BACK_BY_ID[id] → none`.
+2. **Image resolution precedence** (inside `toAddition`/merge so `image` is resolved before render): `backend photo_url → IMG_BY_ID[id] (bundled fallback) → name-only tile`. Same for back: `back_photo_url → IMG_BACK_BY_ID[id] → none`.
+   - `photo_url`/`back_photo_url` from the backend are **paths relative to the API base** (e.g. `catalog/img/taaza.png`), resolved to an absolute URL against `EXPO_PUBLIC_API_URL` before being handed to `<Image>`. A value already starting with `http` is used as-is (store-added B2 SKUs). The resolved URL hits the catalog image proxy (§6) which 302s to B2.
    - Add `IMG_BY_ID`/`IMG_BACK_BY_ID: Record<string, number>` in `products.ts` (re-key the existing `require()`s by SKU id).
    - Rework `backImageFor` (`products.ts:196-213`) off `require()`-identity onto id / `back_photo_url` (currently returns `null` for any `{uri}` → back pager silently vanishes for server SKUs).
 3. **Persisted offline cache:** persist the last good `CatalogResponse` to AsyncStorage in `refreshCatalog` (`lib/catalog.ts:284-296`) and hydrate on boot before the first fetch, so backend-only SKUs survive an offline relaunch. ~30 lines (the one genuinely new module).
@@ -56,12 +57,18 @@ The 20+ other call sites go through `useCatalog`/`getMergedProducts`/`getProduct
 - **Cart / checkout / order — SAFE.** Snapshot-based writes; `revalidateStock(merged)` re-syncs prices (desired). Do NOT enable server-side price/stock validation this migration. Repoint `coupons.categoryOf` (§4.4).
 - **Product page / tiles / images — SAFE with §4.2.** Preserve `baseId/name` (variant grouping), `category` (GST/coupon/dairy gate), `subscribable` (milk CTA) exactly in the seed; hybrid image resolution; back pager degrades gracefully until `back_photo_url`/`IMG_BACK_BY_ID` lands.
 
-## 6. Images → Backblaze B2 (front + back, all SKUs)
+## 6. Images → Backblaze B2 (front + back, all SKUs) — DONE
 
-- **What exists:** 33 assets in `assets/products/` — a front shot per product + 4 backs (`taaza-back`, `dahi-back`, `ghee-back`, `chaach-back`).
-- **Plan:** upload each to B2 under prefix `catalog/` via the existing presign→PUT seam; record the returned view URL as `photo_url` (front) / `back_photo_url` (back) on the seed doc for that id. New store-added SKUs already use B2 `photo_url` the same way.
+Images are backend-owned (B2), with the app bundle kept only as an offline fallback.
+
+- **What existed:** 33 assets in `assets/products/` — a front shot per product + 4 backs (`taaza-back`, `dahi-back`, `ghee-back`, `chaach-back`). All 33 uploaded to B2 under the `catalog/` prefix (idempotent by SHA1).
+- **Private bucket, NOT public.** They live in the existing **allPrivate** `pyaas-saathi-media` bucket (same one as KYC/field photos) under `catalog/`. The bucket type is unchanged — no public bucket was created.
+- **Why not a public bucket or a baked signed URL:**
+  - The consumer app renders a product photo as `<Image source={{uri}}>` — a plain GET with **no auth header** — so the URL must load unauthenticated.
+  - A signed B2 URL baked into the seed would **expire** (download auth ≤ 7 days), so seeded data can't carry one.
+- **The approach — a stable public proxy route** (`internal/modules/consumer/catalog_images.go`): `GET /consumer/catalog/img/{file}` is unauthenticated (it has to be) but **hard-scoped to the `catalog/` prefix** at two layers — the handler rejects any nested/rooted name, and the B2 download authorization it mints is itself issued for `catalog/` only. It 302-redirects to a fresh short-lived, prefix-scoped B2 download URL. So the public URL **never expires** (token minted per request) and the route can serve product art and **nothing else** (KYC/`profile/` files return 401 even with the token). Verified: catalog images return `200 image/png`; the same token → `401` on a `profile/` file.
+- **The seed stores a STABLE path**, not a URL: `photo_url = "catalog/img/<file>"` (and `back_photo_url` where a back exists), computed in the loader from the asset filename (`catalogImagePath`). The FE resolves it against its API base (§4.2). Env-portable: the same seed works local + prod.
 - **Fallback stays:** `IMG_BY_ID`/`IMG_BACK_BY_ID` keep the bundled art for offline/first-paint, so a B2 hiccup or offline launch never blanks a known SKU.
-- **Open item:** uploading needs B2 access (bucket + app key, or the deployed presign endpoint). **Owner: TBD** — either run a one-off upload script against the backend presign route, or the founder provides B2 creds.
 
 ## 7. Effort & verdict
 

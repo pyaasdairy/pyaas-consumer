@@ -31,8 +31,14 @@ export type Product = {
   tag: string; // short descriptor ('' = none)
   description: string;
   /** Bundled pack shot. Missing for SKUs with no source photo yet; the UI
-   *  renders a flat brand-cream tile with the product name instead. */
+   *  renders a flat brand-cream tile with the product name instead. For a
+   *  backend-authoritative SKU this is set to `{ uri }` (resolved B2/proxy URL);
+   *  otherwise it is the bundled `require()` asset. */
   image?: ImageSourcePropType;
+  /** Backend-resolved absolute URL of the BACK-of-pack photo, when the catalog
+   *  supplies one. Takes precedence over the bundled back map in `backImageFor`.
+   *  Absent for bundled-only SKUs (they fall back to the printed PackBack card). */
+  backPhotoUrl?: string;
   subscribable: boolean; // ONLY milk is subscribable (daily morning delivery); everything else is one-time
   // ── Social proof (seeded demo data; see META below). All optional so any
   //    un-seeded SKU renders nothing. ──
@@ -192,8 +198,11 @@ const IMG_BACK = {
   dahi: require('../assets/products/dahi-back.jpg'),
 };
 
-/** The real back-of-pack photo for a product, or null when we only have the front. */
-export function backImageFor(p: Product): number | null {
+/** The real back-of-pack photo for a product, or null when we only have the front.
+ *  A backend-supplied `backPhotoUrl` wins (server SKUs render `{ uri }`); otherwise
+ *  we fall back to the bundled back mapped from the front asset identity. */
+export function backImageFor(p: Product): ImageSourcePropType | null {
+  if (p.backPhotoUrl) return { uri: p.backPhotoUrl };
   switch (p.image) {
     case IMG.taaza:
       return IMG_BACK.taaza;

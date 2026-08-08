@@ -1,5 +1,6 @@
 import type { CartLine } from '../store/cart';
 import { PRODUCTS, type Category } from '../constants/products';
+import { getMergedProduct } from './catalog';
 
 /**
  * Coupons. Validation logic is client-side against a small local catalog (the
@@ -31,7 +32,9 @@ export async function listCoupons(): Promise<Coupon[]> {
 }
 
 function categoryOf(line: CartLine): Category | undefined {
-  return PRODUCTS.find((p) => p.id === line.id)?.category;
+  // Prefer the live merged catalog (backend-authoritative categories / additions),
+  // falling back to the bundled list for any id the overlay doesn't carry.
+  return getMergedProduct(line.id)?.category ?? PRODUCTS.find((p) => p.id === line.id)?.category;
 }
 
 /** Items + subtotal that a coupon's `applies_to` scope covers. */

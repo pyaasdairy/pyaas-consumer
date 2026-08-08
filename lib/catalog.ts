@@ -1,8 +1,19 @@
 import { useEffect, useMemo } from 'react';
 import { useSyncExternalStore } from 'react';
-import { api, isBackendConfigured } from './apiClient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api, isBackendConfigured, resolveMediaUrl } from './apiClient';
 import { PRODUCTS, type Category, type Product } from '../constants/products';
 import { useCart } from '../store/cart';
+
+/**
+ * BACKEND-AUTHORITATIVE catalog (phase 2). When
+ * EXPO_PUBLIC_CATALOG_BACKEND_AUTHORITATIVE=true, a backend row that matches a
+ * bundled SKU id overrides the bundled row's IDENTITY too (name / variant /
+ * category / unit / description / subscribable / images / rating / compliance),
+ * not just price+stock — the bundle becomes a pure offline fallback. Default OFF
+ * keeps today's behaviour exactly (only price / mrp / stock / tag adopted).
+ */
+const BACKEND_AUTHORITATIVE = process.env.EXPO_PUBLIC_CATALOG_BACKEND_AUTHORITATIVE === 'true';
 
 /**
  * CATALOG OVERLAY CLIENT
@@ -49,8 +60,35 @@ export type CatalogPatch = {
   description?: string;
   mrp?: number;
   subscribable?: boolean;
-  /** Remote pack shot for an addition (bundled SKUs keep their local asset). */
+  /** Remote pack shot for an addition (bundled SKUs keep their local asset unless
+   *  BACKEND_AUTHORITATIVE). Resolved to an absolute URL in overlayToPatches. */
   imageUrl?: string;
+  /** Resolved absolute URL of the back-of-pack photo, when the backend has one. */
+  backImageUrl?: string;
+  // Extended social-proof + compliance fields carried by seeded products.
+  rating?: number;
+  ratingCount?: number;
+  mostOrdered?: boolean;
+  packCount?: number;
+  compliance?: BackendCompliance;
+};
+
+/** The FSSAI / Legal Metrology / GST block as the backend sends it (camelCase),
+ *  mapped onto the flat Product.* compliance fields in mergePatch / toAddition. */
+type BackendCompliance = {
+  hsn?: string;
+  gstRate?: number;
+  netQuantity?: string;
+  veg?: boolean;
+  ingredients?: string;
+  nutrition?: string;
+  allergens?: string;
+  shelfLife?: string;
+  storage?: string;
+  countryOfOrigin?: string;
+  fssaiLicense?: string;
+  manufacturer?: string;
+  manufacturerAddress?: string;
 };
 
 /**
@@ -85,6 +123,17 @@ type AdditionView = {
   in_stock?: boolean;
   variants?: BackendVariant[];
   physical?: { volumeMl?: number; weightG?: number; dimensions?: string };
+  // Extended fields (present for seeded baseline products; absent for a plain
+  // store addition, where the app keeps its category-helper defaults).
+  mrp?: number;
+  unit?: string;
+  tag?: string;
+  rating?: number;
+  ratingCount?: number;
+  mostOrdered?: boolean;
+  packCount?: number;
+  back_photo_url?: string;
+  compliance?: BackendCompliance;
 };
 export type CatalogResponse = {
   overrides?: Record<string, OverrideView>;
@@ -115,10 +164,14 @@ export function overlayToPatches(res: CatalogResponse | null | undefined): Catal
   }
 
   // 2) Store additions. A base with variants[] expands to one SKU per variant.
+  //    photo_url / back_photo_url are RELATIVE paths from the backend — resolve
+  //    them to absolute URLs here so the whole app downstream sees ready `{ uri }`.
   if (Array.isArray(res.additions)) {
     for (const a of res.additions) {
       if (!a || typeof a.id !== 'string') continue;
       const baseOOS = a.in_stock === false;
+      const frontUrl = resolveMediaUrl(a.photo_url);
+      const backUrl = resolveMediaUrl(a.back_photo_url);
       if (Array.isArray(a.variants) && a.variants.length > 0) {
         for (const v of a.variants) {
           if (!v || typeof v.variantId !== 'string') continue;
@@ -130,9 +183,17 @@ export function overlayToPatches(res: CatalogResponse | null | undefined): Catal
             variant: v.label ?? a.variant,
             unit: v.unit ?? v.label,
             price: typeof v.price === 'number' ? v.price : a.price,
+            mrp: a.mrp,
+            tag: a.tag,
             description: a.description,
             subscribable: a.subscribable,
-            imageUrl: v.imageUrl ?? a.photo_url,
+            imageUrl: resolveMediaUrl(v.imageUrl) ?? frontUrl,
+            backImageUrl: backUrl,
+            rating: a.rating,
+            ratingCount: a.ratingCount,
+            mostOrdered: a.mostOrdered,
+            packCount: a.packCount,
+            compliance: a.compliance,
             outOfStock: v.outOfStock ?? baseOOS,
           });
         }
@@ -143,10 +204,19 @@ export function overlayToPatches(res: CatalogResponse | null | undefined): Catal
           name: a.name,
           category: a.category as Category,
           variant: a.variant,
+          unit: a.unit,
           price: a.price,
+          mrp: a.mrp,
+          tag: a.tag,
           description: a.description,
           subscribable: a.subscribable,
-          imageUrl: a.photo_url,
+          imageUrl: frontUrl,
+          backImageUrl: backUrl,
+          rating: a.rating,
+          ratingCount: a.ratingCount,
+          mostOrdered: a.mostOrdered,
+          packCount: a.packCount,
+          compliance: a.compliance,
           outOfStock: baseOOS,
         });
       }
@@ -161,13 +231,55 @@ const DAIRY_CATEGORIES = new Set<Category>([
   'flavoured_milk', 'mattha', 'lassi', 'khoya', 'super_tea', 'sweets',
 ]);
 
-/** Apply an override patch onto a bundled product (price / stock / tag / mrp). */
+/** Copy the backend compliance block onto a Product's flat compliance fields
+ *  (only the keys the backend actually supplied; the rest keep their defaults
+ *  via complianceFor). Mutates `p` in place. */
+function applyCompliance(p: Product, c: BackendCompliance | undefined): void {
+  if (!c) return;
+  if (typeof c.hsn === 'string') p.hsn = c.hsn;
+  if (typeof c.gstRate === 'number') p.gstRate = c.gstRate;
+  if (typeof c.netQuantity === 'string') p.netQuantity = c.netQuantity;
+  if (typeof c.veg === 'boolean') p.veg = c.veg;
+  if (typeof c.ingredients === 'string') p.ingredients = c.ingredients;
+  if (typeof c.nutrition === 'string') p.nutrition = c.nutrition;
+  if (typeof c.allergens === 'string') p.allergens = c.allergens;
+  if (typeof c.shelfLife === 'string') p.shelfLife = c.shelfLife;
+  if (typeof c.storage === 'string') p.storage = c.storage;
+  if (typeof c.countryOfOrigin === 'string') p.countryOfOrigin = c.countryOfOrigin;
+  if (typeof c.fssaiLicense === 'string') p.fssaiLicense = c.fssaiLicense;
+  if (typeof c.manufacturer === 'string') p.manufacturer = c.manufacturer;
+  if (typeof c.manufacturerAddress === 'string') p.manufacturerAddress = c.manufacturerAddress;
+}
+
+/**
+ * Apply a patch onto a bundled product. ALWAYS adopts price / mrp / stock / tag
+ * (the store-manager overlay). When BACKEND_AUTHORITATIVE, the backend row is
+ * the source of truth, so its identity / media / social-proof / compliance are
+ * adopted too — each field only when the backend actually supplied it, so a
+ * bundled value is never blanked by an absent backend field. `baseId` is kept
+ * from the bundle so variant grouping (and the funnel's id anchors) never move.
+ */
 function mergePatch(base: Product, patch: CatalogPatch): Product {
   const next: Product = { ...base };
   if (typeof patch.price === 'number' && patch.price >= 0) next.price = patch.price;
   if (typeof patch.mrp === 'number' && patch.mrp >= 0) next.mrp = patch.mrp;
   if (typeof patch.outOfStock === 'boolean') next.outOfStock = patch.outOfStock;
   if (typeof patch.tag === 'string') next.tag = patch.tag;
+  if (!BACKEND_AUTHORITATIVE) return next;
+
+  if (patch.name) next.name = patch.name;
+  if (patch.variant) next.variant = patch.variant;
+  if (patch.category && DAIRY_CATEGORIES.has(patch.category)) next.category = patch.category;
+  if (typeof patch.unit === 'string' && patch.unit) next.unit = patch.unit;
+  if (typeof patch.description === 'string' && patch.description) next.description = patch.description;
+  if (typeof patch.subscribable === 'boolean') next.subscribable = patch.subscribable;
+  if (typeof patch.rating === 'number') next.rating = patch.rating;
+  if (typeof patch.ratingCount === 'number') next.ratingCount = patch.ratingCount;
+  if (typeof patch.mostOrdered === 'boolean') next.mostOrdered = patch.mostOrdered;
+  if (typeof patch.packCount === 'number') next.packCount = patch.packCount;
+  if (patch.imageUrl) next.image = { uri: patch.imageUrl }; // else keep bundled asset
+  if (patch.backImageUrl) next.backPhotoUrl = patch.backImageUrl;
+  applyCompliance(next, patch.compliance);
   return next;
 }
 
@@ -176,7 +288,7 @@ function toAddition(patch: CatalogPatch): Product | null {
   if (!patch.category || !DAIRY_CATEGORIES.has(patch.category)) return null; // grocery / unknown → drop
   if (typeof patch.price !== 'number' || patch.price < 0) return null;
   if (!patch.name) return null;
-  return {
+  const p: Product = {
     id: patch.id,
     baseId: patch.baseId,
     name: patch.name,
@@ -188,9 +300,16 @@ function toAddition(patch: CatalogPatch): Product | null {
     tag: patch.tag ?? '',
     description: patch.description ?? '',
     image: patch.imageUrl ? { uri: patch.imageUrl } : undefined,
+    backPhotoUrl: patch.backImageUrl,
     subscribable: patch.subscribable ?? patch.category === 'milk',
     outOfStock: patch.outOfStock,
+    rating: patch.rating,
+    ratingCount: patch.ratingCount,
+    mostOrdered: patch.mostOrdered,
+    packCount: patch.packCount,
   };
+  applyCompliance(p, patch.compliance);
+  return p;
 }
 
 /**
@@ -279,17 +398,44 @@ export function getMergedProduct(id: string): Product | undefined {
 // Single-flight the fetch so overlapping focus/interval pulls don't stampede.
 let inFlight: Promise<void> | null = null;
 
+// Persisted offline cache — the last GOOD backend response, so a backend-only
+// SKU (or a store price change) survives an offline relaunch instead of snapping
+// back to the bundled baseline. Hydrated once on boot BEFORE the first fetch.
+const CATALOG_CACHE_KEY = 'pyaas.catalog.v1';
+let liveLoaded = false;   // a live fetch has succeeded this session
+let cacheApplied = false; // the persisted cache has been hydrated (once)
+
+/** Hydrate the last persisted response on cold start. No-op once a live fetch
+ *  has landed (never clobbers fresh data with a stale cache). */
+export async function hydrateCatalogCache(): Promise<void> {
+  if (cacheApplied || liveLoaded) return;
+  try {
+    const raw = await AsyncStorage.getItem(CATALOG_CACHE_KEY);
+    if (!raw || liveLoaded) return;
+    const res = JSON.parse(raw) as CatalogResponse;
+    cacheApplied = true;
+    if (!liveLoaded) setMerged(applyOverlay(PRODUCTS, res));
+  } catch {
+    // no/invalid cache — stay on the bundled baseline until the live fetch lands
+  }
+}
+
 /** Re-pull the live overlay and re-merge. No-op (keeps bundled) with no backend;
- *  error-soft (keeps last-known) on any network/parse failure. */
+ *  error-soft (keeps last-known) on any network/parse failure. Persists the last
+ *  good response for offline hydration. */
 export function refreshCatalog(): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     if (!isBackendConfigured()) { setMerged(PRODUCTS); return; }
     try {
       const res = await api.get<CatalogResponse>('/catalog');
+      liveLoaded = true;
       setMerged(applyOverlay(PRODUCTS, res));
+      try { await AsyncStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(res)); } catch { /* cache only */ }
     } catch {
-      // offline / server blip — keep the last-known snapshot (bundled on cold start)
+      // offline / server blip — keep the last-known snapshot; fall back to the
+      // persisted cache if we haven't merged anything live yet this session.
+      if (!liveLoaded) void hydrateCatalogCache();
     }
   })().finally(() => { inFlight = null; });
   return inFlight;
@@ -304,6 +450,7 @@ export function refreshCatalog(): Promise<void> {
 export function useCatalog(): Product[] {
   const products = useSyncExternalStore(subscribe, getMergedProducts, getMergedProducts);
   useEffect(() => {
+    void hydrateCatalogCache(); // instant last-known render before the network answers
     void refreshCatalog();
     const t = setInterval(() => { void refreshCatalog(); }, CATALOG_REFRESH_MS);
     return () => clearInterval(t);

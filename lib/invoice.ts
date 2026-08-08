@@ -1,5 +1,6 @@
 import type { Order, OrderItem } from './api';
 import { PRODUCTS, type Category } from '../constants/products';
+import { getMergedProduct } from './catalog';
 import { CARE_EMAIL, CARE_PHONE } from './support';
 
 /**
@@ -87,7 +88,8 @@ const DEFAULT_TAX = { hsn: '0406', rate: 5 }; // safe fallback for an unknown SK
 
 /** Resolve HSN + GST% for an order line (by product id, else name keywords). */
 export function gstFor(item: Pick<OrderItem, 'product_id' | 'name'>): { hsn: string; rate: number } {
-  const prod = PRODUCTS.find((p) => p.id === item.product_id);
+  // Live merged catalog first (backend categories / additions), then the bundle.
+  const prod = getMergedProduct(item.product_id) ?? PRODUCTS.find((p) => p.id === item.product_id);
   if (prod) return GST_BY_CATEGORY[prod.category] ?? DEFAULT_TAX;
   const n = (item.name || '').toLowerCase();
   if (n.includes('milk') && !n.includes('flavour')) return GST_BY_CATEGORY.milk;
