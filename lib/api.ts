@@ -97,6 +97,9 @@ export type Order = {
   riders?: Rider | null;
   // 'instant' = one-off order placed now; 'subscription' = a recurring delivery.
   order_type?: 'instant' | 'subscription';
+  // 2+2 free-day subscription delivery: the sticker `total` stands, but the wallet
+  // charge is 0 (backend-set at creation from the trial phase). Badge it FREE.
+  trial_free?: boolean;
   // Optional company GSTIN captured at checkout → printed on the proforma bill.
   buyer_gstin?: string | null;
   // Review-after-delivery (populated by the shared backend when configured).

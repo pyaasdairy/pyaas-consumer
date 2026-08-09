@@ -10,6 +10,9 @@ import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL, statusColor } from '../../lib/orderStatus';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
 
+// Status green for the 2+2 "FREE" badge (matches SubscriptionStatusCard / cart).
+const FREE_GREEN = '#1B8A3A';
+
 function fmtDate(iso: string) {
   try {
     return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -97,7 +100,16 @@ export default function Orders() {
                     {itemsText || 'Order'}
                   </TextMed>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <TextSemi color={colors.flameDeep} style={tabular}>{rupee(item.total)}</TextSemi>
+                    {item.trial_free ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <TextBody style={{ fontSize: 12.5, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute}>{rupee(item.total)}</TextBody>
+                        <View style={{ backgroundColor: FREE_GREEN, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
+                          <TextMed color={colors.white} style={{ fontSize: 11 }}>FREE 🎉</TextMed>
+                        </View>
+                      </View>
+                    ) : (
+                      <TextSemi color={colors.flameDeep} style={tabular}>{rupee(item.total)}</TextSemi>
+                    )}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                       <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>
                         {active ? 'Track' : 'View'}
