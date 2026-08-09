@@ -10,7 +10,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackButton } from '../components/ui';
 import { SkeletonBlock } from '../components/Skeleton';
 import { ConfirmSheet, type ConfirmConfig } from '../components/ConfirmSheet';
-import { PRODUCTS, getProduct } from '../constants/products';
+import { resolveProduct, getMergedProducts } from '../lib/catalog';
 import { listSubscriptions, createSubscription, setSubscriptionStatus, updateSubscription, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, NEEDS_EXACT_LOCATION, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
@@ -37,7 +37,9 @@ export default function Subscriptions() {
   const refreshWallet = useWallet((s) => s.refresh);
 
   // new-subscription form
-  const subscribable = PRODUCTS.filter((p) => p.subscribable && !p.outOfStock);
+  // DB-driven: only products the backend says are subscribable AND in stock
+  // (store-manager-controlled) — no bundled/hardcoded list.
+  const subscribable = getMergedProducts().filter((p) => p.subscribable && !p.outOfStock);
   const [pid, setPid] = useState(subscribable[0]?.id ?? '');
   const [qty, setQty] = useState(1);
   const [freq, setFreq] = useState<Frequency>('daily');
@@ -62,7 +64,7 @@ export default function Subscriptions() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   async function create() {
-    const p = getProduct(pid);
+    const p = resolveProduct(pid);
     if (!p) return;
     setBusy(true); setErr('');
     try {
@@ -203,7 +205,7 @@ export default function Subscriptions() {
             const recurring = subs.filter((s) => s.frequency !== 'one_time');
             const instant = subs.filter((s) => s.frequency === 'one_time');
             const card = (s: (typeof subs)[number]) => {
-              const p = getProduct(s.product_id);
+              const p = resolveProduct(s.product_id);
               return (
                 <Animated.View
                   key={s.id}
@@ -300,7 +302,7 @@ export default function Subscriptions() {
           recharge, else -> resume), plus vacation + cancel. */}
       {detailSub ? (() => {
         const d = detailSub;
-        const p = getProduct(d.product_id);
+        const p = resolveProduct(d.product_id);
         const cost = perDeliveryCost(d);
         const bal = useWallet.getState().balance;
         const underfunded = d.status === 'paused' && bal < cost;

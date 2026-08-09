@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, radius, rupee, shadow, spacing, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Tap } from './ui';
-import { getProduct } from '../constants/products';
+import { resolveProduct } from '../lib/catalog';
 import { listSubscriptions, listVacations, upcomingDeliveries, perDeliveryCost, type Subscription } from '../lib/subscriptions';
 import { useTrial, trialLabel } from '../lib/trial';
 import { todayISO, formatWeekday } from '../lib/dates';
@@ -102,7 +102,7 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
 
   // ── LIVE ───────────────────────────────────────────────────────────────────
   const s = active[0];
-  const p = getProduct(s.product_id);
+  const p = resolveProduct(s.product_id);
   const daily = perDeliveryCost(s);
   return (
     <Tap

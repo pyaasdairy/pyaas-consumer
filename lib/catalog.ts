@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api, isBackendConfigured, resolveMediaUrl } from './apiClient';
-import { PRODUCTS, type Category, type Product } from '../constants/products';
+import { PRODUCTS, getProduct, type Category, type Product } from '../constants/products';
 import { useCart } from '../store/cart';
 
 /**
@@ -352,20 +352,14 @@ export function applyOverlay(base: Product[], res: CatalogResponse | null | unde
   return out;
 }
 
-// ── Launch range gate ─────────────────────────────────────────────────────────
-// We currently SELL exactly two SKUs: Parag Taaza toned 500 ml and PYAAS Gold
-// full cream 500 ml. Every other product and every other size stays VISIBLE in
-// the catalogue but greyed out (outOfStock), so nothing else can be bought.
-// Applied at this single choke point so the grid, shelves, product pages, cart
-// revalidation and subscription flows all honour it automatically.
-const SELLABLE_IDS = new Set(['taaza-500ml', 'gold-500ml']);
-
-function applySellableGate(list: Product[]): Product[] {
-  return list.map((p) => (SELLABLE_IDS.has(p.id) ? p : p.outOfStock ? p : { ...p, outOfStock: true }));
-}
-
 // ── External store (module-level; hook + imperative getters share it) ─────────
-let merged: Product[] = applySellableGate(PRODUCTS);
+// STOCK IS FULLY BACKEND-DRIVEN. Which SKUs are sellable comes ONLY from each
+// product's in_stock in the DB (store-manager-controlled via the catalog console,
+// surfaced through the catalog overlay → outOfStock). There is NO hardcoded launch
+// gate — mark a SKU out of stock in the store console and it goes out of stock
+// here; mark it in and it sells. The bundled PRODUCTS are just the offline
+// first-paint fallback until the live catalog (with its in_stock) loads.
+let merged: Product[] = PRODUCTS;
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -376,7 +370,6 @@ function subscribe(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 function setMerged(next: Product[]): void {
-  next = applySellableGate(next);
   if (next === merged) return;
   merged = next;
   emit();
@@ -393,6 +386,14 @@ export function getMergedProducts(): Product[] {
 /** A single merged product by id, or undefined if hidden / unknown. */
 export function getMergedProduct(id: string): Product | undefined {
   return merged.find((p) => p.id === id);
+}
+
+/** DB-FIRST product resolver: the live merged (backend) product when present, else
+ *  the bundled offline anchor. Use for any user-facing product display (a sub row,
+ *  an order line, a compare card) so the store manager's live name / price / stock
+ *  shows through and never a stale bundled value — while staying resolvable offline. */
+export function resolveProduct(id: string): Product | undefined {
+  return getMergedProduct(id) ?? getProduct(id);
 }
 
 // Single-flight the fetch so overlapping focus/interval pulls don't stampede.

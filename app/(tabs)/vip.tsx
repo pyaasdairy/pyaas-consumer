@@ -9,7 +9,7 @@
  * the flame/blue identity. Motion comes from the shared, gradient-free
  * components/Fx primitives.
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Image, Text, Modal, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -50,13 +50,10 @@ import {
   PLUS_PERIOD_DAYS,
   type VipMembership,
 } from '../../lib/vip';
-import { getProduct, type Product } from '../../constants/products';
+import { useCatalog } from '../../lib/catalog';
 import { DELIVERY_FEE } from '../../lib/api';
 import { useWallet } from '../../store/wallet';
 
-// A few PARAG milk SKUs for the Plus price comparison (regular vs member price).
-const COMPARE_IDS = ['taaza-1l', 'gold-1l', 'shakti-1l', 'taaza-500ml'];
-const COMPARE: Product[] = COMPARE_IDS.map((id) => getProduct(id)).filter((p): p is Product => !!p);
 
 // Membership accent colours. Gold is the foil/badge only; the card sits on the
 // warm-ink surface so the gold reads as a real foil rather than a colour wash.
@@ -228,6 +225,10 @@ function ShineButton({ title, onPress }: { title: string; onPress: () => void })
 export default function Vip() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // DB-driven: the in-stock milk SKUs (store-manager-controlled) for the Plus
+  // price comparison — never a hardcoded id list, so it only shows what sells.
+  const catalog = useCatalog();
+  const COMPARE = useMemo(() => catalog.filter((p) => p.category === 'milk' && !p.outOfStock).slice(0, 4), [catalog]);
   const [m, setM] = useState<VipMembership | null>(null);
   const [name, setName] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);

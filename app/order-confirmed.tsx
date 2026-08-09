@@ -9,7 +9,7 @@ import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withDelay, with
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../components/ui';
 import { FloatingParticles, GlowPulse, useCountUp } from '../components/Fx';
-import { getProduct } from '../constants/products';
+import { resolveProduct } from '../lib/catalog';
 import { formatWeekday } from '../lib/dates';
 
 const GOLD = '#C9A24B';
@@ -41,7 +41,7 @@ export default function OrderConfirmed() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id, qty, freq, start, total, saved } = useLocalSearchParams<{ id: string; qty: string; freq: string; start: string; total: string; saved: string }>();
-  const product = getProduct(String(id));
+  const product = resolveProduct(String(id));
   const q = Number(qty) || 1;
   const totalN = Number(total) || 0;
   const savedN = Number(saved) || 0;

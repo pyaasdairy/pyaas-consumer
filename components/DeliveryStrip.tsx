@@ -10,8 +10,7 @@ import { colors, radius, spacing, shadow, rupee } from '../lib/theme';
 import { Serif, TextBody, TextSemi, Tap } from './ui';
 import { todayISO, addDaysISO, parseISO } from '../lib/dates';
 import { listSubscriptions, deliveriesForDay, type Subscription } from '../lib/subscriptions';
-import { getProduct } from '../constants/products';
-import { getMergedProducts } from '../lib/catalog';
+import { getMergedProducts, resolveProduct } from '../lib/catalog';
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WD_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -52,7 +51,7 @@ export function DeliveryStrip() {
 
   const selDay = days[sel];
   const selDelivery = deliveriesForDay(subs, selDay.iso);
-  const selNames = selDelivery.items.map((s) => getProduct(s.product_id)?.name ?? 'Item');
+  const selNames = selDelivery.items.map((s) => resolveProduct(s.product_id)?.name ?? 'Item');
   const isToday = sel === 0;
 
   function pickProduct(productId: string) {
