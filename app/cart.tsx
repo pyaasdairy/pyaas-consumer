@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, ScrollView, ActivityIndicator } from 'react-native';
+import { View, ScrollView, ActivityIndicator, type ImageSourcePropType } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -14,6 +14,7 @@ import { useWallet } from '../store/wallet';
 import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER, type Address } from '../lib/api';
 import { AddressCaptureSheet } from '../components/AddressCapture';
 import { listSubscriptions, listVacations, subscriptionDueOn } from '../lib/subscriptions';
+import { useTrial } from '../lib/trial';
 import { tomorrowISO } from '../lib/dates';
 import { refreshCatalog, getMergedProducts } from '../lib/catalog';
 import { useServiceability, joinWaitlist } from '../lib/serviceability';
@@ -37,6 +38,9 @@ const SMALL_CART_FEE = 20;
  * "Recharge ₹X to continue" step routes to /recharge and returns here. Blocked
  * cleanly when the address is out of the serving zone.
  */
+// Status green for the "FREE 🎉" trial treatment (matches SubscriptionStatusCard).
+const LIVE_GREEN = '#1B8A3A';
+
 export default function Cart() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -50,6 +54,7 @@ export default function Cart() {
 
   const balance = useWallet((s) => s.balance);
   const refreshWallet = useWallet((s) => s.refresh);
+  const { trial } = useTrial();
 
   const serviceable = useServiceability((s) => s.serviceable);
   const checkSvc = useServiceability((s) => s.check);
@@ -64,7 +69,7 @@ export default function Cart() {
   // Morning world: the member's SUBSCRIPTION items arriving tomorrow render as
   // their own read-only rows (Subscribed ✓ → manage), separate from one-time
   // add-on lines — exactly the reference "All items for the day" layout.
-  const [subRows, setSubRows] = useState<{ key: string; name: string; variant: string; qty: number; price: number }[]>([]);
+  const [subRows, setSubRows] = useState<{ key: string; name: string; variant: string; qty: number; price: number; productId: string; image?: ImageSourcePropType }[]>([]);
 
   const [placing, setPlacing] = useState(false);
   const [err, setErr] = useState('');
@@ -122,6 +127,8 @@ export default function Cart() {
                   variant: s.variant ?? byId.get(s.product_id)?.variant ?? '',
                   qty: s.qty,
                   price: s.unit_price,
+                  productId: s.product_id,
+                  image: byId.get(s.product_id)?.image,
                 })),
             );
           })
@@ -146,6 +153,14 @@ export default function Cart() {
   // is unchanged. Small-cart applies under ₹199 (like a quick-commerce bill).
   const smallCart = subtotal > 0 && subtotal < SMALL_CART_UNDER ? SMALL_CART_FEE : 0;
   const feesSaved = HANDLING_FEE + smallCart;
+
+  // FREE trial day: the gold-500ml subscription's morning delivery is on us, so
+  // surface it as its own "free today" cart row. Shown ONLY while the trial is in
+  // its free window (trial.phase === 'free') — nothing on the paid days (phase
+  // 'paid') or after the trial ends (phase 'completed'/'none'). Requires an ACTIVE
+  // gold sub delivering tomorrow (subRows already excludes paused/held subs), so a
+  // low-balance-held member never sees free milk they won't receive.
+  const freeMilk = trial.phase === 'free' ? subRows.find((r) => /^gold-/.test(r.productId)) : undefined;
 
   function goRecharge() {
     haptics.press();
@@ -312,6 +327,35 @@ export default function Cart() {
               <TextSemi style={{ fontSize: 14.5, marginTop: 4 }}>One-time add-ons · tomorrow morning</TextSemi>
             ) : null}
           </View>
+        ) : null}
+        {/* FREE trial day: the gold subscription's morning milk is on us today —
+            its own row (₹ struck → FREE). Only during the free window; the
+            subscription row above is unchanged. Hidden on paid days / after trial. */}
+        {lane === 'morning' && freeMilk ? (
+          <Animated.View entering={FadeIn.duration(240)} style={{ gap: 8 }}>
+            <TextSemi style={{ fontSize: 14.5 }}>Your free milk today 🎉</TextSemi>
+            <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: LIVE_GREEN, overflow: 'hidden', ...shadow.soft }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.md }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {freeMilk.image ? (
+                    <Image source={freeMilk.image} style={{ width: '80%', height: '80%' }} contentFit="contain" />
+                  ) : (
+                    <Ionicons name="water" size={18} color={LIVE_GREEN} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <TextSemi style={{ fontSize: 14 }} numberOfLines={1}>{freeMilk.qty} × {freeMilk.name}</TextSemi>
+                  <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>On us today · your 2+2 trial</TextBody>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 3 }}>
+                  <TextBody style={{ fontSize: 12, textDecorationLine: 'line-through' }} color={colors.inkMute}>{rupee(freeMilk.price * freeMilk.qty)}</TextBody>
+                  <View style={{ backgroundColor: LIVE_GREEN, borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 3 }}>
+                    <TextMed color={colors.white} style={{ fontSize: 11 }}>FREE</TextMed>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </Animated.View>
         ) : null}
         {/* Out-of-zone block */}
         {blocked ? (
