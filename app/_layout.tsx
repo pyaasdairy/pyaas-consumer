@@ -19,6 +19,26 @@ import { colors } from '../lib/theme';
 import { Splash } from '../components/Splash';
 import { AppErrorBoundary } from '../components/AppErrorBoundary';
 
+/**
+ * Legal and informational documents that must stay readable while signed out.
+ * The signup screen links Terms and Privacy Policy, and an App Review tester
+ * opens both BEFORE creating an account — bouncing them to the login screen
+ * reads as a broken privacy-policy link (Guideline 5.1.1(i)). Each entry is a
+ * top-level route file in app/, matched against segments[0].
+ */
+const PUBLIC_DOC_ROUTES = new Set([
+  'terms',
+  'privacy-policy',
+  'refund-policy',
+  'shipping-policy',
+  'cancellation-policy',
+  'legal',
+  'contact-us',
+  'about-us',
+  'faq',
+  'fssai-details',
+]);
+
 function RootNavigator() {
   const { session, profile, profileLoaded, loading } = useAuth();
   const segments = useSegments();
@@ -71,7 +91,9 @@ function RootNavigator() {
     const onSplash = (segments as string[]).length === 0;
     const onComplete = segments[0] === 'complete-profile';
 
-    if (!session && !inAuthGroup) {
+    const onPublicDoc = PUBLIC_DOC_ROUTES.has(segments[0] as string);
+
+    if (!session && !inAuthGroup && !onPublicDoc) {
       // Phone OTP is the default sign-in path; email is a secondary option linked
       // from there.
       router.replace('/(auth)/otp');
