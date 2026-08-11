@@ -17,8 +17,16 @@ import { api, isBackendConfigured } from './apiClient';
  *  - This is a LIVE key => real charges. In dev, override it with a TEST key via
  *    EXPO_PUBLIC_RAZORPAY_KEY_ID so you never move real money while testing.
  */
-export const RAZORPAY_KEY_ID =
-  process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID ?? 'rzp_live_T0LwnoiGRHGIGG';
+// NO fallback key. A hardcoded live key here meant every build — including a
+// developer's laptop and any misconfigured release — could move real money.
+// Empty means "not configured": callers must refuse to open checkout rather
+// than fall back to someone's production account.
+export const RAZORPAY_KEY_ID = process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID ?? '';
+
+/** True when a real gateway key is present. Checkout must not open without it. */
+export function isRazorpayConfigured(): boolean {
+  return RAZORPAY_KEY_ID.length > 0;
+}
 
 /**
  * TEST top-up mode. When EXPO_PUBLIC_WALLET_TEST_TOPUP=true the "Add money"
@@ -65,7 +73,10 @@ export async function verifyTopup(r: CheckoutResult): Promise<{ verified: boolea
       return { verified: false };
     }
   }
-  return { verified: true }; // demo (no backend): accept the client result
+  // No backend: the client success handler is trivially spoofable and there is
+  // no signature to check, so we CANNOT assert this payment happened. Returning
+  // true here credited real balance off an unverified client claim.
+  return { verified: false };
 }
 
 /** Whether the wallet credit is authoritative on the server (backend present)

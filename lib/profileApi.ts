@@ -1,7 +1,11 @@
 import * as ImagePicker from 'expo-image-picker';
+import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { requireUserId, getProfile, saveProfile, signOut, type Profile } from './session';
+import { requireUserId, getProfile, saveProfile, signOut, removeAccountEntry, type Profile } from './session';
 import { api, isBackendConfigured } from './apiClient';
+import { getAutopay, cancelAutopay } from './walletApi';
+import { listSubscriptions, setSubscriptionStatus } from './subscriptions';
+import { removeFreePackClaimsForUser } from './freePack';
 
 /**
  * Extended profile + avatar. Runs against the on-device store; when parag-api is
@@ -53,9 +57,56 @@ export async function deleteMyAccount(): Promise<void> {
   if (isBackendConfigured()) {
     await api.post('/me/erasure', {});
   }
+
+  // Cancel the recurring commitments BEFORE wiping, so we never orphan a live
+  // UPI mandate or a subscription that keeps sweeping against a deleted account.
+  // Best-effort: a failure here must not strand the user half-deleted.
+  try {
+    const autopay = await getAutopay();
+    if (autopay?.id && autopay.status !== 'cancelled') await cancelAutopay(autopay.id);
+  } catch { /* nothing to cancel, or offline */ }
+  try {
+    const subs = await listSubscriptions();
+    for (const s of subs) {
+      if (s.status !== 'cancelled') await setSubscriptionStatus(s.id, 'cancelled');
+    }
+  } catch { /* nothing to cancel */ }
+
+  // The old filter was `startsWith('parag:') && endsWith(':' + uid)`. That looks
+  // exhaustive and is not — it provably missed four classes of key, each holding
+  // PII, while the UI told the user "Your personal details are permanently
+  // erased" (Guideline 5.1.1(v), DPDP Act 2023 s.8(5)):
+  //
+  //   1. 'parag:accounts'          ends in 'accounts', not ':<uid>'. Held email,
+  //                                name, phone AND a CLEARTEXT password.
+  //   2. 'parag:free_pack_claims:device'  device-scoped, holds the raw mobile.
+  //   3. 'pyaas_*:<uid>'           wrong prefix entirely.
+  //   4. uid IS the phone number   (uid = `u_${phone10}`), so any surviving key
+  //                                leaks it in the key NAME, not just the value.
   const keys = await AsyncStorage.getAllKeys();
-  const mine = keys.filter((k) => k.startsWith('parag:') && k.endsWith(`:${uid}`));
-  if (mine.length) await AsyncStorage.multiRemove(mine);
+  const doomed = new Set<string>();
+
+  for (const k of keys) {
+    // Everything owned by this uid, under either prefix.
+    if (k.endsWith(`:${uid}`)) doomed.add(k);
+    // Legacy/global per-user flags that embed the uid anywhere in the key.
+    if (k.includes(uid)) doomed.add(k);
+  }
+
+  // The email/password registry is a single global blob — prune just this
+  // account's entry rather than nuking other profiles on a shared device.
+  await removeAccountEntry(uid);
+
+  // Device-global free-pack claims store the raw phone number to stop re-claims.
+  // Drop only the rows belonging to this member.
+  try { await removeFreePackClaimsForUser(uid); } catch { /* table may not exist */ }
+
+  if (doomed.size) await AsyncStorage.multiRemove([...doomed]);
+
+  // Keychain items survive an app uninstall, so a "deleted" user is re-identified
+  // by the same device id on reinstall.
+  try { await SecureStore.deleteItemAsync('parag_device_id'); } catch { /* fine */ }
+
   await signOut();
 }
 

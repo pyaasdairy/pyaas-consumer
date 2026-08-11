@@ -12,13 +12,13 @@ import { api, getText, isBackendConfigured } from './apiClient';
  *                   +  the pack/batch dates
  *                   +  the quality tests that batch passed (FAT, SNF,
  *                      adulteration checks).
- * No single-farmer story, no invented names or photos.
+ * No single-farmer story, no invented names or photos — and no invented TESTS:
+ * a batch's composition and safety results come from the federation's QA record
+ * via the API or the pack shows no passport at all. See the note above
+ * DEV_BATCHES for what was deleted and why.
  *
- * Data layer is local-first: seeded demo batches resolve fully offline so a
- * scan/typed code works in a demo. When EXPO_PUBLIC_API_URL is set the lookup
- * prefers the PARAG API (see the apiClient seam in lookupBatch). Every resolved
- * batch is also written to a per-user scan history table so the landing screen
- * (and a future quality dashboard) can show recent scans.
+ * Every resolved batch is written to a per-user scan history table so the
+ * landing screen (and a future quality dashboard) can show recent scans.
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -106,98 +106,79 @@ export function normalizeBatchCode(raw: string | null | undefined): string | nul
   return s || null;
 }
 
-// ── Seeded demo batches (offline) ─────────────────────────────────────────────
-// Real-sounding UP member district dairy unions under the PARAG federation. All
-// tests pass (a batch only forms from QA-approved collections). Codes follow the
-// on-pack format PARAG-<UNION>-<YYYYMMDD>-<PRODUCT>-<seq>.
+// ── Dev-only sample batches ───────────────────────────────────────────────────
+//
+// WHAT WAS HERE AND WHY IT IS GONE: three hand-written batches, each carrying
+// nine all-pass lab results — added water, starch, detergent, UREA, neutralizers,
+// skim milk powder and ANTIBIOTIC RESIDUE — stamped verified:true and attributed
+// to real, named facilities ("Parag Dairy Plant, Ramnagar, Varanasi") and real
+// district cooperative unions. Those tests were never run by anyone. The
+// passport screen renders them as a safety verdict on food we sell, and
+// downloadBatchPassportPdf turns them into a shareable "Milk Provenance
+// Passport" document that outlives the app. Inventing an antibiotic-residue or
+// adulteration pass is a false representation about an article of food (FSS Act
+// 2006 s.53) and a misleading advertisement (Consumer Protection Act 2019 s.89),
+// and it is exactly the fabricated content App Review rejects under Guideline
+// 2.3.1. A real batch passport can only come from the federation's QA records,
+// so lookupBatch now resolves against the API or not at all.
+//
+// The sample batch below exists ONLY to keep the passport UI workable while
+// GET /traceability/:batchCode is unbuilt. __DEV__ is compiled out of any
+// release bundle, so it cannot survive into a store build regardless of env
+// (same rule as the demo order tools in app/order/[id].tsx). Its union, plant
+// and batch code are deliberately fictional and self-labelling: no real
+// cooperative or plant may appear next to a lab result it did not produce, not
+// even in a screenshot taken off a dev build.
 //
 // BRANDING (deliberate, not a leftover): the PYAAS provenance story is "PYAAS
 // milk is packed at PARAG federation plants", so the ONLY user-visible Parag
 // strings in the app are (a) on-pack batch codes ('PARAG-…' — they must match
 // what is printed on the pouch) and (b) real facility names ('Parag Dairy
-// Plant, …'). Everything that names the APP/brand experience says PYAAS.
+// Plant, …'). Both must come from a real record, never from this file.
 
-function tests(fat: number, snf: number): QualityTest[] {
-  return [
-    { name: 'FAT', value: `${fat}%`, pass: true },
-    { name: 'SNF', value: `${snf}%`, pass: true },
-    { name: 'Added water', pass: true },
-    { name: 'Starch', pass: true },
-    { name: 'Detergent', pass: true },
-    { name: 'Urea', pass: true },
-    { name: 'Neutralizers', pass: true },
-    { name: 'Skim milk powder', pass: true },
-    { name: 'Antibiotic residue', pass: true },
-  ];
-}
+const DEV_BATCHES: MilkBatch[] = __DEV__
+  ? [
+      {
+        batch_code: 'SAMPLE-DEV-0001',
+        product: 'Toned Milk (Blue)',
+        pack_size: '500 ml pouch',
+        batch_date: '2026-07-01',
+        packed_at: '2026-07-01T05:40:00+05:30',
+        best_before: '2026-07-03',
+        union_name: 'Sample Dairy Union (dev data)',
+        plant: 'Sample Dairy Plant',
+        district: 'Sample district',
+        state: 'Uttar Pradesh',
+        fat_pct: 3.0,
+        snf_pct: 8.5,
+        member_villages: 312,
+        pouring_members: 4180,
+        tests: [
+          { name: 'FAT', value: '3.0%', pass: true },
+          { name: 'SNF', value: '8.5%', pass: true },
+        ],
+        verified: true,
+      },
+    ]
+  : [];
 
-const SEED_BATCHES: MilkBatch[] = [
-  {
-    batch_code: 'PARAG-LKO-20260701-TM-014',
-    product: 'Toned Milk (Blue)',
-    pack_size: '500 ml pouch',
-    batch_date: '2026-07-01',
-    packed_at: '2026-07-01T05:40:00+05:30',
-    best_before: '2026-07-03',
-    union_name: 'Lucknow District Cooperative Dairy Union',
-    plant: 'Parag Dairy Plant, Janeshwar Mishra, Lucknow',
-    district: 'Lucknow',
-    state: 'Uttar Pradesh',
-    fat_pct: 3.0,
-    snf_pct: 8.5,
-    member_villages: 312,
-    pouring_members: 4180,
-    tests: tests(3.0, 8.5),
-    verified: true,
-  },
-  {
-    batch_code: 'PARAG-VNS-20260630-FCM-022',
-    product: 'Full Cream Milk (Gold)',
-    pack_size: '500 ml pouch',
-    batch_date: '2026-06-30',
-    packed_at: '2026-06-30T05:20:00+05:30',
-    best_before: '2026-07-02',
-    union_name: 'Varanasi District Cooperative Dairy Union',
-    plant: 'Parag Dairy Plant, Ramnagar, Varanasi',
-    district: 'Varanasi',
-    state: 'Uttar Pradesh',
-    fat_pct: 6.0,
-    snf_pct: 9.0,
-    member_villages: 268,
-    pouring_members: 3540,
-    tests: tests(6.0, 9.0),
-    verified: true,
-  },
-  {
-    batch_code: 'PARAG-KNP-20260629-DTM-009',
-    product: 'Double Toned Milk (Green)',
-    pack_size: '1 L pouch',
-    batch_date: '2026-06-29',
-    packed_at: '2026-06-29T05:10:00+05:30',
-    best_before: '2026-07-01',
-    union_name: 'Kanpur District Cooperative Dairy Union',
-    plant: 'Parag Dairy Plant, Fazalganj, Kanpur',
-    district: 'Kanpur Nagar',
-    state: 'Uttar Pradesh',
-    fat_pct: 1.5,
-    snf_pct: 9.0,
-    member_villages: 401,
-    pouring_members: 5120,
-    tests: tests(1.5, 9.0),
-    verified: true,
-  },
-];
-
-/** The demo codes surfaced on the landing so a scan-less demo still works. */
-export const DEMO_BATCH_CODES: string[] = SEED_BATCHES.map((b) => b.batch_code);
+/**
+ * Batch codes offered on the landing as tappable samples. EMPTY in a release
+ * build — there is no such thing as a demo pack for a real customer, and a
+ * "sample batch" that renders a full safety passport is the fabrication we just
+ * deleted. Callers must handle the empty case (hide the card / drop the
+ * placeholder) rather than assume an element exists.
+ */
+export const DEMO_BATCH_CODES: string[] = DEV_BATCHES.map((b) => b.batch_code);
 
 // ── Lookup ────────────────────────────────────────────────────────────────────
 
 /**
- * Resolve a scanned/typed code to its cooperative batch passport. Local-first:
- * matches a seeded demo batch offline; when the backend is configured it prefers
- * the PARAG API. Returns null when the code can't be traced (caller shows a
- * not-found state rather than masquerading another batch).
+ * Resolve a scanned/typed code to its cooperative batch passport. The API is the
+ * ONLY source of a real passport: a batch's composition and safety results are
+ * the federation's QA record, not something this app may compose. Returns null
+ * when the code can't be traced — the caller shows its not-found state rather
+ * than masquerading another batch or an invented one.
  */
 // The backend leaves top-level fat_pct/snf_pct at 0 for per-samiti batch QRs —
 // the real values live in the tests array as FAT_PCT / SNF_PCT (e.g. "4.2%").
@@ -227,24 +208,25 @@ export async function lookupBatch(code: string): Promise<MilkBatch | null> {
       const b = await api.get<MilkBatch>(`/traceability/${encodeURIComponent(norm)}`);
       if (b) return hydrateBatch(b);
     } catch {
-      // fall through to the offline seed so a demo still resolves
+      // Network blip or an unknown code: fall through to null. We must NOT
+      // substitute a stand-in batch — a passport for the wrong milk is worse
+      // than no passport.
     }
   }
 
-  return SEED_BATCHES.find((b) => normalizeBatchCode(b.batch_code) === norm) ?? null;
+  return DEV_BATCHES.find((b) => normalizeBatchCode(b.batch_code) === norm) ?? null;
 }
 
 /**
- * All batches available for the demo (recent QA-passed batches). A quality
- * dashboard can reuse this for a recent-tests / pass-rate view. Sorted newest
- * batch date first.
+ * Recent QA-passed batches, newest batch date first. Empty until the API serves
+ * them (dev builds see the sample batch only).
  */
 export async function listBatches(): Promise<MilkBatch[]> {
   // TODO(api): GET /traceability/recent -> MilkBatch[]
-  return [...SEED_BATCHES].sort((a, b) => b.batch_date.localeCompare(a.batch_date));
+  return [...DEV_BATCHES].sort((a, b) => b.batch_date.localeCompare(a.batch_date));
 }
 
-/** Convenience: how many of a batch's tests passed (all, for a QA-approved batch). */
+/** Convenience: how many of the batch record's tests came back as a pass. */
 export function testsPassed(batch: MilkBatch): number {
   return batch.tests.filter((t) => t.pass).length;
 }
@@ -253,8 +235,9 @@ export function testsPassed(batch: MilkBatch): number {
  * Download the pack's provenance passport as a PDF. In backend mode it fetches
  * the server-rendered HTML label (all values + an embedded QR) — the same
  * app-key-gated endpoint the QR resolves through — and prints it to a PDF via
- * expo-print, then opens the share sheet. Offline it builds a minimal label from
- * the resolved batch so the demo still produces a document.
+ * expo-print, then opens the share sheet. If that endpoint is unreachable it
+ * renders the batch record already on screen, so the document only ever repeats
+ * values that came from a real lookup; it never adds a claim of its own.
  */
 export async function downloadBatchPassportPdf(batch: MilkBatch): Promise<void> {
   let html: string | null = null;

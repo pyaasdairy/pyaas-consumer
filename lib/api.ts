@@ -2,7 +2,7 @@ import type { CartLine } from '../store/cart';
 import { cartTotals } from './pricing';
 import { requireUserId, getProfile } from './session';
 import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
-import { debitWallet, autoSettleTopUp } from './walletApi';
+import { debitWallet, autoSettleTopUp, refundToWallet } from './walletApi';
 import { api, isBackendConfigured, HttpError } from './apiClient';
 import { instantEtaHHMM, INSTANT_ETA_MINUTES, MORNING_WINDOW } from './deliveryMode';
 import { getServiceabilitySnapshot } from './serviceability';
@@ -110,21 +110,20 @@ export type Order = {
 export const DELIVERY_FEE = 15;
 export const FREE_DELIVERY_OVER = 199;
 
-export function deliveryFeeFor(subtotal: number): number {
-  return subtotal >= FREE_DELIVERY_OVER || subtotal === 0 ? 0 : DELIVERY_FEE;
+/**
+ * Delivery fee for a cart subtotal.
+ *
+ * `isPlus` exists because PYAAS Plus is SOLD on the promise of "No delivery fee
+ * on any order, however small" (app/(tabs)/vip.tsx) and debits ₹99 for it. This
+ * function is the only place a fee is ever computed, so if it ignores membership
+ * the perk does not exist and we are charging for nothing. Callers that know the
+ * member's tier must pass it; the default preserves the non-member price.
+ */
+export function deliveryFeeFor(subtotal: number, isPlus = false): number {
+  if (subtotal === 0) return 0;
+  if (isPlus) return 0;
+  return subtotal >= FREE_DELIVERY_OVER ? 0 : DELIVERY_FEE;
 }
-
-// The demo rider assigned when a customer simulates a rider pickup. Matches the
-// seeded rider in apps/parag-api schema.sql.
-const DEMO_RIDER: Rider = {
-  id: 'rider-demo',
-  full_name: 'Ram Kumar',
-  phone: '+919999900000',
-  vehicle: 'Bike · UP32 CD 5678',
-  rating: 4.8,
-  current_lat: 26.8467,
-  current_lng: 80.9462,
-};
 
 // ── Addresses ────────────────────────────────────────────────────────────────
 export async function listAddresses(): Promise<Address[]> {
@@ -389,12 +388,38 @@ export async function getOrder(id: string): Promise<Order | null> {
   return rows.find((o) => o.id === id) ?? null;
 }
 
+/**
+ * Cancel an open order and RETURN THE MONEY.
+ *
+ * The wallet is debited at placement (see placeOrder), but this only ever flipped
+ * the status, so a cancelled prepaid order silently destroyed the customer's
+ * balance — while app/cancellation-policy.tsx promises "the amount is credited
+ * back to your PYAAS wallet" and the refund policy promises 24-48 hours.
+ * refundToWallet is idempotent by `ref`, so a double-tap or a retry cannot pay
+ * out twice.
+ */
 export async function cancelOrder(id: string): Promise<void> {
   const uid = await requireUserId();
   if (isBackendConfigured()) { await api.post(`/orders/${id}/cancel`); return; }
+
+  // Read the order BEFORE mutating: we need its total, and we must not refund an
+  // order that was already cancelled or was never actually paid from the wallet.
+  const rows = await getRows<Order>('orders', uid);
+  const order = rows.find((o) => o.id === id);
+  const cancellable = !!order && ['placed', 'confirmed'].includes(order.status);
+  if (!cancellable) return;
+
   await updateRows<Order>('orders', uid, (o) => o.id === id && ['placed', 'confirmed'].includes(o.status), {
     status: 'cancelled',
   });
+
+  const paidFromWallet = order!.payment_method === 'wallet' || order!.payment_method === 'prepaid';
+  const amount = Number(order!.total) || 0;
+  if (paidFromWallet && amount > 0) {
+    await refundToWallet(amount, `cancel:${id}`, {
+      remark: `Refund for cancelled order ${id}`,
+    });
+  }
 }
 
 /** Submit a review for a DELIVERED order (backend) — the review-after-delivery
@@ -420,8 +445,14 @@ export async function simulateRiderAssignment(orderId: string): Promise<void> {
   if (isBackendConfigured()) { await api.post(`/orders/${orderId}/advance`, { status: 'out_for_delivery' }); return; }
   const uid = await requireUserId();
   const rows = await getRows<Order>('orders', uid);
+  // Advance the status only. We deliberately do NOT attach a fabricated rider:
+  // the old DEMO_RIDER ("Ram Kumar", a real-format mobile we do not own, rating
+  // 4.8) rendered as the genuine assigned rider with a working Call button, and
+  // the tracking map animated him toward the customer's door. Presenting an
+  // invented person as the courier is Guideline 2.3.1, and the Call button dialled
+  // a stranger. The tracking screen already handles "no rider assigned yet".
   const next = rows.map((o) =>
-    o.id === orderId ? { ...o, status: 'out_for_delivery' as OrderStatus, rider_id: DEMO_RIDER.id, riders: DEMO_RIDER } : o,
+    o.id === orderId ? { ...o, status: 'out_for_delivery' as OrderStatus } : o,
   );
   await setRows<Order>('orders', uid, next);
 }

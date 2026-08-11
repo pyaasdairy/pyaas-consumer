@@ -148,6 +148,25 @@ export async function signInWithEmail(email: string, password: string): Promise<
   emit();
 }
 
+/**
+ * Remove one account from the email/password registry, by uid.
+ *
+ * Account deletion previously left 'parag:accounts' completely untouched (the
+ * key ends in 'accounts', not ':<uid>', so the sweep's suffix filter skipped
+ * it), which meant a "deleted" member's email, name, phone and PASSWORD all
+ * survived — and signing in with the same email still worked. The registry is
+ * one global blob shared by every account on the device, so prune the single
+ * entry rather than dropping the key.
+ */
+export async function removeAccountEntry(uid: string): Promise<void> {
+  const accounts = await readAccounts();
+  const email = Object.keys(accounts).find((em) => accounts[em]?.uid === uid);
+  if (!email) return; // phone-OTP member — never had a registry entry
+  delete accounts[email];
+  if (Object.keys(accounts).length === 0) await AsyncStorage.removeItem(ACCOUNTS_KEY);
+  else await AsyncStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
 export async function signOut(): Promise<void> {
   await AsyncStorage.removeItem(UID_KEY);
   currentUid = null;

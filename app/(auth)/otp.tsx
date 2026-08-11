@@ -183,11 +183,19 @@ export default function OtpLogin() {
         // Real SMS OTP via MSG91: verify the code, then open the local session.
         await msg91VerifyOtp(digits(), c);
         await signInWithPhone(digits());
-      } else {
-        // Offline dev fallback only (no backend, no MSG91). Not advertised on
-        // screen; a real provider disables this path entirely.
+      } else if (__DEV__) {
+        // Offline DEV fallback only (no backend, no MSG91). __DEV__ is compiled
+        // out of release bundles, so a store build can never reach this branch.
+        // It previously ran in ANY build with an empty EXPO_PUBLIC_API_URL — so
+        // a misconfigured release would have let anyone sign in as any phone
+        // number with a fixed code, and every order/wallet action after it would
+        // have been device-local fiction. Failing loudly below is the safe
+        // failure; silently accepting 123456 in production is not.
         if (c !== DEMO_OTP) { setError('That code is not right. Try again.'); return; }
         await signInWithPhone(digits());
+      } else {
+        setError('Sign-in is unavailable right now. Please try again later or contact support.');
+        return;
       }
     } catch (e: any) {
       setError(friendly(e, 'Could not sign you in. Please try again.'));

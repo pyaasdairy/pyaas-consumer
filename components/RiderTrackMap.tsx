@@ -2,27 +2,31 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, shadow } from '../lib/theme';
+import { colors, radius, shadow, spacing } from '../lib/theme';
 import { TextBody, TextSemi } from './ui';
-import { getUserCoords, type Coords } from '../lib/location';
+import { getUserCoords, DEFAULT_REGION, type Coords } from '../lib/location';
+import { LEAFLET_CSS, LEAFLET_JS } from './leafletAssets';
 
 /**
- * RIDER-ON-MAP — the live tracking map a member sees once their order is placed
- * and a rider is on the way. Rendered with Leaflet + free OpenStreetMap tiles in
- * the WebView we already ship (same stack as MapPicker): no native rebuild, no
- * Google Maps key.
+ * RIDER-ON-MAP — the tracking map a member sees once a rider is assigned to their
+ * order. Rendered with Leaflet + free OpenStreetMap tiles in the WebView we
+ * already ship (same stack as MapPicker): no native rebuild, no Google Maps key.
+ * Leaflet is inlined from the local package (./leafletAssets), so the only thing
+ * this page fetches is tile imagery — data, not code.
  *
- * The HOME pin is the member's saved delivery point; the RIDER pin starts from
- * the rider's last reported position (or just outside the neighbourhood) and
- * glides towards home. Real position updates re-anchor the glide, so with the
- * rider app reporting live GPS the marker follows it; without updates the
- * approach still reads as live motion instead of a frozen dot.
+ * It plots ONLY positions we actually have: the rider marker sits on the last
+ * position the rider app reported and moves when a new one arrives. It used to
+ * invent a start point ~1 km from the member's home and glide a marker towards
+ * their door on a timer, which drew a rider who was not there — for orders whose
+ * rider had never reported a position at all. With no reported position there is
+ * now no map, just the honest "not shared yet" state.
  */
-function mapHtml(home: Coords, rider: Coords, active: boolean): string {
+function mapHtml(home: Coords | null, rider: Coords): string {
+  const homeJs = home ? `[${home.lat},${home.lng}]` : 'null';
   return `<!DOCTYPE html><html><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>${LEAFLET_CSS}</style>
 <style>
   html,body,#map{height:100%;margin:0;padding:0;background:#f6eef4}
   #map{width:100%}
@@ -37,45 +41,48 @@ function mapHtml(home: Coords, rider: Coords, active: boolean): string {
   function __rnpost(o){ try{ window.ReactNativeWebView.postMessage(JSON.stringify(o)); }catch(e){} }
   window.onerror=function(){ __rnpost({err:true}); return true; };
 </script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>${LEAFLET_JS}</script>
 <script>
   if (typeof L === 'undefined') { __rnpost({err:true}); }
   else try {
-  var home=[${home.lat},${home.lng}];
-  var riderStart=[${rider.lat},${rider.lng}];
-  var map=L.map('map',{zoomControl:false,attributionControl:true,dragging:true}).setView(home,15);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  var home=${homeJs};
+  var start=[${rider.lat},${rider.lng}];
+  var map=L.map('map',{zoomControl:false,attributionControl:true,dragging:true});
+  var tiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  // Tiles are the only network dependency left, and Leaflet renders a perfectly
+  // functional map of blank squares without them — so report the failure and let
+  // the component swap in a message instead of showing a grey rectangle.
+  var tilesOk=false,tileErrs=0;
+  tiles.on('tileload',function(){ if(!tilesOk){ tilesOk=true; __rnpost({tiles:true}); } });
+  tiles.on('tileerror',function(){ if(!tilesOk && ++tileErrs>=4) __rnpost({tiles:false}); });
   var homeIcon=L.divIcon({html:'<div class="pin home">🏠</div>',className:'',iconSize:[34,34],iconAnchor:[17,17]});
   var riderIcon=L.divIcon({html:'<div style="position:relative"><div class="pulse"></div><div class="pin">🛵</div></div>',className:'',iconSize:[34,34],iconAnchor:[17,17]});
-  L.marker(home,{icon:homeIcon}).addTo(map);
-  var rider=L.marker(riderStart,{icon:riderIcon}).addTo(map);
-  var route=L.polyline([riderStart,home],{color:'#F36CB5',weight:3,dashArray:'6 8',opacity:0.85}).addTo(map);
-  map.fitBounds(L.latLngBounds([home,riderStart]).pad(0.35));
-
-  // Glide: ease the rider from its anchor towards home. A real GPS update
-  // (window.__setRider) re-anchors the glide from the reported point.
-  var anchor={lat:riderStart[0],lng:riderStart[1]};
-  var t=0;
-  var ACTIVE=${active ? 'true' : 'false'};
-  function tick(){
-    if(!ACTIVE) return;
-    t=Math.min(t+0.004,0.94); // never quite "arrives" on its own
-    var la=anchor.lat+(home[0]-anchor.lat)*t;
-    var ln=anchor.lng+(home[1]-anchor.lng)*t;
-    rider.setLatLng([la,ln]);
-    route.setLatLngs([[la,ln],home]);
+  var rider=L.marker(start,{icon:riderIcon}).addTo(map);
+  var route=null;
+  // The home pin is drawn only when we know the member's actual delivery point.
+  if(home){
+    L.marker(home,{icon:homeIcon}).addTo(map);
+    route=L.polyline([start,home],{color:'#F36CB5',weight:3,dashArray:'6 8',opacity:0.85}).addTo(map);
+    map.fitBounds(L.latLngBounds([home,start]).pad(0.35));
+  } else {
+    map.setView(start,15);
   }
-  setInterval(tick,120);
-  window.__setRider=function(la,ln){ anchor={lat:la,lng:ln}; t=0; rider.setLatLng([la,ln]); route.setLatLngs([[la,ln],home]); };
+  // The marker moves ONLY when the rider app reports a new position. No timer,
+  // no interpolation — a still marker means the rider has not moved (or has not
+  // reported), and that is the truth we owe the member.
+  window.__setRider=function(la,ln){
+    rider.setLatLng([la,ln]);
+    if(route) route.setLatLngs([[la,ln],home]);
+  };
   __rnpost({ready:true});
   } catch(e){ __rnpost({err:true}); }
 </script></body></html>`;
 }
 
-/** Deterministic "just left the store" start point ~1.2 km north-east of home,
- *  used when the rider has not reported a live position yet. */
-function fallbackRiderStart(home: Coords): Coords {
-  return { lat: home.lat + 0.008, lng: home.lng + 0.007 };
+/** getUserCoords() falls back to the Lucknow centroid when the member has no pin
+ *  on file. That is a city, not their door — never draw a home marker on it. */
+function isDefaultRegion(c: Coords): boolean {
+  return c.lat === DEFAULT_REGION.lat && c.lng === DEFAULT_REGION.lng;
 }
 
 export function RiderTrackMap({
@@ -84,28 +91,31 @@ export function RiderTrackMap({
   active,
   height = 230,
 }: {
+  /** The rider's last reported position. Null until the rider app reports one —
+   *  there is no map to draw until then. */
   riderLat?: number | null;
   riderLng?: number | null;
-  /** True while the order is out for delivery (the marker glides home). */
+  /** True while the order is out for delivery (drives the status ribbon only). */
   active: boolean;
   height?: number;
 }) {
   const webRef = useRef<WebView>(null);
-  const [home, setHome] = useState<Coords | null>(null);
+  const hasFix = riderLat != null && riderLng != null;
+  // undefined = still resolving, null = resolved but we have no real home point.
+  const [home, setHome] = useState<Coords | null | undefined>(undefined);
   const [failed, setFailed] = useState(false);
   const readyRef = useRef(false);
 
   useEffect(() => {
+    // Only look up the member's coordinate when there is a rider position to plot
+    // it against — no map, no reason to touch location at all.
+    if (!hasFix) return;
     let on = true;
-    getUserCoords().then((c) => { if (on) setHome(c); }).catch(() => { if (on) setFailed(true); });
+    getUserCoords()
+      .then((c) => { if (on) setHome(isDefaultRegion(c) ? null : c); })
+      .catch(() => { if (on) setHome(null); });
     return () => { on = false; };
-  }, []);
-
-  const riderStart = useMemo<Coords | null>(() => {
-    if (!home) return null;
-    if (riderLat != null && riderLng != null) return { lat: riderLat, lng: riderLng };
-    return fallbackRiderStart(home);
-  }, [home, riderLat, riderLng]);
+  }, [hasFix]);
 
   // Live re-anchor: whenever polled rider coords change after load, hand the new
   // point to the map without reloading the WebView.
@@ -115,17 +125,33 @@ export function RiderTrackMap({
   }, [riderLat, riderLng]);
 
   const html = useMemo(
-    () => (home && riderStart ? mapHtml(home, riderStart, active) : null),
-    // The HTML is frozen for the mount; live updates ride injectJavaScript.
+    () => (hasFix && home !== undefined ? mapHtml(home, { lat: riderLat!, lng: riderLng! }) : null),
+    // The HTML is frozen once built; later fixes ride injectJavaScript, not a reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [home != null, riderStart != null],
+    [hasFix, home !== undefined],
   );
+
+  // No reported position → say that, plainly. Anything else here would be a
+  // rider we invented.
+  if (!hasFix) {
+    return (
+      <View style={{ backgroundColor: colors.cream, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, alignItems: 'center', gap: 6 }}>
+        <Ionicons name="navigate-circle-outline" size={26} color={colors.inkMute} />
+        <TextSemi style={{ fontSize: 14 }}>Live location not shared yet</TextSemi>
+        <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkSoft}>
+          {active
+            ? 'Your order is out for delivery. The map appears here as soon as your rider shares their position.'
+            : 'The map appears here once your rider starts the trip and shares their position.'}
+        </TextBody>
+      </View>
+    );
+  }
 
   if (failed) {
     return (
       <View style={{ height: 96, borderRadius: radius.lg, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-        <Ionicons name="bicycle" size={22} color={colors.flameDeep} />
-        <TextBody style={{ fontSize: 12.5 }}>Your rider is on the way</TextBody>
+        <Ionicons name="cloud-offline-outline" size={22} color={colors.inkMute} />
+        <TextBody style={{ fontSize: 12.5 }} color={colors.inkSoft}>Map needs an internet connection</TextBody>
       </View>
     );
   }
@@ -135,7 +161,8 @@ export function RiderTrackMap({
       {html ? (
         <WebView
           ref={webRef}
-          source={{ html, baseUrl: 'https://unpkg.com' }}
+          // No baseUrl: nothing in this page resolves against a remote origin.
+          source={{ html }}
           originWhitelist={['*']}
           javaScriptEnabled
           domStorageEnabled
@@ -144,6 +171,7 @@ export function RiderTrackMap({
               const d = JSON.parse(e.nativeEvent.data);
               if (d?.ready) readyRef.current = true;
               if (d?.err) setFailed(true);
+              if (typeof d?.tiles === 'boolean') setFailed(!d.tiles);
             } catch { /* ignore */ }
           }}
           onError={() => setFailed(true)}
@@ -161,10 +189,12 @@ export function RiderTrackMap({
           <ActivityIndicator color={colors.flameDeep} />
         </View>
       )}
-      {/* Status ribbon over the map */}
+      {/* Status ribbon over the map. "last reported" is the honest caveat: the pin
+          is where the rider app last said they were, not a live extrapolation. */}
       <View pointerEvents="none" style={{ position: 'absolute', left: 10, top: 10, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 7, ...shadow.soft }}>
-      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#31B057' : colors.gold }} />
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#31B057' : colors.gold }} />
         <TextSemi style={{ fontSize: 12 }}>{active ? 'Rider on the way' : 'Rider assigned'}</TextSemi>
+        <TextBody style={{ fontSize: 11 }} color={colors.inkSoft}>· last reported</TextBody>
       </View>
     </View>
   );

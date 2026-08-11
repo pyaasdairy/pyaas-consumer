@@ -44,9 +44,10 @@ export default function CompleteProfile() {
         full_name: name.trim(),
         phone: phone.trim() || null,
       });
-      // Record required consents (accepted by setting up the account) with a
-      // timestamp + app version. Optional marketing consents default off.
-      await recordConsents({ ...defaultChoices(), privacy: true, terms: true, sms: true });
+      // Required consents only. sms is optional in ConsentSheet and no checkbox
+      // is ever shown for it, so recording it as granted invented a marketing
+      // consent the member never gave — and contradicted our own privacy policy.
+      await recordConsents({ ...defaultChoices(), privacy: true, terms: true });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await refreshProfile(); // navigator sees full_name and enters the app
     } catch (e: any) {

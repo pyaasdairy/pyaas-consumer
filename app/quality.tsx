@@ -13,6 +13,11 @@ import { getQualitySummary, type QualitySummary, type QualityTest } from '../lib
  * honest, batch-level view: the pass rate and averages roll up the recent lab
  * tests each member district dairy union logged, and every card is backed by a
  * real batch record below. Solid colours only, effects clipped inside the hero.
+ *
+ * With no records the screen shows NoReports, not a zeroed dashboard: the numbers
+ * here are food-safety claims, so the only honest thing to render when the lab
+ * data has not reached us is that it has not reached us. (lib/quality.ts used to
+ * seed a fabricated week of results to fill this screen — see the note there.)
  */
 export default function Quality() {
   const insets = useSafeAreaInsets();
@@ -22,11 +27,18 @@ export default function Quality() {
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      getQualitySummary().then((d) => {
-        if (!alive) return;
-        setS(d);
-        setLoading(false);
-      });
+      getQualitySummary()
+        .then((d) => {
+          if (!alive) return;
+          setS(d);
+          setLoading(false);
+        })
+        .catch(() => {
+          // A read failure must land on the empty state, never spin forever.
+          if (!alive) return;
+          setS(null);
+          setLoading(false);
+        });
       return () => {
         alive = false;
       };
@@ -55,8 +67,10 @@ export default function Quality() {
         contentContainerStyle={{ padding: spacing.lg, paddingTop: 8, gap: spacing.md, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
-        {loading || !s ? (
+        {loading ? (
           <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 40 }} />
+        ) : !s || s.total === 0 ? (
+          <NoReports />
         ) : (
           <>
             {/* Hero: batch pass rate across the recent federation tests. Solid
@@ -131,6 +145,38 @@ export default function Quality() {
           </>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * Honest empty state. A zeroed hero would read as "0% of batches passed", which
+ * is a worse lie than the seed we removed, so say plainly that no lab record has
+ * arrived and make no claim about batches we have no data for.
+ */
+function NoReports() {
+  return (
+    <View style={{ alignItems: 'center', gap: 10, paddingTop: 44, paddingHorizontal: spacing.sm }}>
+      <View
+        style={{
+          width: 76,
+          height: 76,
+          borderRadius: 38,
+          backgroundColor: colors.flameSoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name="flask-outline" size={34} color={colors.flameDeep} />
+      </View>
+      <Serif style={{ fontSize: 22, textAlign: 'center' }}>No lab reports yet.</Serif>
+      <TextBody style={{ textAlign: 'center', fontSize: 13 }}>
+        We publish FAT, SNF, cold-chain and adulteration-screen readings here exactly as the member
+        dairy union's lab reports them, and nothing else. No batch records have reached the app yet.
+      </TextBody>
+      <TextBody style={{ textAlign: 'center', fontSize: 12.5 }} color={colors.inkMute}>
+        Scan the QR on your pack to check whether your own batch has a record.
+      </TextBody>
     </View>
   );
 }

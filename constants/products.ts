@@ -40,8 +40,10 @@ export type Product = {
    *  Absent for bundled-only SKUs (they fall back to the printed PackBack card). */
   backPhotoUrl?: string;
   subscribable: boolean; // ONLY milk is subscribable (daily morning delivery); everything else is one-time
-  // ── Social proof (seeded demo data; see META below). All optional so any
-  //    un-seeded SKU renders nothing. ──
+  // ── Social proof. NEVER seed these on device — they may only ever hold real
+  //    aggregates from the catalog backend (lib/catalog.ts). All optional, and
+  //    every consumer hides its UI when they are absent, which is today's state:
+  //    no stars, no review count, no "Most ordered" shelf until sales exist. ──
   rating?: number;        // 0-5, one decimal
   ratingCount?: number;   // number of ratings behind the average
   mostOrdered?: boolean;  // shows a "MOST ORDERED" badge + surfaces on a home shelf
@@ -86,13 +88,15 @@ export const COMPLIANCE = {
   countryOfOrigin: 'India',
 } as const;
 
-/** Indicative Indian dairy GST by category (founder-adjustable). Fresh
- *  pasteurised milk is GST-exempt; curd/paneer/buttermilk/sweets 5%; ghee/butter 12%. */
+/** Indian dairy GST by category, post the 22 Sep 2025 rationalisation (the 12%
+ *  slab was withdrawn). Fresh pasteurised milk and pre-packaged paneer are
+ *  nil-rated; ghee/butter/flavoured milk moved to 5%. MUST stay in step with
+ *  GST_BY_CATEGORY in lib/invoice.ts — that table is what the tax invoice uses. */
 export function gstFor(category: Category): number {
   switch (category) {
     case 'milk': case 'super_tea': return 0; // plain / tea milk is GST-exempt
-    case 'ghee': case 'butter': case 'flavoured_milk': return 12;
-    default: return 5; // dahi, paneer, chaach, mattha, lassi, khoya, sweets
+    case 'paneer': return 0;                 // pre-packaged & labelled: nil since 22 Sep 2025
+    default: return 5; // dahi, chaach, mattha, lassi, khoya, sweets, ghee, butter, flavoured milk
   }
 }
 
@@ -180,7 +184,8 @@ const IMG = {
   peda: require('../assets/products/peda.png'),
   gulabJamun: require('../assets/products/gulab-jamun.png'),
   riceKheer: require('../assets/products/rice-kheer.png'),
-  // PYAAS partner SKUs (marketed & manufactured by PYAAS, listed ahead of launch)
+  // PYAAS's own SKUs (marketed & manufactured by PYAAS) — held back from the
+  // catalog until launch; see WITHHELD_SKUS below.
   pyaasA2Carton: require('../assets/products/pyaas-a2-1l.png'),
   pyaasA2Pouch: require('../assets/products/pyaas-a2-pouch.png'),
   pyaasTonedCarton: require('../assets/products/pyaas-toned-1l.png'),
@@ -236,8 +241,10 @@ export const PRODUCTS: Product[] = [
     price: 29,
     unit: '500 ml',
     tag: '3% Fat · Toned',
+    // PYAAS is a private limited company, not a cooperative — it RESELLS Parag,
+    // which is what the co-operative union actually makes. Name whose network it is.
     description:
-      'Pasteurised toned milk from the PYAAS cooperative network, fortified with vitamins A and D. A light, dependable everyday milk for chai, coffee and the whole family.',
+      'Pasteurised toned milk from Parag, made by Lucknow Producers Co-operative Milk Union and fortified with vitamins A and D. A light, dependable everyday milk for chai, coffee and the whole family.',
     image: IMG.taaza,
     subscribable: true,
   },
@@ -475,6 +482,12 @@ export const PRODUCTS: Product[] = [
   },
 
   // ── Ghee ──────────────────────────────────────────────────────────────────
+  // "Agmark-grade PYAAS ghee" was dropped from all five SKUs. Under the
+  // Agricultural Produce (Grading and Marking) Act 1937 only the certificate
+  // holder may make that representation, and PYAAS holds no Agmark certificate —
+  // it resells ghee made by Parag. Nothing in this repo substantiates the grade
+  // for the packs we sell, so the claim is out rather than reassigned. Restore it
+  // only as "Agmark-graded by <holder>" once the founder has the certificate.
   {
     id: 'ghee-poly-200ml',
     name: 'Ghee - Poly Pack',
@@ -484,7 +497,7 @@ export const PRODUCTS: Product[] = [
     unit: '200 ml',
     tag: 'Poly Pack',
     description:
-      'Agmark-grade PYAAS ghee in a handy 200ml poly pack. Aromatic and granular, made from cooperative dairy cream.',
+      'PYAAS ghee in a handy 200ml poly pack. Aromatic and granular, made from cooperative dairy cream.',
     image: IMG.ghee,
     subscribable: false,
   },
@@ -497,7 +510,7 @@ export const PRODUCTS: Product[] = [
     unit: '500 ml',
     tag: 'Poly Pack',
     description:
-      'The 500ml poly pack of Agmark-grade PYAAS ghee. A kitchen staple for tadka, parathas and everything in between.',
+      'The 500ml poly pack of PYAAS ghee. A kitchen staple for tadka, parathas and everything in between.',
     image: IMG.ghee,
     subscribable: false,
   },
@@ -510,7 +523,7 @@ export const PRODUCTS: Product[] = [
     unit: '1000 ml',
     tag: 'Poly Pack',
     description:
-      'A full litre of Agmark-grade PYAAS ghee in a poly pack. The family-size pack for kitchens where ghee never sits idle.',
+      'A full litre of PYAAS ghee in a poly pack. The family-size pack for kitchens where ghee never sits idle.',
     image: IMG.ghee,
     subscribable: false,
   },
@@ -523,7 +536,7 @@ export const PRODUCTS: Product[] = [
     unit: '500 ml',
     tag: 'Sika Pack',
     description:
-      'PYAAS ghee in the 500ml Sika pack. The same Agmark-grade ghee in a sturdier pack that stores and pours neatly.',
+      'PYAAS ghee in the 500ml Sika pack. The same ghee in a sturdier pack that stores and pours neatly.',
     image: IMG.ghee, // only one ghee reference photo available (poly pack art)
     subscribable: false,
   },
@@ -536,7 +549,7 @@ export const PRODUCTS: Product[] = [
     unit: '1000 ml',
     tag: 'Sika Pack',
     description:
-      'The 1 litre Sika pack of Agmark-grade PYAAS ghee, for households that buy ghee the sensible way, in bulk.',
+      'The 1 litre Sika pack of PYAAS ghee, for households that buy ghee the sensible way, in bulk.',
     image: IMG.ghee, // only one ghee reference photo available (poly pack art)
     subscribable: false,
   },
@@ -827,10 +840,27 @@ export const PRODUCTS: Product[] = [
     image: IMG.shriKhand,
     subscribable: false,
   },
+];
 
-  // ── PYAAS partner range · listed ahead of launch (outOfStock) ─────────────
-  // Prices mirror PYAAS's founding prices (pyaasdairy.in). Deliberately LAST in
-  // the catalog so the pair fills the trailing grid row on the home feed.
+/**
+ * PYAAS's OWN milk, WITHHELD FROM THE CATALOG until it can be listed lawfully.
+ *
+ * These four shipped inside PRODUCTS as `outOfStock: true`, which still made them
+ * fully browsable product pages — and every one of them rendered
+ * `fssaiLicense: 'Declared at launch'` plus "(full address declared at launch)"
+ * verbatim in the Product information block. A listing shown to a customer must
+ * carry a real FSSAI licence number and the full manufacturer address (Legal
+ * Metrology (Packaged Commodities) Rules r.6(10) + FSS Packaging & Labelling),
+ * and neither exists yet. `outOfStock` is a stock state, not a suppression
+ * mechanism, so the SKUs are held here instead — off the exported list, so the
+ * home feed, search, product route, cart and subscriptions cannot reach them.
+ *
+ * TO RESTORE AT LAUNCH: fill in the real licence number and full address on each
+ * entry, then spread this array back into the tail of PRODUCTS (`...WITHHELD_SKUS`).
+ * Nothing else needs changing — ids, prices and pack shots are unchanged.
+ */
+export const WITHHELD_SKUS: Product[] = [
+  // Prices mirror PYAAS's founding prices (pyaasdairy.in).
   {
     id: 'pyaas-a2-1l',
     name: 'A2 Cow Milk - PYAAS',
@@ -840,8 +870,10 @@ export const PRODUCTS: Product[] = [
     mrp: 169,
     unit: '1 L',
     tag: 'A2 Beta-Casein · 3% Fat · 8.5% SNF',
+    // "Naturally easy to digest" removed: a health claim, and FSSAI Advertising &
+    // Claims Regulations 2018 reg. 4/7 needs it substantiated before it can be made.
     description:
-      'Single-origin A2 cow milk from desi cows, gently pasteurised and sealed in a carton. Naturally easy to digest, with the full, creamy taste of real milk. Marketed & manufactured by PYAAS.',
+      'Single-origin A2 cow milk from desi cows, gently pasteurised and sealed in a carton, with the full, creamy taste of real milk. Marketed & manufactured by PYAAS.',
     image: IMG.pyaasA2Carton,
     subscribable: true,
     outOfStock: true,
@@ -857,8 +889,10 @@ export const PRODUCTS: Product[] = [
     price: 69,
     unit: '500 ml',
     tag: 'A2 Beta-Casein · Daily fresh',
+    // "plant-based packaging" removed: nothing in the repo substantiates it, and an
+    // unbacked green claim is exactly what the CCPA Greenwashing Guidelines 2024 bite.
     description:
-      'Everyday A2 cow milk in a fresh daily pouch - the format your milkman delivers, in plant-based packaging. Marketed & manufactured by PYAAS.',
+      'Everyday A2 cow milk in a fresh daily pouch - the format your milkman delivers. Marketed & manufactured by PYAAS.',
     image: IMG.pyaasA2Pouch,
     subscribable: true,
     outOfStock: true,
@@ -892,8 +926,10 @@ export const PRODUCTS: Product[] = [
     price: 34,
     unit: '500 ml',
     tag: 'Toned · Daily fresh',
+    // Same green claim removed here; "traceability built in" also goes, since there
+    // is no per-pack traceability to point a customer at yet.
     description:
-      'Fresh daily toned milk in a plant-based pouch - the format your milkman delivers, with traceability built in. Marketed & manufactured by PYAAS.',
+      'Fresh daily toned milk in a pouch - the format your milkman delivers. Marketed & manufactured by PYAAS.',
     image: IMG.pyaasTonedPouch,
     subscribable: true,
     outOfStock: true,
@@ -932,100 +968,49 @@ export function discountPct(p: Product): number | null {
   return Math.round((1 - p.price / p.mrp) * 100);
 }
 
-// ── Seeded social proof: ratings, "most ordered" flags, bulk pack markers ────
-// PYAAS has no reviews backend yet, so these are author-seeded demo values.
-// Swap for real aggregates once the backend serves them. Every field is
-// optional, so an un-seeded SKU simply renders nothing.
-type ProductMeta = { rating: number; ratingCount: number; mostOrdered?: boolean; packCount?: number };
+// ── Pack-shot markers ────────────────────────────────────────────────────────
+// This block USED to seed star ratings (4.8 from 3,860 "reviews") and
+// "MOST ORDERED" badges onto SKUs PYAAS has never sold a single unit of. Every
+// number was made up. Fabricated ratings are an outright App Store rejection
+// (Guideline 2.3.1) and a false representation about sales that never happened,
+// so they are gone — NOT commented out, NOT moved, gone.
+//
+// `rating` / `ratingCount` / `mostOrdered` stay on the Product type on purpose:
+// lib/catalog.ts adopts them from the live catalog overlay, so real aggregates
+// light the UI up the moment a backend serves them. Nothing is seeded on device.
+// What remains here is packCount, which is not social proof — it is a pack-shot
+// hint telling the card to draw a bulk SKU as overlapping packs.
+type ProductMeta = { packCount?: number };
 
 const META: Record<string, ProductMeta> = {
-  'taaza-500ml': { rating: 4.7, ratingCount: 2140, mostOrdered: true },
-  'taaza-1l': { rating: 4.8, ratingCount: 3860, mostOrdered: true },
-  'gold-500ml': { rating: 4.6, ratingCount: 1580, mostOrdered: true },
-  'gold-1l': { rating: 4.8, ratingCount: 2670, mostOrdered: true },
-  'shakti-500ml': { rating: 4.4, ratingCount: 690 },
-  'shakti-1l': { rating: 4.5, ratingCount: 980 },
-  'chai-special-500ml': { rating: 4.5, ratingCount: 540 },
-  'dahi-sweet-90g': { rating: 4.6, ratingCount: 760 },
-  'dahi-sweet-200g': { rating: 4.6, ratingCount: 1120, mostOrdered: true },
-  'dahi-plain-90g': { rating: 4.3, ratingCount: 480 },
-  'dahi-plain-200g': { rating: 4.5, ratingCount: 1740, mostOrdered: true },
-  'dahi-plain-400g': { rating: 4.5, ratingCount: 910 },
-  'dahi-plain-5kg': { rating: 4.4, ratingCount: 168, packCount: 2 },
-  'dahi-plain-15kg': { rating: 4.3, ratingCount: 74, packCount: 3 },
-  'dahi-pp-400g': { rating: 4.4, ratingCount: 620 },
-  'paneer-1kg': { rating: 4.7, ratingCount: 540, packCount: 2 },
-  'paneer-vac-100g': { rating: 4.6, ratingCount: 880 },
-  'paneer-vac-200g': { rating: 4.7, ratingCount: 1460, mostOrdered: true },
-  'ghee-poly-200ml': { rating: 4.7, ratingCount: 730 },
-  'ghee-poly-500ml': { rating: 4.8, ratingCount: 1980, mostOrdered: true },
-  'ghee-poly-1l': { rating: 4.8, ratingCount: 1240 },
-  'ghee-sika-500ml': { rating: 4.6, ratingCount: 410 },
-  'ghee-sika-1l': { rating: 4.7, ratingCount: 360 },
-  'butter-100g': { rating: 4.5, ratingCount: 690 },
-  'butter-500g': { rating: 4.6, ratingCount: 520 },
-  'chaach-500ml': { rating: 4.4, ratingCount: 1180, mostOrdered: true },
-  'flavoured-milk-200ml': { rating: 4.5, ratingCount: 960 },
-  'mattha-200ml': { rating: 4.3, ratingCount: 430 },
-  'masala-mattha-200ml': { rating: 4.4, ratingCount: 380 },
-  'khoya-250g': { rating: 4.5, ratingCount: 240 },
-  'khoya-500g': { rating: 4.5, ratingCount: 190 },
-  'khoya-1kg': { rating: 4.5, ratingCount: 96, packCount: 2 },
-  'lassi-200g': { rating: 4.6, ratingCount: 1040, mostOrdered: true },
-  'lassi-160ml': { rating: 4.5, ratingCount: 720 },
-  'ladoo-besan-250g': { rating: 4.6, ratingCount: 360 },
-  'kheer-chhena-100g': { rating: 4.5, ratingCount: 280 },
-  'peda-250g': { rating: 4.7, ratingCount: 410 },
-  'milk-cake-250g': { rating: 4.6, ratingCount: 330 },
-  'rasgolla-200g': { rating: 4.6, ratingCount: 520 },
-  'rasgolla-500g': { rating: 4.6, ratingCount: 300 },
-  'gulab-jamun-200g': { rating: 4.7, ratingCount: 640 },
-  'gulab-jamun-500g': { rating: 4.7, ratingCount: 380 },
-  'rice-kheer-100ml': { rating: 4.5, ratingCount: 260 },
-  'shree-khand-100g': { rating: 4.6, ratingCount: 340 },
+  'dahi-plain-5kg': { packCount: 2 },
+  'dahi-plain-15kg': { packCount: 3 },
+  'paneer-1kg': { packCount: 2 },
+  'khoya-1kg': { packCount: 2 },
 };
 
-// Apply the seed onto the catalog (mutates the shared Product objects at load).
+// Apply the markers onto the catalog (mutates the shared Product objects at load).
 for (const p of PRODUCTS) {
   const m = META[p.id];
-  if (m) { p.rating = m.rating; p.ratingCount = m.ratingCount; p.mostOrdered = m.mostOrdered; p.packCount = m.packCount; }
+  if (m) { p.packCount = m.packCount; }
 }
 
 export type Review = { id: string; author: string; stars: number; text: string; date: string; verified?: boolean };
 
-// Seeded written reviews for the popular SKUs. getReviews() returns [] otherwise.
-const REVIEWS: Record<string, Review[]> = {
-  'taaza-1l': [
-    { id: 'r1', author: 'Anjali S.', stars: 5, text: 'Fresh every morning, delivered before 7. My chai finally tastes like home.', date: '18 Jun 2026', verified: true },
-    { id: 'r2', author: 'Rahul M.', stars: 5, text: 'Consistent quality, never once spoiled. Kids drink it plain.', date: '9 Jun 2026', verified: true },
-    { id: 'r3', author: 'Deepa K.', stars: 4, text: 'Good milk and honest pricing. Would love a 2L pouch option.', date: '2 Jun 2026' },
-  ],
-  'gold-1l': [
-    { id: 'r1', author: 'Vikram T.', stars: 5, text: 'Rich and creamy, the malai is thick. Perfect for kheer.', date: '20 Jun 2026', verified: true },
-    { id: 'r2', author: 'Sneha P.', stars: 5, text: 'Full cream done right. Switched the whole family to Gold.', date: '11 Jun 2026', verified: true },
-  ],
-  'dahi-plain-200g': [
-    { id: 'r1', author: 'Meena R.', stars: 5, text: 'Sets thick and never sour. Tastes like ghar ka dahi.', date: '15 Jun 2026', verified: true },
-    { id: 'r2', author: 'Arjun N.', stars: 4, text: 'Fresh and clean taste. Cup could be a little bigger.', date: '7 Jun 2026' },
-  ],
-  'paneer-vac-200g': [
-    { id: 'r1', author: 'Priya D.', stars: 5, text: 'Soft, fresh paneer that does not crumble in curry. Vacuum pack keeps well.', date: '21 Jun 2026', verified: true },
-    { id: 'r2', author: 'Karan V.', stars: 5, text: 'Better than the local shop, and cheaper. Reordering weekly now.', date: '13 Jun 2026', verified: true },
-  ],
-  'ghee-poly-500ml': [
-    { id: 'r1', author: 'Sunita J.', stars: 5, text: 'Aroma fills the kitchen. Pure desi ghee, granular and fragrant.', date: '19 Jun 2026', verified: true },
-    { id: 'r2', author: 'Manoj B.', stars: 5, text: 'One spoon in dal and it is restaurant level. Will reorder.', date: '5 Jun 2026', verified: true },
-  ],
-  'chaach-500ml': [
-    { id: 'r1', author: 'Farah A.', stars: 4, text: 'Light, well spiced and refreshing after lunch. Not too salty.', date: '16 Jun 2026', verified: true },
-  ],
-};
+// EMPTY ON PURPOSE, and it stays empty until a reviews backend exists. The
+// entries removed from here were author-written testimonials attributed to
+// invented buyers ("Anjali S.", "Rahul M.") and flagged `verified: true` for
+// products no one has ever bought — fabricated user content under App Store
+// Guideline 2.3.1. The type and the getter survive so the reviews UI keeps
+// compiling and turns on unchanged once real, order-linked reviews arrive.
+const REVIEWS: Record<string, Review[]> = {};
 
 export function getReviews(id: string): Review[] {
   return REVIEWS[id] ?? [];
 }
 
-/** Bestseller SKUs (for the "Most ordered" home shelf), in catalog order. */
+/** Bestseller SKUs (for the "Most ordered" home shelf), in catalog order. Empty
+ *  until the backend flags real bestsellers — the shelf hides itself when it is. */
 export function mostOrderedProducts(): Product[] {
   return PRODUCTS.filter((p) => p.mostOrdered);
 }

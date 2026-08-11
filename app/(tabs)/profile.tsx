@@ -166,8 +166,14 @@ export default function Profile() {
         <ListCard delay={420}>
           <Row icon="chatbubble-ellipses-outline" label="Chat With Us" sub="We reply in minutes" onPress={() => router.push('/support-chat')} />
           <Row icon="call-outline" label="Customer Care" sub={SUPPORT.careNumber} onPress={callCare} />
-          <Row icon="help-circle-outline" label="Help & FAQ" sub="Answers to common questions" onPress={() => router.push('/faq')} />
-          <Row icon="pulse-outline" label="Diagnostics" sub="Connection and app health" onPress={() => router.push('/diagnostics')} last />
+          <Row icon="help-circle-outline" label="Help & FAQ" sub="Answers to common questions" onPress={() => router.push('/faq')} last={!__DEV__} />
+          {/* Diagnostics prints the API host, the signed-in uid, token presence
+              and the OTP provider. That is a developer console, and one tap from
+              a customer's profile it tells an App Review tester in plain language
+              that they are holding a pre-production build (Guideline 2.2). */}
+          {__DEV__ ? (
+            <Row icon="pulse-outline" label="Diagnostics" sub="Connection and app health" onPress={() => router.push('/diagnostics')} last />
+          ) : null}
         </ListCard>
 
         <ListCard delay={460}>

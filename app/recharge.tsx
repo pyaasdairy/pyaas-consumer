@@ -18,6 +18,7 @@ import { recordRechargeForOffer } from '../lib/freePack';
 import { reconcileWithBalance } from '../lib/subscriptions';
 import {
   createTopupOrder,
+  isRazorpayConfigured,
   checkoutHtml,
   verifyTopup,
   creditIsServerSide,
@@ -191,6 +192,16 @@ export default function Recharge() {
         setBusy(false);
         inFlight.current = false;
       }
+      return;
+    }
+
+    // No gateway key => do not open checkout at all. Previously a hardcoded
+    // live key stood in here, so a misconfigured build charged a real Razorpay
+    // account; and with no backend the payment could not be signature-verified
+    // anyway, so any "success" would be an unverified client claim.
+    if (!isRazorpayConfigured()) {
+      setError('Online payments are not available right now. Please contact support.');
+      inFlight.current = false;
       return;
     }
 

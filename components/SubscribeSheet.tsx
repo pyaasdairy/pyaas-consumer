@@ -9,6 +9,7 @@ import { haptics } from '../lib/haptics';
 import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
 import { attachTrialAfterSubscribe, offerCompleted, offerQualified, OFFER_QUALIFY_RECHARGE, FREE_PACK_PRODUCT_ID } from '../lib/freePack';
 import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
+import { deliveryFeeFor } from '../lib/api';
 import { hasExactLocation } from '../lib/location';
 import { useUserLocation } from '../lib/userLocation';
 import { AddressCaptureSheet } from './AddressCapture';
@@ -92,7 +93,13 @@ export function SubscribeSheet({
     }
   }, [visible, initialFreq, initialQty, initialStartDate]);
 
-  const perDelivery = unitPrice * qty;
+  // The subscription sweep charges subtotal + delivery fee per delivery
+  // (lib/subscriptionSweep.ts). Quoting the items alone understated a daily ₹35
+  // subscription by ₹15 EVERY day — the member confirmed ₹35 and was debited ₹50.
+  // Quote what we actually take, and show the fee on its own line below.
+  const itemsSubtotal = unitPrice * qty;
+  const perDeliveryFee = deliveryFeeFor(itemsSubtotal);
+  const perDelivery = itemsSubtotal + perDeliveryFee;
 
   const hasPin = (a: Address) => {
     const g = a as unknown as { lat?: number | null; lng?: number | null };
@@ -349,13 +356,20 @@ export function SubscribeSheet({
               <ReviewRow icon="cube" label={product.name} value={`${qty} × ${product.variant} · ${FREQS.find((f) => f.key === freq)?.label ?? freq}`} />
               <ReviewRow icon="calendar" label="First delivery" value={`${formatShort(startDate)} · 5–7:30 AM`} highlight />
               <ReviewRow icon="location" label="Delivering to" value={reviewAddr ? `${reviewAddr.line1}${reviewAddr.line2 ? ', ' + reviewAddr.line2 : ''}, ${reviewAddr.city} - ${reviewAddr.pincode}` : '—'} />
-              <ReviewRow icon="cash" label="To pay per delivery" value={`${rupee(perDelivery)} · charged after each delivery, from your wallet`} highlight />
+              <ReviewRow icon="pricetag" label="Items per delivery" value={rupee(itemsSubtotal)} />
+              {perDeliveryFee > 0 ? (
+                <ReviewRow icon="bicycle" label="Delivery fee" value={rupee(perDeliveryFee)} />
+              ) : null}
+              <ReviewRow icon="cash" label="To pay per delivery" value={`${rupee(perDelivery)} · from your wallet`} highlight />
             </View>
             {/* Policy — the exact terms, no surprises. */}
             <View style={{ gap: 6 }}>
               <PolicyLine icon="pause-circle" text="Pause, skip or cancel anytime — no lock-in" />
               <PolicyLine icon="wallet-outline" text={`Keep at least ${MIN_SUB_DAYS_COVER} days funded in your PYAAS Wallet`} />
-              <PolicyLine icon="shield-checkmark-outline" text="Nothing is charged now — each delivery bills only after it arrives" />
+              {/* The sweep places each delivery's order in the morning and
+                  placeOrder debits the wallet there and then, so "bills only
+                  after it arrives" was not what the code does. */}
+              <PolicyLine icon="shield-checkmark-outline" text="Nothing is charged now — each delivery is billed from your wallet on the morning it goes out" />
             </View>
             {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
             <Tap onPress={busy ? undefined : confirm} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>

@@ -65,20 +65,32 @@ export const MANUFACTURER = {
 } as const;
 
 // ── Indicative GST rates + HSN by product category ───────────────────────────
-// INDICATIVE / FOUNDER-ADJUSTABLE. Confirm current rates with your CA before
-// issuing real invoices. Rates reflect common Indian dairy treatment: fresh milk
-// is nil-rated; pre-packaged & labelled curd/buttermilk/lassi/paneer attract 5%;
-// ghee/butter 12%; flavoured milk 12%; packaged sweets 5%.
+// GST rates as of the 22 September 2025 rationalisation, which collapsed the
+// slabs to 5 / 18 (plus a 40% demerit rate) and WITHDREW the 12% slab entirely.
+// The table below previously charged 12% on ghee, butter and flavoured milk, and
+// 5% on paneer — both wrong post-rationalisation, and both overcharged the
+// customer on a tax invoice:
+//   ghee-poly-500ml at ₹320 inclusive printed taxable ₹285.71 / tax ₹34.29,
+//   where 5% gives taxable ₹304.76 / tax ₹15.24 — ₹19.05 overstated per pack.
+//   Pre-packaged & labelled paneer/chena moved to NIL, so a ₹90 line printed
+//   ₹4.29 of GST that is not due.
+//
+// STILL FOUNDER/CA-ADJUSTABLE: have your CA confirm before issuing real
+// invoices, and prefer serving this map from the backend so a future Council
+// change does not require an app release.
 export const GST_BY_CATEGORY: Record<Category, { hsn: string; rate: number }> = {
   milk: { hsn: '0401', rate: 0 },
   dahi: { hsn: '0403', rate: 5 },
   chaach: { hsn: '0403', rate: 5 },
   mattha: { hsn: '0403', rate: 5 },
   lassi: { hsn: '0403', rate: 5 },
-  paneer: { hsn: '0406', rate: 5 },
-  ghee: { hsn: '0405', rate: 12 },
-  butter: { hsn: '0405', rate: 12 },
-  flavoured_milk: { hsn: '2202', rate: 12 },
+  // Pre-packaged & labelled paneer/chena: nil-rated since 22 Sep 2025.
+  paneer: { hsn: '0406', rate: 0 },
+  // Ghee and butter moved 12% -> 5%.
+  ghee: { hsn: '0405', rate: 5 },
+  butter: { hsn: '0405', rate: 5 },
+  // HSN 2202 milk-based beverages moved 12% -> 5%.
+  flavoured_milk: { hsn: '2202', rate: 5 },
   khoya: { hsn: '0406', rate: 5 },
   super_tea: { hsn: '0401', rate: 0 }, // tea milk, GST-exempt like plain milk
   sweets: { hsn: '2106', rate: 5 },

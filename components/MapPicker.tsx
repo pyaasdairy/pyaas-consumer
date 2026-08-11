@@ -10,6 +10,7 @@ import { haptics } from '../lib/haptics';
 import { DEFAULT_REGION, getDeviceCoords, type Coords } from '../lib/location';
 import { placeLabelFromCoords } from '../lib/userLocation';
 import { placesAutocomplete, placeDetails, isPlacesEnabled, newSessionToken, type PlaceSuggestion } from '../lib/places';
+import { LEAFLET_CSS, LEAFLET_JS, MARKER_ICON_PNG, MARKER_ICON_2X_PNG, MARKER_SHADOW_PNG } from './leafletAssets';
 
 /**
  * MAP PICKER — a full-screen map with a DRAGGABLE PIN so the member sets their
@@ -17,18 +18,28 @@ import { placesAutocomplete, placeDetails, isPlacesEnabled, newSessionToken, typ
  * OpenStreetMap tiles inside the WebView we already ship for payments, so it needs
  * NO native rebuild, NO react-native-maps and NO Google Maps key.
  *
+ * Leaflet itself is INLINED from the local npm package (see ./leafletAssets) —
+ * this page pulls no code off a CDN. The only network traffic left is the OSM
+ * tile images, which are data, not code, and which we detect the failure of.
+ *
  * The member drags the pin (or taps the map) to place it; "Use my current
  * location" recenters on the device GPS via expo-location (the app's existing
  * permission flow) and drops the pin there. "Confirm this location" returns the
  * chosen { lat, lng } to the caller — the word "GPS" never appears in the UI.
  */
+
+/** Leaflet's default marker resolves images/marker-icon.png RELATIVE to the page,
+ *  which is the only reason this WebView ever needed a remote baseUrl. Hand it the
+ *  inlined PNGs so the pin costs no request either. Base64 is quote-safe. */
+const PIN_ICON_JS = `L.icon({iconUrl:'${MARKER_ICON_PNG}',iconRetinaUrl:'${MARKER_ICON_2X_PNG}',shadowUrl:'${MARKER_SHADOW_PNG}',iconSize:[25,41],iconAnchor:[12,41],shadowSize:[41,41]})`;
+
 function mapHtml(center: Coords): string {
   const lat = center.lat;
   const lng = center.lng;
   return `<!DOCTYPE html><html><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>${LEAFLET_CSS}</style>
 <style>
   html,body,#map{height:100%;margin:0;padding:0;background:#eee}
   #map{width:100%}
@@ -38,19 +49,23 @@ function mapHtml(center: Coords): string {
 <div id="map"></div>
 <div class="hint">Drag the pin to your exact door</div>
 <script>
-  // Catch a failed Leaflet/CDN load (offline) — onError on the RN WebView does NOT
-  // fire for a failed SUBRESOURCE, so we signal the failure ourselves.
   function __rnpost(o){ try{ window.ReactNativeWebView.postMessage(JSON.stringify(o)); }catch(e){} }
   window.onerror=function(){ __rnpost({err:true}); return true; };
 </script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>${LEAFLET_JS}</script>
 <script>
   if (typeof L === 'undefined') { __rnpost({err:true}); }
   else try {
   var start=[${lat},${lng}];
   var map=L.map('map',{zoomControl:true,attributionControl:true}).setView(start,17);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-  var marker=L.marker(start,{draggable:true,autoPan:true}).addTo(map);
+  var tiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  // Tiles are now the ONLY network dependency. Offline no longer breaks the map's
+  // JS (it's inlined) — it just leaves blank squares — so report the tile failure
+  // ourselves rather than leave the member staring at a grey box.
+  var tilesOk=false,tileErrs=0;
+  tiles.on('tileload',function(){ if(!tilesOk){ tilesOk=true; __rnpost({tiles:true}); } });
+  tiles.on('tileerror',function(){ if(!tilesOk && ++tileErrs>=4) __rnpost({tiles:false}); });
+  var marker=L.marker(start,{draggable:true,autoPan:true,icon:${PIN_ICON_JS}}).addTo(map);
   function post(ll,src){ try{ window.ReactNativeWebView.postMessage(JSON.stringify({lat:ll.lat,lng:ll.lng,src:src})); }catch(e){} }
   marker.on('dragend',function(){ var ll=marker.getLatLng(); map.panTo(ll); post(ll,'drag'); });
   map.on('click',function(e){ marker.setLatLng(e.latlng); post(e.latlng,'click'); });
@@ -81,8 +96,9 @@ export default function MapPicker({
   // window.__recenter exists and can't be clobbered by the map's initial post().
   const loadedRef = useRef(false);
   const wantRecenterRef = useRef<Coords | null>(null);
-  // Fires if the map never signals ready (Leaflet/OSM CDN blocked or offline) —
-  // the WebView's onError does NOT catch a failed subresource, so we time out.
+  // Fires if the page never signals at all (the WebView itself failed to run our
+  // HTML). Leaflet is inlined now, so this is no longer the offline path — a dead
+  // network shows up as tile errors, reported separately.
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [picked, setPicked] = useState<Coords | null>(initial ?? null);
   // Human-readable address of the CURRENT pin, shown above Confirm so the
@@ -146,14 +162,20 @@ export default function MapPicker({
       // Any message means the page's JS ran → clear the watchdog.
       if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
       if (d?.err) {
-        // Leaflet/OSM failed to load — show the offline fallback; keep Confirm usable
-        // by committing the best-known centre (their supplied point / GPS / default).
+        // The map script threw — show the offline fallback; keep Confirm usable by
+        // committing the best-known centre (their supplied point / GPS / default).
         setMapError(true);
         setPicked((p) => p ?? center);
         return;
       }
+      if (typeof d?.tiles === 'boolean') {
+        // Tiles are the only thing still fetched: no tiles means an unusable map
+        // even though Leaflet itself ran, so it drives the offline overlay.
+        setMapError(!d.tiles);
+        if (!d.tiles) setPicked((p) => p ?? center);
+        return;
+      }
       if (typeof d?.lat === 'number' && typeof d?.lng === 'number') {
-        setMapError(false); // a live coordinate means the map is up
         setPicked({ lat: d.lat, lng: d.lng });
         // A drag/tap/GPS-recenter is a real placement; the map's initial 'init' post
         // (auto-seeded centre) is NOT — don't let it enable Confirm on its own.
@@ -273,7 +295,9 @@ export default function MapPicker({
         <View style={{ flex: 1 }}>
           <WebView
             ref={webRef}
-            source={{ html, baseUrl: 'https://unpkg.com' }}
+            // No baseUrl: nothing in this page resolves against a remote origin
+            // any more, so the document stays a local, origin-less string.
+            source={{ html }}
             originWhitelist={['*']}
             javaScriptEnabled
             domStorageEnabled

@@ -15,10 +15,13 @@ import { isBackendConfigured } from '../../lib/apiClient';
 import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
 import { debitWallet } from '../../lib/walletApi';
 
-// Demo E2E tools (order → rider → delivered) are shown in local mode always, and
-// in backend mode only for a PILOT build (EXPO_PUBLIC_WALLET_TEST_TOPUP=true) — the
-// live dev endpoint /orders/:id/advance backs them. A real prod build hides them.
-const DEMO_TOOLS = WALLET_TEST_TOPUP || !isBackendConfigured();
+// Demo E2E tools (order → rider → delivered), backed by the dev endpoint
+// /orders/:id/advance. NEVER gate these on the ABSENCE of a backend: a release
+// build with no EXPO_PUBLIC_API_URL would then show "Simulate delivered (demo)"
+// to real customers and to App Review, which rejects test/demo functionality
+// outright (Guideline 2.1/2.2). __DEV__ is compiled out of any release bundle,
+// so these cannot survive into a store build regardless of env.
+const DEMO_TOOLS = __DEV__ && WALLET_TEST_TOPUP;
 import { useWallet } from '../../store/wallet';
 import { haptics } from '../../lib/haptics';
 

@@ -23,8 +23,19 @@ export const ADMIN_ALLOWLIST = {
 const norm = (s?: string | null): string => (s ?? '').trim().toLowerCase();
 const last10 = (s?: string | null): string => (s ?? '').replace(/\D/g, '').slice(-10);
 
-/** True when the given profile email or phone is on the demo admin allowlist. */
+/**
+ * True when the given profile email or phone is on the admin allowlist.
+ *
+ * DEV ONLY. This allowlist ships readable in the JS bundle, and the offline OTP
+ * fallback accepts ANY 10-digit number with a fixed code — so in a build without
+ * a backend, anyone who read the bundle could sign in as 9000000001 and unlock
+ * the console. Apple also treats an undisclosed hidden feature in a consumer
+ * binary as Guideline 2.3.1. __DEV__ is compiled out of release bundles, so the
+ * entry cannot appear in a store build; wire this to a server-issued role claim
+ * (GET /users/me -> role === 'admin') before exposing admin in production.
+ */
 export function isAdminUser(email?: string | null, phone?: string | null): boolean {
+  if (!__DEV__) return false;
   const e = norm(email);
   const p = last10(phone);
   const emailMatch = !!e && ADMIN_ALLOWLIST.emails.some((a) => norm(a) === e);

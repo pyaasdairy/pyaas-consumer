@@ -1,4 +1,4 @@
-import { requireUserId } from './session';
+import { getUserId } from './session';
 import { getRows, setRows } from './localStore';
 import { isBackendConfigured } from './apiClient';
 
@@ -8,10 +8,16 @@ import { isBackendConfigured } from './apiClient';
  * member district dairy union + its plant and the lab tests that batch passed
  * (FAT, SNF, temperature and an adulteration screen for water/starch/detergent).
  *
- * Runs fully offline on AsyncStorage: the first read seeds a realistic set of
- * recent test records per user so the dashboard looks alive in the demo. When
- * the NestJS backend is live these map to GET /quality/tests and the seed is
- * dropped in favour of the API response.
+ * NOTHING IN HERE IS INVENTED, and nothing may be. Earlier builds seeded a week
+ * of realistic FAT/SNF, cold-chain and adulteration-screen results dated against
+ * today and attributed to REAL named cooperative unions (Lucknow / Kanpur /
+ * Varanasi Dugdh Utpadak Sangh, Ramnagar Dairy Plant) so the dashboard "looked
+ * alive". Those were lab records we never took, about food we sell, naming
+ * organisations that never signed off on them — a false representation about an
+ * article of food under FSS Act 2006 s.53 and a misleading advertisement under
+ * Consumer Protection Act 2019 s.89, and the fabricated-content case App Review
+ * rejects under Guideline 2.3.1. Deleted. Until the API serves real records the
+ * dashboard shows its empty state, which is the truth.
  *
  * TODO(api): GET /quality/tests -> QualityTest[] (most recent first).
  */
@@ -40,45 +46,58 @@ export type QualitySummary = {
 
 const TABLE = 'quality_tests';
 
-// Cooperative federation member unions (real-sounding UP district unions) and
-// the plant that processes each. Kept generic and truthful, no invented people.
-const SEED: Array<Pick<QualityTest, 'batch_code' | 'union_name' | 'plant' | 'fat' | 'snf' | 'temperature_c' | 'adulteration_passed' | 'passed'> & { daysAgo: number }> = [
-  { batch_code: 'PRG-LKO-4821', union_name: 'Lucknow Dugdh Utpadak Sangh', plant: 'Lucknow Dairy Plant', fat: 4.2, snf: 8.7, temperature_c: 3.4, adulteration_passed: true, passed: true, daysAgo: 0 },
-  { batch_code: 'PRG-KNP-3390', union_name: 'Kanpur Dugdh Utpadak Sangh', plant: 'Kanpur Dairy Plant', fat: 4.0, snf: 8.6, temperature_c: 3.8, adulteration_passed: true, passed: true, daysAgo: 1 },
-  { batch_code: 'PRG-VNS-1177', union_name: 'Varanasi Dugdh Utpadak Sangh', plant: 'Ramnagar Dairy Plant', fat: 4.4, snf: 8.9, temperature_c: 3.1, adulteration_passed: true, passed: true, daysAgo: 2 },
-  { batch_code: 'PRG-GND-2056', union_name: 'Gonda Dugdh Utpadak Sangh', plant: 'Gonda Chilling Centre', fat: 3.9, snf: 8.5, temperature_c: 4.0, adulteration_passed: true, passed: true, daysAgo: 3 },
-  { batch_code: 'PRG-LKO-4790', union_name: 'Lucknow Dugdh Utpadak Sangh', plant: 'Lucknow Dairy Plant', fat: 4.1, snf: 8.6, temperature_c: 3.6, adulteration_passed: true, passed: true, daysAgo: 4 },
-  { batch_code: 'PRG-KNP-3341', union_name: 'Kanpur Dugdh Utpadak Sangh', plant: 'Kanpur Dairy Plant', fat: 4.3, snf: 8.8, temperature_c: 3.3, adulteration_passed: true, passed: true, daysAgo: 5 },
-  { batch_code: 'PRG-VNS-1122', union_name: 'Varanasi Dugdh Utpadak Sangh', plant: 'Ramnagar Dairy Plant', fat: 4.0, snf: 8.5, temperature_c: 4.2, adulteration_passed: true, passed: true, daysAgo: 6 },
-];
-
-function buildSeed(): QualityTest[] {
+/**
+ * Dev-only sample rows so the dashboard is workable while GET /quality/tests is
+ * unbuilt. __DEV__ is compiled out of any release bundle, so this cannot reach a
+ * store build regardless of env. The union and plant are deliberately fictional
+ * and self-labelling: no real cooperative may ever appear beside a lab result it
+ * did not produce, not even in a screenshot someone takes off a dev build.
+ * Never persisted — it stays in memory so it cannot outlive the dev session.
+ */
+function devDemoTests(): QualityTest[] {
+  if (!__DEV__) return [];
   const now = Date.now();
-  return SEED.map((s, i) => {
-    const { daysAgo, ...rest } = s;
-    return {
-      id: `qt_seed_${i}`,
-      tested_at: new Date(now - daysAgo * 24 * 60 * 60 * 1000).toISOString(),
-      ...rest,
-    };
-  });
+  const day = 24 * 60 * 60 * 1000;
+  return [
+    { fat: 4.2, snf: 8.7, temperature_c: 3.4 },
+    { fat: 4.0, snf: 8.6, temperature_c: 3.8 },
+    { fat: 3.9, snf: 8.5, temperature_c: 4.0 },
+  ].map((s, i) => ({
+    id: `qt_demo_${i}`,
+    batch_code: `SAMPLE-000${i + 1}`,
+    union_name: 'Sample Dairy Union (dev data)',
+    plant: 'Sample Chilling Centre',
+    tested_at: new Date(now - i * day).toISOString(),
+    adulteration_passed: true,
+    passed: true,
+    ...s,
+  }));
 }
 
-/** Recent quality tests, most recent first. Seeds demo data on first read. */
+/**
+ * Recent quality tests, most recent first. Empty until real lab records exist —
+ * callers render their empty state rather than anything invented.
+ */
 export async function getQualityTests(): Promise<QualityTest[]> {
-  const uid = await requireUserId();
+  // A read must never throw just because nobody is signed in; the dashboard is
+  // reachable before the profile gate on a cold start.
+  const uid = await getUserId();
+  if (!uid) return devDemoTests();
 
   if (isBackendConfigured()) {
     // TODO(api): const { data } = await api.get<QualityTest[]>('/quality/tests');
-    // return data; -- until the endpoint exists, fall through to the local seed.
+    // return data; -- until the endpoint exists there is nothing honest to show.
   }
 
-  let rows = await getRows<QualityTest>(TABLE, uid);
-  if (rows.length === 0) {
-    rows = buildSeed();
-    await setRows<QualityTest>(TABLE, uid, rows);
-  }
-  return rows.slice().sort((a, b) => b.tested_at.localeCompare(a.tested_at));
+  const rows = await getRows<QualityTest>(TABLE, uid);
+  // Installs that ran a build with the fabricated seed still carry those rows in
+  // AsyncStorage, so deleting the constant alone would leave the invented
+  // results on screen forever. Purge them on first read.
+  const clean = rows.filter((t) => !t.id.startsWith('qt_seed_'));
+  if (clean.length !== rows.length) await setRows<QualityTest>(TABLE, uid, clean);
+
+  const tests = clean.length ? clean : devDemoTests();
+  return tests.slice().sort((a, b) => b.tested_at.localeCompare(a.tested_at));
 }
 
 /** Rolls the recent tests up into the dashboard headline figures. */

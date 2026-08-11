@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getRows, insertRow, getSingle, putSingle, newId } from './localStore';
+import { getRows, insertRow, setRows, getSingle, putSingle, newId } from './localStore';
 import { requireUserId, getUserId, getProfile } from './session';
 import { getLedger, rechargeWallet } from './walletApi';
 import { WALLET_TEST_TOPUP, testTopup } from './razorpay';
@@ -66,6 +66,23 @@ const SNOOZE_TABLE = 'free_pack_snooze'; // PER-USER (keyed by uid): soft "Maybe
 const SNOOZE_HOURS = 6; // don't re-nag within the same session; re-offer next session
 
 type Claim = { phone: string; device_id: string; claimed_at: string; user_id: string };
+
+/**
+ * Erase this member's free-pack claim rows on account deletion.
+ *
+ * These live under the DEVICE owner, not the uid, so the account-deletion key
+ * sweep never saw them — and each row stores the raw 10-digit mobile. Other
+ * members who claimed on the same device keep their rows.
+ *
+ * Note this deliberately gives a deleted member their free pack back on this
+ * device. That is the correct trade: honouring "your personal details are
+ * permanently erased" beats retaining a phone number to defend one free pack.
+ */
+export async function removeFreePackClaimsForUser(uid: string): Promise<void> {
+  const claims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
+  const kept = claims.filter((c) => c.user_id !== uid);
+  if (kept.length !== claims.length) await setRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER, kept);
+}
 
 /** Stable-ish device id (persisted in secure store). The real cross-reinstall
  *  gate is server-side phone uniqueness; this is the local device layer. */

@@ -6,7 +6,7 @@ import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, BackButton } from '../components/ui';
 import { haptics } from '../lib/haptics';
-import { SUPPORT, callCare, saveSupportTicket } from '../lib/support';
+import { CARE_EMAIL, HAS_CARE_PHONE, SUPPORT, callCare, emailCare, saveSupportTicket } from '../lib/support';
 
 type From = 'bot' | 'user';
 type Msg = { id: string; from: From; text: string };
@@ -63,7 +63,10 @@ export default function SupportChat() {
     setInput('');
     setDetailChips([]);
     setTimeout(() => {
-      push('bot', 'Thanks, I have logged this for you. Our team will be in touch within 24 hours to make it right.');
+      // This bot is scripted and saveSupportTicket() only writes to this phone —
+      // it used to promise a reply "within 24 hours" that nobody at PYAAS could
+      // ever have seen. Say what actually happens instead.
+      push('bot', 'Thanks — I have written this down on your phone. I cannot reach the team by myself yet, so one more tap sends it to them.');
       setTimeout(() => push('bot', 'How was this chat experience?'), 500);
       setStage('rate');
     }, 300);
@@ -74,7 +77,23 @@ export default function SupportChat() {
     push('user', `${stars} star${stars === 1 ? '' : 's'}`);
     setStage('done');
     await saveSupportTicket({ topic: topicLabel || topicKey, detail, transcript: transcriptRef.current, rating: stars });
-    setTimeout(() => push('bot', stars >= 4 ? 'Thank you, that means a lot. We will follow up shortly.' : 'Thank you for the honest feedback. We will do better, and the team will reach out shortly.'), 350);
+    setTimeout(() => push('bot', stars >= 4 ? 'Thank you, that means a lot. Now send this to the team below and we will pick it up from there.' : 'Thank you for the honest feedback. Send this to the team below and a human will take it from here.'), 350);
+  };
+
+  /** Hand the whole conversation to the inbox a human reads — the only real exit. */
+  const emailTranscript = async () => {
+    haptics.press();
+    const body = [
+      `Topic: ${topicLabel || topicKey || 'Support'}`,
+      '',
+      ...transcriptRef.current.map((m) => `${m.from === 'bot' ? 'PYAAS helper' : 'Me'}: ${m.text}`),
+      '',
+      '— sent from the PYAAS app chat',
+    ].join('\n');
+    const opened = await emailCare(`PYAAS support: ${topicLabel || 'chat'}`, body);
+    push('bot', opened
+      ? `I have opened your email app with this chat. Send it to ${CARE_EMAIL} and we reply on that thread.`
+      : `I could not open your email app. Please write to ${CARE_EMAIL} and paste what you told me.`);
   };
 
   return (
@@ -87,11 +106,14 @@ export default function SupportChat() {
         </View>
         <View style={{ flex: 1 }}>
           <Serif style={{ fontSize: 19 }}>PYAAS helper</Serif>
-          <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>Quick help now, our team follows up</TextBody>
+          <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>Quick answers, then send it to our team</TextBody>
         </View>
-        <Tap onPress={callCare} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-          <Ionicons name="call" size={18} color={colors.white} />
-        </Tap>
+        {/* No configured care line → no call button, rather than a dead dial. */}
+        {HAS_CARE_PHONE ? (
+          <Tap onPress={callCare} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+            <Ionicons name="call" size={18} color={colors.white} />
+          </Tap>
+        ) : null}
       </View>
 
       <ScrollView ref={scrollRef} contentContainerStyle={{ padding: spacing.lg, gap: 10, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -128,10 +150,16 @@ export default function SupportChat() {
 
         {stage === 'done' ? (
           <Animated.View entering={FadeInDown.duration(300)} style={{ gap: 10, marginTop: 6 }}>
-            <Tap onPress={callCare} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.flameDeep, borderRadius: radius.pill, height: 50, ...shadow.soft }}>
-              <Ionicons name="call" size={18} color={colors.white} />
-              <TextSemi color={colors.white} style={{ fontSize: 15 }}>Call customer care · {SUPPORT.careNumber}</TextSemi>
+            <Tap onPress={emailTranscript} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.flameDeep, borderRadius: radius.pill, height: 50, ...shadow.soft }}>
+              <Ionicons name="mail" size={18} color={colors.white} />
+              <TextSemi color={colors.white} style={{ fontSize: 15 }}>Send this chat to our team</TextSemi>
             </Tap>
+            {HAS_CARE_PHONE ? (
+              <Tap onPress={callCare} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.white, borderRadius: radius.pill, height: 50, borderWidth: 1, borderColor: colors.line }}>
+                <Ionicons name="call" size={18} color={colors.flameDeep} />
+                <TextSemi color={colors.flameDeep} style={{ fontSize: 15 }}>Call customer care · {SUPPORT.careNumber}</TextSemi>
+              </Tap>
+            ) : null}
           </Animated.View>
         ) : null}
       </ScrollView>

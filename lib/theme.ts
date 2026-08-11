@@ -34,6 +34,12 @@ export const colors = {
   // premium token aliases (intent-named)
   action: '#F36CB5',   // primary CTAs (== flameDeep)
   onAction: '#FFFFFF', // text/icons on a primary CTA
+  // Floating glass chrome (tab bar). Kept as rgba literals because every
+  // consumer needs the alpha channel and RN has no colour-mix(); `glassFill` is
+  // the opaque fallback for the expo-blur path, which ignores a tint colour.
+  glassTint: 'rgba(243,108,181,0.14)',   // flameDeep @ 14% - iOS 26 Liquid Glass tint
+  glassFill: 'rgba(255,241,248,0.86)',   // cream @ 86% - blur fallback fill
+  glassBorder: 'rgba(243,108,181,0.32)', // flameDeep @ 32% - hairline rim
 };
 
 // Premium type identity, loaded at runtime in app/_layout.tsx (no native build):

@@ -33,9 +33,14 @@ export default function SignUp() {
     setLoading(true); setError('');
     try {
       await signUpWithEmail(email, password, name, phone); // session set -> app
-      // Record required consents (accepted by creating an account) with a
-      // timestamp + app version. Optional marketing consents default off.
-      await recordConsents({ ...defaultChoices(), privacy: true, terms: true, sms: true });
+      // Record the REQUIRED consents (accepted by creating an account) with a
+      // timestamp + app version. sms is deliberately NOT set: it is classified
+      // optional in ConsentSheet, defaults to false, and the user is never shown
+      // a checkbox for it — recording it as granted manufactured a marketing
+      // consent nobody gave, while the privacy policy tells them SMS updates are
+      // "off unless you turn them on". DPDP Act 2023 s.6 requires consent to be
+      // free, specific and informed.
+      await recordConsents({ ...defaultChoices(), privacy: true, terms: true });
     } catch (e: any) {
       setError(e?.message ?? 'Could not create your account.');
     } finally { setLoading(false); }

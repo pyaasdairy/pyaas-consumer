@@ -7,6 +7,7 @@ import Animated from 'react-native-reanimated';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Pill, BackButton, Button, Tap } from '../components/ui';
 import { enterUp } from '../lib/motion';
+import { isBackendConfigured } from '../lib/apiClient';
 import {
   lookupBatch,
   recordScan,
@@ -232,6 +233,18 @@ function Landing({ history, onScan, onDemo }: { history: MilkScan[]; onScan: () 
         </View>
       </Animated.View>
 
+      {/* Never promise a passport we cannot produce. With no batch register wired
+          up every scan lands on the not-found state, so say so before they scan
+          rather than after. */}
+      {isBackendConfigured() ? null : (
+        <Animated.View entering={enterUp(40)} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md }}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.flameDeep} style={{ marginTop: 1 }} />
+          <TextBody style={{ flex: 1, fontSize: 12.5 }}>
+            Batch tracing is still being connected to the dairy union's records, so most packs will not resolve yet.
+          </TextBody>
+        </Animated.View>
+      )}
+
       {/* How it works */}
       <Animated.View entering={enterUp(60)} style={{ gap: spacing.sm }}>
         {STEPS.map((s, i) => (
@@ -267,20 +280,24 @@ function Landing({ history, onScan, onDemo }: { history: MilkScan[]; onScan: () 
         </Animated.View>
       ) : null}
 
-      {/* Try a demo code */}
-      <Animated.View entering={enterUp(140)} style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10, ...shadow.soft }}>
-        <TextSemi style={{ fontSize: 14.5 }}>Try a sample batch</TextSemi>
-        <TextBody style={{ fontSize: 12.5 }}>No pack handy? Tap a demo batch to see a full cooperative passport.</TextBody>
-        <View style={{ gap: 8 }}>
-          {DEMO_BATCH_CODES.map((c) => (
-            <Tap key={c} onPress={() => onDemo(c)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.wash }}>
-              <Ionicons name="pricetag-outline" size={16} color={colors.flameDeep} />
-              <TextMed style={{ fontSize: 13, flex: 1 }} numberOfLines={1}>{c}</TextMed>
-              <Ionicons name="chevron-forward" size={16} color={colors.inkMute} />
-            </Tap>
-          ))}
-        </View>
-      </Animated.View>
+      {/* Dev-only sample batch. DEMO_BATCH_CODES is empty in a release build, so
+          this card disappears entirely: a customer must never be handed a
+          "sample" passport whose lab results nobody measured. */}
+      {DEMO_BATCH_CODES.length ? (
+        <Animated.View entering={enterUp(140)} style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10, ...shadow.soft }}>
+          <TextSemi style={{ fontSize: 14.5 }}>Sample batch (dev build)</TextSemi>
+          <TextBody style={{ fontSize: 12.5 }}>Fictional data for development only. Not a real batch and not a real lab result.</TextBody>
+          <View style={{ gap: 8 }}>
+            {DEMO_BATCH_CODES.map((c) => (
+              <Tap key={c} onPress={() => onDemo(c)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.wash }}>
+                <Ionicons name="pricetag-outline" size={16} color={colors.flameDeep} />
+                <TextMed style={{ fontSize: 13, flex: 1 }} numberOfLines={1}>{c}</TextMed>
+                <Ionicons name="chevron-forward" size={16} color={colors.inkMute} />
+              </Tap>
+            ))}
+          </View>
+        </Animated.View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -288,13 +305,22 @@ function Landing({ history, onScan, onDemo }: { history: MilkScan[]; onScan: () 
 // ── Not found ─────────────────────────────────────────────────────────────────
 
 function NotFound({ code, onScan, onLearn }: { code: string; onScan: () => void; onLearn: () => void }) {
+  // With no backend there is no batch register to look anything up in, so
+  // "double-check the code" would blame the customer for our missing data.
+  const live = isBackendConfigured();
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: 12 }}>
       <Ionicons name="search-outline" size={40} color={colors.inkMute} />
-      <Serif style={{ fontSize: 22, textAlign: 'center' }}>We could not trace that batch</Serif>
-      <TextBody style={{ textAlign: 'center' }}>Double-check the code on your pack and try again. You entered:</TextBody>
+      <Serif style={{ fontSize: 22, textAlign: 'center' }}>
+        {live ? 'We could not trace that batch' : "We can't trace this batch yet"}
+      </Serif>
+      <TextBody style={{ textAlign: 'center' }}>
+        {live
+          ? 'Double-check the code on your pack and try again. You entered:'
+          : "Batch-level tracing goes live once the dairy union's records are connected. We have no record to show for this pack yet. You entered:"}
+      </TextBody>
       <TextMed color={colors.flameDeep} style={{ fontSize: 15, textAlign: 'center' }}>{code}</TextMed>
-      <Button title="Scan again" onPress={onScan} style={{ alignSelf: 'stretch', marginTop: 6 }} />
+      {live ? <Button title="Scan again" onPress={onScan} style={{ alignSelf: 'stretch', marginTop: 6 }} /> : null}
       <Tap haptic={false} onPress={onLearn}>
         <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>How cooperative tracing works</TextMed>
       </Tap>

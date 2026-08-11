@@ -47,28 +47,19 @@ export async function getReferralCode(): Promise<string> {
 }
 
 // ── Reward ledger ────────────────────────────────────────────────────────────
-// Seed a couple of demo rows the first time the ledger is read so the screen
-// looks alive offline. Only seeds once per account (guarded by a marker row).
-async function ensureSeed(uid: string): Promise<void> {
-  const rows = await getRows<Referral>('referrals', uid);
-  if (rows.length) return;
-  const now = Date.now();
-  const day = 86400000;
-  const demo: Referral[] = [
-    { id: newId('ref'), name: 'Neha S.', status: 'credited', reward_amount: REFERRAL_REWARD, created_at: new Date(now - 12 * day).toISOString() },
-    { id: newId('ref'), name: 'Arun K.', status: 'credited', reward_amount: REFERRAL_REWARD, created_at: new Date(now - 5 * day).toISOString() },
-    { id: newId('ref'), name: 'Pending invite', status: 'pending', reward_amount: REFERRAL_REWARD, created_at: new Date(now - 1 * day).toISOString() },
-  ];
-  // Single write of the full set (not N inserts) so two concurrent first-reads
-  // can only last-writer-win to the same 3 rows, never double-seed to 6.
-  await setRows<Referral>('referrals', uid, demo);
-}
+// There is deliberately NO seed here. This used to fabricate three rows on the
+// first read of every account — two "credited" joins from invented people
+// ("Neha S.", "Arun K.") worth ₹200 — so a thirty-second-old account opened the
+// refer screen to "Families joined 2 · Earned ₹200". No code path ever moved
+// that ₹200 into the wallet, so it was money the member could see and never
+// spend. Fabricated activity is Guideline 2.3.1, and an unpayable balance is a
+// consumer-protection problem in its own right. A new member correctly starts
+// empty and the screen's existing zero state handles it.
 
 /** Full referral ledger, newest first. */
 export async function listReferrals(): Promise<Referral[]> {
   const uid = await requireUserId();
   // TODO(api): GET /referrals — when backend live, read the server ledger.
-  await ensureSeed(uid);
   const rows = await getRows<Referral>('referrals', uid);
   return rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
