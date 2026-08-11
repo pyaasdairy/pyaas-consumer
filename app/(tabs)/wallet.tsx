@@ -7,6 +7,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../components/ui';
 import { FloatingParticles, ShineSweep, useCountUp } from '../../components/Fx';
+import { useTabBarClearance } from '../../components/PyaasTabBar';
 import { useHideTabBarOnScroll } from '../../lib/navVisibility';
 import { useWallet } from '../../store/wallet';
 import { rechargeBonus, LOW_BALANCE_THRESHOLD } from '../../lib/pricing';
@@ -20,6 +21,7 @@ const TOPUP_AMOUNTS = [500, 1000, 2000];
 
 export default function Wallet() {
   const insets = useSafeAreaInsets();
+  const tabClearance = useTabBarClearance();
   const router = useRouter();
   const balance = useWallet((s) => s.balance);
   const cash = useWallet((s) => s.cash);
@@ -98,7 +100,7 @@ export default function Wallet() {
         </Tap>
       </View>
 
-      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: tabClearance }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Balance · solid card, motion does the work: count-up + sparks + shine.
             Effects stay INSIDE the clipped card (no glow halo bleeding outside). */}
         <Animated.View entering={FadeInDown.duration(460)}>

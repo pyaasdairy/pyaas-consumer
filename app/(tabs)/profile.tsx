@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap } from '../../components/ui';
-import { CARE_EMAIL, SITE_URL, SUPPORT, callCare } from '../../lib/support';
+import { CARE_EMAIL, SITE_URL, SUPPORT, callCare, HAS_CARE_PHONE } from '../../lib/support';
 import { FloatingParticles, GlowPulse, ShineSweep, useCountUp } from '../../components/Fx';
 import { useHideTabBarOnScroll } from '../../lib/navVisibility';
 import { useAuth } from '../../lib/auth';
@@ -19,6 +19,7 @@ import { listOrders } from '../../lib/api';
 import { listSubscriptions } from '../../lib/subscriptions';
 import { getVip, vipActive, vipDaysLeft, type VipMembership } from '../../lib/vip';
 import { isAdminUser } from '../../lib/admin';
+import { useTabBarClearance } from '../../components/PyaasTabBar';
 
 const SUPPORT_EMAIL = CARE_EMAIL;
 const SITE = SITE_URL;
@@ -41,6 +42,9 @@ export default function Profile() {
   const [vip, setVip] = useState<VipMembership | null>(null);
   const [focused, setFocused] = useState(true);
   const onScroll = useHideTabBarOnScroll();
+  // The tab bar's real reach is insets.bottom + 90; a flat 130 clipped content
+  // on home-indicator iPhones and over-padded on others.
+  const tabClearance = useTabBarClearance();
 
   const load = useCallback(async () => {
     refreshWallet();
@@ -63,7 +67,7 @@ export default function Profile() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <StatusBar style="dark" />
-      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: tabClearance }} showsVerticalScrollIndicator={false}>
         {/* ACCOUNT CARD · a bounded, custom account box that floats on the white
             surface. All motion stays clipped inside the card (no leak). */}
         <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg }}>
@@ -158,14 +162,16 @@ export default function Profile() {
         </ListCard>
 
         <ListCard delay={380}>
-          <Row icon="scan-outline" label="Know Your Milk" sub="Scan a pack, meet the farm behind it" onPress={() => router.push('/know-your-milk')} />
+          <Row icon="scan-outline" label="Know Your Milk" sub="Scan a pack to see where it was made" onPress={() => router.push('/know-your-milk')} />
           <Row icon="flask-outline" label="Test Reports" sub="View the latest quality check reports" onPress={() => router.push('/quality')} />
-          <Row icon="business-outline" label="Member Dairies" sub="The cooperative behind your milk" onPress={() => router.push('/farms')} last />
+          <Row icon="business-outline" label="Where your milk is made" sub="The dairies we source from" onPress={() => router.push('/farms')} last />
         </ListCard>
 
         <ListCard delay={420}>
-          <Row icon="chatbubble-ellipses-outline" label="Chat With Us" sub="We reply in minutes" onPress={() => router.push('/support-chat')} />
-          <Row icon="call-outline" label="Customer Care" sub={SUPPORT.careNumber} onPress={callCare} />
+          <Row icon="chatbubble-ellipses-outline" label="Chat With Us" sub="Report an issue with an order" onPress={() => router.push('/support-chat')} />
+          {HAS_CARE_PHONE ? (
+            <Row icon="call-outline" label="Customer Care" sub={SUPPORT.careNumber} onPress={callCare} />
+          ) : null}
           <Row icon="help-circle-outline" label="Help & FAQ" sub="Answers to common questions" onPress={() => router.push('/faq')} last={!__DEV__} />
           {/* Diagnostics prints the API host, the signed-in uid, token presence
               and the OTP provider. That is a developer console, and one tap from
@@ -181,7 +187,7 @@ export default function Profile() {
           <Row icon="ribbon-outline" label="FSSAI & Seller Details" sub="Licences and seller information" onPress={() => router.push('/fssai-details')} />
           <Row icon="briefcase-outline" label="Business & Franchise" sub="Partner or vend with PYAAS" onPress={() => router.push('/business')} />
           <Row icon="people-outline" label="Cooperative & Community" sub="Farmers first, always" onPress={() => router.push('/community')} />
-          <Row icon="leaf-outline" label="Sustainability" sub="Good for you, good for Earth" onPress={() => router.push('/sustainability')} last />
+          <Row icon="leaf-outline" label="Sustainability" sub="How we are trying to do better" onPress={() => router.push('/sustainability')} last />
         </ListCard>
 
         <ListCard delay={500}>

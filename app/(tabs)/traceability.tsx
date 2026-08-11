@@ -8,7 +8,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, wit
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap } from '../../components/ui';
-import { normalizeBatchCode, DEMO_BATCH_CODES } from '../../lib/milk';
+import { normalizeBatchCode } from '../../lib/milk';
 
 const FRAME = Math.min(280, Dimensions.get('window').width - 80);
 const MASK = 'rgba(18,10,6,0.6)';
@@ -81,7 +81,7 @@ export default function Traceability() {
             onChangeText={setCode}
             autoCapitalize="characters"
             autoCorrect={false}
-            placeholder={DEMO_BATCH_CODES[0]}
+            placeholder="Batch code from your pack"
             placeholderTextColor={colors.inkMute}
             returnKeyType="search"
             onSubmitEditing={submitManual}

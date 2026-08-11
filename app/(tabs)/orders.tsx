@@ -9,6 +9,7 @@ import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../com
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL, statusColor } from '../../lib/orderStatus';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
+import { useTabBarClearance } from '../../components/PyaasTabBar';
 
 // Status green for the 2+2 "FREE" badge (matches SubscriptionStatusCard / cart).
 const FREE_GREEN = '#1B8A3A';
@@ -23,6 +24,7 @@ function fmtDate(iso: string) {
 
 export default function Orders() {
   const insets = useSafeAreaInsets();
+  const tabClearance = useTabBarClearance();
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +70,7 @@ export default function Orders() {
           data={orders}
           keyExtractor={(o) => o.id}
           itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(200)}
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 112, gap: spacing.sm }}
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: tabClearance, gap: spacing.sm }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.flameDeep} />}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
