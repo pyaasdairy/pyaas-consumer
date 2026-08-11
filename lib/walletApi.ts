@@ -681,7 +681,12 @@ export async function setupAutopay(params: {
   }
   const record: AutopayMandate = {
     id: existing?.id ?? newId('mandate'),
-    status: 'active',
+    // 'pending', never 'active'. With no backend there is no PSP call, so no UPI
+    // AutoPay mandate has been registered with NPCI and nothing can ever debit.
+    // Writing 'active' here made app/autopay.tsx show an ACTIVE badge and a
+    // per-charge cap for a mandate that does not exist — a payment authorisation
+    // the customer never actually gave, and one NPCI requires be explicit.
+    status: 'pending',
     upi_id: params.upiId ?? existing?.upi_id ?? null,
     max_amount: params.maxAmount,
     next_charge_date: existing?.next_charge_date ?? null,

@@ -12,6 +12,7 @@ import { useHideTabBarOnScroll } from '../../lib/navVisibility';
 import { useWallet } from '../../store/wallet';
 import { rechargeBonus, LOW_BALANCE_THRESHOLD } from '../../lib/pricing';
 import { getAutopay, setupAutopay, cancelAutopay, approveAutopay, getSpendSummary, type AutopayMandate } from '../../lib/walletApi';
+import { isBackendConfigured } from '../../lib/apiClient';
 
 // Quick recharge packs surfaced on the dashboard (bonus resolved from pricing).
 const QUICK_PACKS = [500, 1000, 2000];
@@ -145,7 +146,10 @@ export default function Wallet() {
           </Animated.View>
         ) : null}
 
-        {/* AutoPay · Paytm UPI mandate (real lifecycle: setup → approve in Paytm → active) */}
+        {/* AutoPay · UPI mandate. Hidden without a backend: there is no PSP to
+            register the mandate with, so the card would advertise a recurring
+            payment method that cannot exist and whose Approve button no-ops. */}
+        {isBackendConfigured() ? (
         <Animated.View entering={FadeInDown.duration(460).delay(80)}>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flame, padding: spacing.lg, gap: 12, ...shadow.soft }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -197,6 +201,7 @@ export default function Wallet() {
             )}
           </View>
         </Animated.View>
+        ) : null}
 
         {/* Quick recharge packs */}
         <Animated.View entering={FadeInDown.duration(460).delay(140)} style={{ gap: 10 }}>
