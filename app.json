@@ -43,24 +43,37 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
       "expo-font",
       [
         "expo-image-picker",
         {
-          "photosPermission": "PYAAS uses your photos so you can set a profile picture."
+          "photosPermission": "PYAAS uses your photos so you can set a profile picture.",
+          "microphonePermission": false
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "PYAAS uses the camera to scan the QR on your pack and show you which dairy and quality tests it came from."
+          "cameraPermission": "PYAAS uses the camera to scan the QR on your pack and show you which dairy and quality tests it came from.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "PYAAS uses your location to set your delivery address and show your rider on the way."
+          "locationWhenInUsePermission": "PYAAS uses your location to set your delivery address and show your rider on the way.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": false,
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
         }
       ],
       "expo-sharing",
