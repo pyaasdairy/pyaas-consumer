@@ -36,7 +36,12 @@ export default function Traceability() {
         withTiming(FRAME - 12, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
         withTiming(4, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
       ), -1, false);
-      if (!permission?.granted) requestPermission();
+      // Deliberately NO requestPermission() here. Firing the system camera alert
+      // the instant the tab is opened gives the member no context for the ask
+      // (Guideline 5.1.1), and a reflexive "Don't Allow" permanently bricks the
+      // scanner for the rest of the session — including for an App Review tester.
+      // The "Allow camera" button further down this screen is the trigger, and it
+      // explains why we need it first.
       return () => { setFocused(false); setTorch(false); cancelAnimation(scan); };
     }, [permission?.granted, requestPermission, scan])
   );

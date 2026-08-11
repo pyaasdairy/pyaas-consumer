@@ -338,15 +338,33 @@ export default function ProductDetail() {
       }
 
       // Local mode (no backend): a RECURRING order is recorded as a subscription; a
-      // one-time buy is not (see above) — it just shows the order-confirmed screen.
+      // one-time buy is not (see above).
       if (!isInstant) {
         await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: startDate });
       }
-      // The order-confirmed screen fires the strong confirmation haptic on mount.
-      router.push({
-        pathname: '/order-confirmed',
-        params: { id: product.id, qty: String(qty), freq, start: isInstant ? oneTimeDate : startDate, total: String(total), saved: String(savedPer * qty) },
+
+      // A one-time buy used to jump STRAIGHT to /order-confirmed without calling
+      // placeOrder or debiting anything — the member saw a green tick and
+      // "To pay ₹X", then found no order in the Orders tab and no wallet ledger
+      // entry. Place the real order here, mirroring the backend branch above.
+      const localAddrs = await listAddresses();
+      const localAddress = localAddrs.find((a) => a.is_default) ?? localAddrs[0];
+      if (!localAddress) {
+        setErr('Add a delivery address to place your order.');
+        router.push('/address');
+        return;
+      }
+      const localOrderId = await placeOrder({
+        lines: [{ id: product.id, lane: laneSel === 'instant' ? ('instant' as const) : ('morning' as const), name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
+        address: localAddress,
+        paymentMethod: 'prepaid',
+        priority: 'normal',
+        orderType: isInstant ? 'instant' : 'subscription',
+        buyerGstin: gstinValid ? gstin : null,
+        lane: laneSel === 'instant' ? 'instant' : 'morning',
+        deliveryDate: laneSel === 'scheduled' ? pickedDate : null,
       });
+      router.replace(`/order/${localOrderId}`);
     } catch (e: any) {
       // No exact delivery point yet → route to add one on the map (address screen)
       // rather than showing the raw gate code; they can retry after.

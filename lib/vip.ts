@@ -66,6 +66,23 @@ export async function getVip(): Promise<VipMembership | null> {
 }
 
 /**
+ * Is the signed-in member entitled to Plus perks right now?
+ *
+ * The one-call form of `vipActive(await getVip())`, for the pricing paths that
+ * need the flag but do not otherwise hold membership state. Plus is SOLD on
+ * "No delivery fee on any order, however small" and debits 99 rupees for it, so
+ * every place that computes a delivery fee has to consult this — otherwise we
+ * are charging for a perk the binary never delivers.
+ */
+export async function isPlusActive(): Promise<boolean> {
+  try {
+    return vipActive(await getVip());
+  } catch {
+    return false; // never fail a checkout over a membership read
+  }
+}
+
+/**
  * Start (or restart) the user's free Plus trial. Writes a real membership row so
  * the card activates immediately and Plus perks apply across the app. Restarting
  * after an expired/cancelled membership keeps the original join date.

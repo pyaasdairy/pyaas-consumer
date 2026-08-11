@@ -9,6 +9,7 @@ import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../lib/t
 import { Serif, TextBody, TextMed, TextSemi, Tap, Button, BackButton, Stepper } from '../components/ui';
 import { ShineSweep } from '../components/Fx';
 import { haptics } from '../lib/haptics';
+import { isPlusActive } from '../lib/vip';
 import { useCart } from '../store/cart';
 import { useWallet } from '../store/wallet';
 import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER, type Address } from '../lib/api';
@@ -85,6 +86,14 @@ export default function Cart() {
       .catch(() => setUnlocked(true)); // fail-open: never brick checkout on a read error
   }, []);
 
+  // Plus waives the delivery fee ("No delivery fee on any order, however small"),
+  // which is most of what the 99 rupee membership is sold on. Default false so a
+  // slow read never quotes a cheaper price than we go on to charge.
+  const [isPlus, setIsPlus] = useState(false);
+  const recheckPlus = useCallback(() => {
+    isPlusActive().then(setIsPlus).catch(() => setIsPlus(false));
+  }, []);
+
   // ADDRESS-FIRST: checkout's FIRST gate is a SAVED delivery address with its
   // map pin (saved address rows only — a loose local GPS pin never counts).
   // Only then comes the wallet (unlock / top-up), then the order itself.
@@ -105,6 +114,7 @@ export default function Cart() {
       void refreshWallet().then(recheckUnlock);
       recheckUnlock();
       recheckAddr();
+      recheckPlus();
       void checkSvc();
       // Re-check live stock so a line that went OOS since the cart was opened is
       // flagged (and dropped from the bill) before the user can pay for it.
@@ -145,7 +155,7 @@ export default function Cart() {
   const orderable = lines.filter((l) => !l.outOfStock);
   // Bill is over ORDERABLE lines only — out-of-stock items are never charged.
   const subtotal = orderable.reduce((sum, l) => sum + l.price * l.qty, 0);
-  const delivery = deliveryFeeFor(subtotal);
+  const delivery = deliveryFeeFor(subtotal, isPlus);
   const total = subtotal + delivery;
   const short = Math.max(0, total - balance);
   const blocked = serviceable === false;
@@ -446,7 +456,9 @@ export default function Cart() {
           {/* Charged-after-delivery reassurance (our backend debits on delivery). */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.cream, borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 }}>
             <Ionicons name="time-outline" size={14} color={colors.flameDeep} />
-            <TextBody style={{ fontSize: 11.5, flex: 1 }}>Held on your wallet now, charged only after the order is delivered.</TextBody>
+            {/* placeOrder debits the wallet at checkout (lib/api.ts), so there is
+                no "hold" and nothing is deferred to delivery. Cancelling refunds. */}
+            <TextBody style={{ fontSize: 11.5, flex: 1 }}>Paid from your PYAAS Wallet now. Cancel before pickup and it goes straight back.</TextBody>
           </View>
         </View>
         ) : null}

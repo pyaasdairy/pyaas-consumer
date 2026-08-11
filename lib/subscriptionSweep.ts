@@ -8,6 +8,7 @@ import {
   reconcileWithBalance,
 } from './subscriptions';
 import { listAddresses, placeOrder, deliveryFeeFor } from './api';
+import { isPlusActive } from './vip';
 import { getBalances } from './walletApi';
 import { getProduct } from '../constants/products';
 import { isBackendConfigured } from './apiClient';
@@ -113,11 +114,15 @@ async function runSweep(): Promise<number> {
   let placed = 0;
   let skippedShort = false;
 
+  // Read membership once for the whole sweep — Plus waives the per-delivery fee,
+  // and this is the loop that actually takes the member's money each morning.
+  const isPlus = await isPlusActive();
+
   for (const sub of pending) {
     const product = getProduct(sub.product_id);
     if (!product) continue; // SKU no longer in the catalog
     const subtotal = sub.unit_price * sub.qty;
-    const cost = subtotal + deliveryFeeFor(subtotal);
+    const cost = subtotal + deliveryFeeFor(subtotal, isPlus);
     if (balance < cost) { skippedShort = true; continue; }
     try {
       const orderId = await placeOrder({
