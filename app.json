@@ -10,19 +10,15 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-wordmark-white.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F36DB6"
-    },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "in.paragdairy.app",
+      "supportsTablet": false,
+      "bundleIdentifier": "in.pyaasdairy.app",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "PARAG uses your location to set your delivery address and show your rider on the way.",
-        "NSPhotoLibraryUsageDescription": "PARAG uses your photos so you can set a profile picture.",
-        "NSCameraUsageDescription": "PARAG uses the camera to scan the QR on your pack and show you which dairy and quality tests it came from."
+        "NSLocationWhenInUseUsageDescription": "PYAAS uses your location to set your delivery address and show your rider on the way.",
+        "NSPhotoLibraryUsageDescription": "PYAAS uses your photos so you can set a profile picture.",
+        "NSCameraUsageDescription": "PYAAS uses the camera to scan the QR on your pack and show you which dairy and quality tests it came from.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -68,7 +64,16 @@
         }
       ],
       "expo-sharing",
-      "./plugins/withNativeConvenience"
+      "./plugins/withNativeConvenience",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-wordmark-white.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F36DB6"
+        }
+      ],
+      "expo-image"
     ]
   }
 }
