@@ -251,10 +251,14 @@ export default function OtpLogin() {
                 </View>
               </Tap>
 
-              <View style={{ alignItems: 'center' }}>
-                <TextSemi style={{ fontSize: 12 }} color={colors.ink}>By Signing up you agree to</TextSemi>
-                <TextSemi style={{ fontSize: 12 }} color={colors.ink}>TnC and Privacy Policy</TextSemi>
-              </View>
+              {/* Both must be reachable from the signup screen: a reviewer (and a
+                  customer) taps these expecting the actual documents. */}
+              <TextBody style={{ fontSize: 12, textAlign: 'center' }} color={colors.ink}>
+                By signing up you agree to our{' '}
+                <TextMed color={colors.flameDeep} onPress={() => router.push('/terms')}>Terms</TextMed>
+                {' '}and{' '}
+                <TextMed color={colors.flameDeep} onPress={() => router.push('/privacy-policy')}>Privacy Policy</TextMed>.
+              </TextBody>
             </Animated.View>
           </>
         ) : (
