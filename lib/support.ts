@@ -61,6 +61,19 @@ export const CARE_EMAIL = 'support@pyaasdairy.com';
 export const GRIEVANCE_OFFICER = 'Amiya Sharma';
 export const SITE_URL = 'https://www.pyaasdairy.com';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CANONICAL PUBLIC LEGAL URLS. All three verified live (HTTP 200) on 16 Aug 2026.
+//
+// NOTE THE PRIVACY PATH: it is /privacy. The guessable /privacy-policy returns
+// a 404, and a 404 in Play Console's privacy-policy field is an automatic
+// rejection. These are the exact strings to paste into Play Console and App
+// Store Connect, so keep them here rather than retyping them.
+// ─────────────────────────────────────────────────────────────────────────────
+export const PRIVACY_URL = `${SITE_URL}/privacy`;
+export const TERMS_URL = `${SITE_URL}/terms`;
+/** Play requires a web-accessible account-deletion request page (answer/13327111). */
+export const DELETE_ACCOUNT_URL = `${SITE_URL}/delete-account`;
+
 export const SUPPORT = {
   careNumber: CARE_PHONE,
   careTel: CARE_PHONE_TEL,
