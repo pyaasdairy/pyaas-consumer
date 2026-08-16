@@ -3,6 +3,7 @@ import { cartTotals } from './pricing';
 import { requireUserId, getProfile } from './session';
 import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 import { debitWallet, autoSettleTopUp, refundToWallet } from './walletApi';
+import { isPlusActive } from './vip';
 import { api, isBackendConfigured, HttpError } from './apiClient';
 import { instantEtaHHMM, INSTANT_ETA_MINUTES, MORNING_WINDOW } from './deliveryMode';
 import { getServiceabilitySnapshot } from './serviceability';
@@ -253,7 +254,18 @@ export async function placeOrder(params: {
   // Instant lane (one-time express; a subscription always rides the morning route).
   const isInstant = params.lane === 'instant' && (params.orderType ?? 'instant') !== 'subscription';
   const { subtotal } = cartTotals(lines);
-  const delivery_fee = deliveryFeeFor(subtotal);
+  // placeOrder is the SINGLE SOURCE OF TRUTH for the delivery fee, and it reads
+  // membership itself rather than trusting a caller to pass it.
+  //
+  // It previously called deliveryFeeFor(subtotal) with no membership flag, which
+  // defaults isPlus=false. The cart had already been taught to show the Plus
+  // price, so an active Plus member with a subtotal under the free-delivery
+  // threshold saw "To pay from wallet X", passed the wallet check against X, and
+  // was then debited X + 15. Consenting to one number and being charged another
+  // is the same defect class as the subscription quote bug, and in backend mode
+  // the inflated total is POSTed to /orders too.
+  const isPlus = await isPlusActive();
+  const delivery_fee = deliveryFeeFor(subtotal, isPlus);
   // Monsoon surcharge: INSTANT orders only, read from the serving store's zone
   // (via serviceability). The backend re-applies it authoritatively on create.
   const monsoon_fee = isInstant ? (svc.monsoonRupees || 0) : 0;
