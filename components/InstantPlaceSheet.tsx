@@ -16,26 +16,30 @@ import { haptics } from '../lib/haptics';
  * When the fill completes the order places itself; tapping Cancel (or the
  * Android back button, or the backdrop) stops it.
  *
- * WHY THIS IS OKAY under the consent rules this app was already enforced on,
- * and the three properties that keep it so:
- *   1. The affirmative action is the "Place order" tap that OPENED this sheet.
- *      The countdown is a cancel-grace on an action the member already took,
- *      not a zero-action commitment.
- *   2. NOTHING is charged at placement. Instant orders are COD: the member
- *      pays by UPI while the rider rides, or cash at the door. The wallet is
- *      never touched, so the worst case of a missed cancel is a phone call,
- *      not a debit.
- *   3. Every escape hatch cancels. Back button and backdrop tap both route to
- *      onCancel — dismissal is NEVER treated as confirmation.
- * If instant ever stops being pay-on-delivery, this auto-place pattern must be
- * removed in the same commit.
+ * TWO PAYMENT METHODS, TWO BEHAVIOURS — and the split is load-bearing:
+ *
+ *   COD    → the 3-second auto-place runs. Defensible because (1) the
+ *            affirmative action is the "Place order" tap that OPENED this
+ *            sheet, so the countdown is a cancel-grace, not a zero-action
+ *            commitment; (2) NOTHING is charged at placement — a missed
+ *            cancel costs a phone call, not money; (3) every escape hatch
+ *            (back button, backdrop) cancels, never confirms.
+ *   WALLET → NO auto-place. Placing debits real balance immediately, and a
+ *            timer that takes money on its own is precisely the dark pattern
+ *            the consent rules exist to stop. The member must tap
+ *            "Place and pay" themselves.
+ *
+ * Do not merge the two paths: if a future payment method moves money at
+ * placement, it takes the wallet behaviour, never the COD one.
  */
 
 const PLACE_GRACE_MS = 3000;
 
 type Props = {
   visible: boolean;
-  /** Rupees the rider will collect (or the member pays by UPI en route). */
+  /** How this order is paid. Drives the auto-place split documented above. */
+  method: 'wallet' | 'cod';
+  /** Rupees debited from the wallet at placement, or collected on delivery. */
   total: number;
   /** "Home" / "Flat" — the saved address label. */
   addressLabel: string;
@@ -45,7 +49,7 @@ type Props = {
   onCancel: () => void;
 };
 
-export function InstantPlaceSheet({ visible, total, addressLabel, addressText, onConfirm, onCancel }: Props) {
+export function InstantPlaceSheet({ visible, method, total, addressLabel, addressText, onConfirm, onCancel }: Props) {
   const insets = useSafeAreaInsets();
   const [secondsLeft, setSecondsLeft] = useState(PLACE_GRACE_MS / 1000);
   const fill = useSharedValue(0);
@@ -78,14 +82,16 @@ export function InstantPlaceSheet({ visible, total, addressLabel, addressText, o
   useEffect(() => {
     if (!visible) { clearTimers(); fill.value = 0; return; }
     fired.current = false;
-    setSecondsLeft(PLACE_GRACE_MS / 1000);
     fill.value = 0;
+    // WALLET debits at placement, so it NEVER auto-places — explicit tap only.
+    if (method !== 'cod') return clearTimers;
+    setSecondsLeft(PLACE_GRACE_MS / 1000);
     fill.value = withTiming(1, { duration: PLACE_GRACE_MS, easing: Easing.linear });
     placeTimer.current = setTimeout(confirmOnce, PLACE_GRACE_MS);
     tickTimer.current = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
     return clearTimers;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [visible, method]);
 
   const fillStyle = useAnimatedStyle(() => ({ width: `${fill.value * 100}%` }));
 
@@ -110,7 +116,9 @@ export function InstantPlaceSheet({ visible, total, addressLabel, addressText, o
             <View style={{ gap: 4 }}>
               <Serif style={{ fontSize: 24 }}>Placing your order</Serif>
               <TextBody color={colors.inkMute} style={{ fontSize: 13.5 }}>
-                Nothing is charged now. Pay by UPI while we deliver, or cash at the door.
+                {method === 'wallet'
+                  ? `${rupee(total)} is paid from your PYAAS Wallet when you place. Cancel before pickup and it comes straight back.`
+                  : 'Nothing is charged now. Pay by UPI while we deliver, or cash at the door.'}
               </TextBody>
             </View>
 
@@ -121,7 +129,9 @@ export function InstantPlaceSheet({ visible, total, addressLabel, addressText, o
                 </View>
                 <View style={{ flex: 1 }}>
                   <TextSemi style={{ fontSize: 16 }}>{rupee(total)}</TextSemi>
-                  <TextBody color={colors.inkMute} style={{ fontSize: 12.5 }}>To pay on delivery</TextBody>
+                  <TextBody color={colors.inkMute} style={{ fontSize: 12.5 }}>
+                    {method === 'wallet' ? 'From your PYAAS Wallet' : 'To pay on delivery'}
+                  </TextBody>
                 </View>
               </View>
               <View style={{ height: 1, backgroundColor: colors.line }} />
@@ -136,14 +146,26 @@ export function InstantPlaceSheet({ visible, total, addressLabel, addressText, o
               </View>
             </View>
 
-            {/* The auto-filling confirm. A tap places immediately; doing nothing
-                places when the fill completes; Cancel below stops everything. */}
-            <Tap onPress={confirmOnce} accessibilityLabel={`Place order now, placing automatically in ${secondsLeft} seconds`}>
-              <View style={{ height: 56, borderRadius: radius.pill, backgroundColor: colors.flame, overflow: 'hidden', justifyContent: 'center', ...shadow.card }}>
-                <Animated.View style={[{ position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.flameDeep }, fillStyle]} />
+            {/* COD: the auto-filling confirm — a tap places immediately, doing
+                nothing places when the fill completes. WALLET: a plain button;
+                only an explicit tap moves money. */}
+            <Tap
+              onPress={confirmOnce}
+              accessibilityLabel={method === 'cod'
+                ? `Place order now, placing automatically in ${secondsLeft} seconds`
+                : `Place order and pay ${total} rupees from your wallet`}
+            >
+              <View style={{ height: 56, borderRadius: radius.pill, backgroundColor: method === 'cod' ? colors.flame : colors.flameDeep, overflow: 'hidden', justifyContent: 'center', ...shadow.card }}>
+                {method === 'cod' ? (
+                  <Animated.View style={[{ position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.flameDeep }, fillStyle]} />
+                ) : null}
                 <View style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
-                  <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>Place order now</TextSemi>
-                  <TextMed color={colors.white} style={{ fontSize: 13, opacity: 0.85 }}>· {secondsLeft}s</TextMed>
+                  <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>
+                    {method === 'wallet' ? `Place and pay ${rupee(total)}` : 'Place order now'}
+                  </TextSemi>
+                  {method === 'cod' ? (
+                    <TextMed color={colors.white} style={{ fontSize: 13, opacity: 0.85 }}>· {secondsLeft}s</TextMed>
+                  ) : null}
                 </View>
               </View>
             </Tap>

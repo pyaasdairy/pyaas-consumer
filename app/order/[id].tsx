@@ -312,7 +312,9 @@ export default function OrderTracking() {
                           ? 'Paid online, nothing to pay at the door'
                           : order.payment_method === 'cod'
                             ? 'Pay on delivery: UPI or cash'
-                            : '~20 min express delivery')}
+                            : order.payment_method === 'wallet' || order.payment_method === 'prepaid'
+                              ? 'Paid from your PYAAS Wallet, nothing to pay at the door'
+                              : '~20 min express delivery')}
                     </TextBody>
                   </View>
                 </View>

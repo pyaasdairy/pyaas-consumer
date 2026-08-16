@@ -165,6 +165,11 @@ export default function ProductDetail() {
   // funnel. Optional company GSTIN (printed on the proforma bill).
   const [gstin, setGstin] = useState('');
   const refreshWallet = useWallet((s) => s.refresh);
+  // ⚡ Instant payment method (wallet | cod) — same rules as the cart: wallet is
+  // offered only while the balance covers the charge, else COD, and an explicit
+  // wallet choice degrades to COD the moment cover is lost.
+  const walletBal = useWallet((st) => st.balance);
+  const [instantPayChoice, setInstantPayChoice] = useState<'wallet' | 'cod' | null>(null);
   const addToCart = useCart((s) => s.add);
   const setCartQty = useCart((s) => s.setQty);
   // Monsoon surcharge (₹) the serving store charges on INSTANT orders (0 = none).
@@ -235,6 +240,9 @@ export default function ProductDetail() {
   // delivery can be left unfunded by the fee.
   const deliveryFee = deliveryFeeFor(total);
   const chargeTotal = total + deliveryFee + monsoonFee;
+  const walletCovers = walletBal >= chargeTotal && chargeTotal > 0;
+  const instantPay: 'wallet' | 'cod' =
+    (instantPayChoice ?? (walletCovers ? 'wallet' : 'cod')) === 'wallet' && walletCovers ? 'wallet' : 'cod';
   const oneTimeDate = laneSel === 'scheduled' ? pickedDate : laneSel === 'instant' ? todayISO() : tomorrowISO();
   const instantEta = hhmmTo12(instantEtaHHMM()) ?? instantEtaHHMM();
   // GSTIN is optional; only attach it to the bill when it is a well-formed
@@ -297,6 +305,15 @@ export default function ProductDetail() {
           goRecharge(chargeTotal - bal);
           return;
         }
+      } else if (instantPay === 'wallet') {
+        // The chip guaranteed cover at render time; the balance can move between
+        // render and tap. Never let a wallet debit bounce — degrade to COD.
+        await refreshWallet();
+        if (useWallet.getState().balance < chargeTotal) {
+          setInstantPayChoice('cod');
+          setErr('Your wallet balance changed and no longer covers this order. Switched to pay on delivery.');
+          return;
+        }
       }
 
       // With a shared backend, place a REAL delivery order so it reaches the
@@ -319,7 +336,7 @@ export default function ProductDetail() {
           orderId = await placeOrder({
             lines: [{ id: product.id, lane: laneSel === 'instant' ? ('instant' as const) : ('morning' as const), name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
             address,
-            paymentMethod: laneSel === 'instant' ? 'cod' : 'prepaid',
+            paymentMethod: laneSel === 'instant' ? instantPay : 'prepaid',
             priority: 'normal',
             orderType: isInstant ? 'instant' : 'subscription',
             buyerGstin: gstinValid ? gstin : null,
@@ -362,7 +379,7 @@ export default function ProductDetail() {
       const localOrderId = await placeOrder({
         lines: [{ id: product.id, lane: laneSel === 'instant' ? ('instant' as const) : ('morning' as const), name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
         address: localAddress,
-        paymentMethod: laneSel === 'instant' ? 'cod' : 'prepaid',
+        paymentMethod: laneSel === 'instant' ? instantPay : 'prepaid',
         priority: 'normal',
         orderType: isInstant ? 'instant' : 'subscription',
         buyerGstin: gstinValid ? gstin : null,
@@ -525,6 +542,29 @@ export default function ProductDetail() {
               <TextMed style={{ flex: 1, fontSize: 13.5 }} color={colors.inkDeep}>We will get this delivered to your door soon after you order. A one-time order, no subscription.</TextMed>
             </Animated.View>
           )}
+
+          {/* ⚡ Instant pays by wallet or on delivery — the member picks. */}
+          {laneSel === 'instant' ? (
+            <Animated.View entering={FadeInDown.duration(420).delay(105)} style={{ gap: 8 }}>
+              <TextSemi style={{ fontSize: 16 }}>Paying by</TextSemi>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {([
+                  { key: 'wallet' as const, label: 'PYAAS Wallet', sub: walletCovers ? rupee(walletBal) : `${rupee(walletBal)} · low`, enabled: walletCovers },
+                  { key: 'cod' as const, label: 'Pay on delivery', sub: 'UPI or cash', enabled: true },
+                ]).map((opt) => {
+                  const active = instantPay === opt.key;
+                  return (
+                    <Tap key={opt.key} haptic={false} onPress={opt.enabled ? () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setInstantPayChoice(opt.key); } : undefined} style={{ flex: 1 }}>
+                      <View style={{ borderRadius: radius.md, borderWidth: 1.5, borderColor: active ? colors.flameDeep : colors.line, backgroundColor: active ? colors.flameSoft : colors.white, paddingVertical: 10, paddingHorizontal: 12, gap: 2, opacity: opt.enabled ? 1 : 0.5 }}>
+                        <TextSemi style={{ fontSize: 13.5 }} color={active ? colors.flameDeep : colors.ink}>{opt.label}</TextSemi>
+                        <TextBody style={{ fontSize: 11.5, ...tabular }} color={colors.inkMute}>{opt.sub}</TextBody>
+                      </View>
+                    </Tap>
+                  );
+                })}
+              </View>
+            </Animated.View>
+          ) : null}
 
           {/* Delivery lane (one-time orders) / start date (subscriptions).
               Instant is one-time-only — subscriptions always ride the morning

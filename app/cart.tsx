@@ -153,6 +153,15 @@ export default function Cart() {
     }, [refreshWallet, checkSvc, revalidateStock, recheckUnlock, lane])
   );
 
+  // ⚡ Instant payment method: the member chooses WALLET (debited at placement,
+  // instant refund on cancel) or COD (nothing charged now; UPI en route or cash
+  // at the door). Default = wallet when the balance covers the bill, else COD.
+  // An explicit wallet choice silently degrades to COD the moment the balance
+  // stops covering the total (qty bumped, price changed) — the bill and the
+  // sheet always show the method that will actually be used, never a wallet
+  // debit that would bounce.
+  const [instantPayChoice, setInstantPayChoice] = useState<'wallet' | 'cod' | null>(null);
+
   const hasOutOfStock = lines.some((l) => l.outOfStock);
   const orderable = lines.filter((l) => !l.outOfStock);
   // ⚡ INSTANT = pay on delivery. The wallet is NEVER used on the instant lane:
@@ -174,6 +183,10 @@ export default function Cart() {
   // is unchanged. Small-cart applies under ₹199 (like a quick-commerce bill).
   const smallCart = subtotal > 0 && subtotal < SMALL_CART_UNDER ? SMALL_CART_FEE : 0;
   const feesSaved = HANDLING_FEE + smallCart;
+  // Effective instant method (see instantPayChoice above for the fallback rules).
+  const walletCovers = balance >= total && total > 0;
+  const instantPay: 'wallet' | 'cod' =
+    (instantPayChoice ?? (walletCovers ? 'wallet' : 'cod')) === 'wallet' && walletCovers ? 'wallet' : 'cod';
 
   // FREE trial day: the gold-500ml subscription's morning delivery is on us, so
   // surface it as its own "free today" cart row. Shown ONLY while the trial is in
@@ -211,9 +224,9 @@ export default function Cart() {
   }
   const locked = !isInstant && unlocked === false;
 
-  // ⚡ Instant place sheet: the cart CTA opens it, the sheet's 3s cancel-grace
-  // fill (or a direct tap) then calls place(). The address shown is the same
-  // pinned default place() itself will resolve.
+  // ⚡ Instant place sheet: the cart CTA opens it, the sheet's cancel-grace fill
+  // (COD) or explicit pay tap (wallet) then calls place(). The address shown is
+  // the same pinned default place() itself will resolve.
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetAddr, setSheetAddr] = useState<Address | null>(null);
   async function openInstantSheet() {
@@ -268,11 +281,21 @@ export default function Cart() {
         return;
       }
 
-      // WALLET-FIRST (morning lane only): make sure the wallet covers the total
-      // before placing. Instant is COD/UPI-on-the-way and skips the wallet whole.
+      // WALLET COVER CHECK — morning always pays from the wallet; instant only
+      // when the member chose it. Re-checked here at the moment of truth: the
+      // chip derivation guarantees cover at render time, but the balance can
+      // move between render and tap (a sweep, another device).
       if (!isInstant) {
         await refreshWallet();
         if (useWallet.getState().balance < total) { setPlacing(false); goRecharge(); return; }
+      } else if (instantPay === 'wallet') {
+        await refreshWallet();
+        if (useWallet.getState().balance < total) {
+          setPlacing(false);
+          setInstantPayChoice('cod');
+          setErr('Your wallet balance changed and no longer covers this order. Switched to pay on delivery — review and place again.');
+          return;
+        }
       }
 
       const address = savedAddr; // pinned + saved — guaranteed by gate 1 above
@@ -280,7 +303,7 @@ export default function Cart() {
       const orderId = await placeOrder({
         lines: orderable,
         address,
-        paymentMethod: isInstant ? 'cod' : 'wallet',
+        paymentMethod: isInstant ? instantPay : 'wallet',
         orderType: 'instant',
         lane,
         // Morning one-time add-ons arrive NEXT morning; instant rides the ⚡ lane.
@@ -479,7 +502,32 @@ export default function Cart() {
           ) : null}
           <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 4 }} />
           {isInstant ? (
-            <Row label="To pay on delivery" value={rupee(total)} valueColor={colors.flameDeep} bold />
+            <>
+              {/* How do you want to pay? Wallet is offered only when it covers
+                  the bill — a disabled chip with the balance beats a debit that
+                  bounces at placement. */}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                {([
+                  { key: 'wallet' as const, label: 'PYAAS Wallet', sub: walletCovers ? rupee(balance) : `${rupee(balance)} · low`, enabled: walletCovers },
+                  { key: 'cod' as const, label: 'Pay on delivery', sub: 'UPI or cash', enabled: true },
+                ]).map((opt) => {
+                  const active = instantPay === opt.key;
+                  return (
+                    <Tap key={opt.key} haptic={false} onPress={opt.enabled ? () => { haptics.select(); setInstantPayChoice(opt.key); } : undefined} style={{ flex: 1 }}>
+                      <View style={{ borderRadius: radius.md, borderWidth: 1.5, borderColor: active ? colors.flameDeep : colors.line, backgroundColor: active ? colors.flameSoft : colors.white, paddingVertical: 10, paddingHorizontal: 12, gap: 2, opacity: opt.enabled ? 1 : 0.5 }}>
+                        <TextSemi style={{ fontSize: 13.5 }} color={active ? colors.flameDeep : colors.ink}>{opt.label}</TextSemi>
+                        <TextBody style={{ fontSize: 11.5, ...tabular }} color={colors.inkMute}>{opt.sub}</TextBody>
+                      </View>
+                    </Tap>
+                  );
+                })}
+              </View>
+              {instantPay === 'wallet' ? (
+                <Row label="To pay from wallet" value={rupee(total)} valueColor={colors.flameDeep} bold />
+              ) : (
+                <Row label="To pay on delivery" value={rupee(total)} valueColor={colors.flameDeep} bold />
+              )}
+            </>
           ) : (
             <>
               <Row label="PYAAS Wallet balance" value={rupee(balance)} valueColor={colors.inkSoft} />
@@ -494,7 +542,9 @@ export default function Cart() {
                 Instant: COD/UPI-on-the-way — nothing moves at placement. */}
             <TextBody style={{ fontSize: 11.5, flex: 1 }}>
               {isInstant
-                ? 'Nothing is charged now. Pay by UPI while we deliver, or cash at the door.'
+                ? instantPay === 'wallet'
+                  ? 'Paid from your PYAAS Wallet when you place. Cancel before pickup and it comes straight back.'
+                  : 'Nothing is charged now. Pay by UPI while we deliver, or cash at the door.'
                 : 'Paid from your PYAAS Wallet now. Cancel before pickup and it goes straight back.'}
             </TextBody>
           </View>
@@ -569,6 +619,7 @@ export default function Cart() {
 
       <InstantPlaceSheet
         visible={sheetOpen}
+        method={instantPay}
         total={total}
         addressLabel={sheetAddr?.label ?? 'your address'}
         addressText={sheetAddr ? [sheetAddr.line1, sheetAddr.line2, sheetAddr.city, sheetAddr.pincode].filter(Boolean).join(', ') : ''}
