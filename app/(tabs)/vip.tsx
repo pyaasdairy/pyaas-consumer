@@ -35,7 +35,7 @@ import { getProfile } from '../../lib/session';
 import { FloatingParticles, ShineSweep, GlowPulse } from '../../components/Fx';
 import { VipTrialModal } from '../../components/VipTrialModal';
 import { ClaimPackFlow } from '../../components/ClaimPackFlow';
-import {
+import { VIP_MILK_DISCOUNT_PCT,
   getVip,
   startTrial,
   purchaseMembership,
@@ -64,8 +64,13 @@ const GOLD_DEEP = colors.goldDeep;
 const PERKS: { icon: keyof typeof Ionicons.glyphMap; title: string; body: string; color: string }[] = [
   { icon: 'flash', title: 'Priority slots', body: 'The first morning delivery window, reserved for you every day.', color: colors.flameDeep },
   { icon: 'bicycle', title: 'Free delivery', body: 'No delivery fee on any order, however small.', color: colors.blue },
-  { icon: 'gift', title: 'Member perks', body: 'Early access to new launches and member-only drops.', color: colors.flame },
-  { icon: 'headset', title: 'Priority support', body: 'A faster line to the team whenever you need it.', color: GOLD_DEEP },
+  // The two perks below describe what the app ACTUALLY does. "Early access to
+  // new launches and member-only drops" needed a member-only flag on the catalog
+  // that does not exist, and "a faster line to the team" needed a support desk
+  // that does not exist either (support is an email handoff). Selling either was
+  // a claim the binary could not honour.
+  { icon: 'pricetag', title: 'Member price on milk', body: `${VIP_MILK_DISCOUNT_PCT}% off every milk SKU, applied at checkout.`, color: colors.flame },
+  { icon: 'wallet', title: 'One flat month', body: 'Thirty days of Plus. It does not auto-renew, so you are never billed by surprise.', color: GOLD_DEEP },
 ];
 
 // Foil number: an engraved gold number with a soft white shimmer band. Built
@@ -546,7 +551,7 @@ export default function Vip() {
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.card }}>
             {[
               { n: '1', icon: 'gift' as const, title: 'Start free', body: `Your first ${PLUS_TRIAL_DAYS} days of Plus are on us. No card needed to begin.` },
-              { n: '2', icon: 'flash' as const, title: 'Enjoy the perks', body: 'Priority morning slots, free delivery and member-only offers, from day one.' },
+              { n: '2', icon: 'flash' as const, title: 'Enjoy the perks', body: 'Priority morning slots, free delivery and member price on milk, from day one.' },
               { n: '3', icon: 'card' as const, title: 'Then just ' + rupee(PLUS_PRICE_MONTH) + '/mo', body: 'Billed monthly after the trial. Cancel anytime, no lock-in.' },
             ].map((row, i) => (
               <View key={row.n} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: spacing.md, paddingVertical: 14, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line }}>
@@ -604,7 +609,7 @@ export default function Vip() {
           </View>
           <Tap onPress={openBuy} weight="medium">
             <View style={{ height: 50, paddingHorizontal: 22, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-              <Text style={{ color: colors.white, fontFamily: fonts.sansBold, fontSize: 15.5 }}>Subscribe</Text>
+              <Text style={{ color: colors.white, fontFamily: fonts.sansBold, fontSize: 15.5 }}>Join for 30 days</Text>
             </View>
           </Tap>
         </View>

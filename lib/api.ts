@@ -3,7 +3,8 @@ import { cartTotals } from './pricing';
 import { requireUserId, getProfile } from './session';
 import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 import { debitWallet, autoSettleTopUp, refundToWallet } from './walletApi';
-import { isPlusActive } from './vip';
+import { isPlusActive, memberLinePrice } from './vip';
+import { getProduct } from '../constants/products';
 import { api, isBackendConfigured, HttpError } from './apiClient';
 import { instantEtaHHMM, INSTANT_ETA_MINUTES, MORNING_WINDOW } from './deliveryMode';
 import { getServiceabilitySnapshot } from './serviceability';
@@ -258,7 +259,17 @@ export async function placeOrder(params: {
 
   // Instant lane (one-time express; a subscription always rides the morning route).
   const isInstant = params.lane === 'instant' && (params.orderType ?? 'instant') !== 'subscription';
-  const { subtotal } = cartTotals(lines);
+  // PYAAS Plus member price. Applied HERE, before the subtotal, so the discount
+  // the Plus screen sells is the discount the wallet is actually debited. It was
+  // previously rendered on the marketing screen and applied nowhere.
+  const isPlusMember = await isPlusActive();
+  const pricedLines = isPlusMember
+    ? lines.map((l) => ({
+        ...l,
+        price: memberLinePrice(getProduct(l.id)?.category, l.price, true),
+      }))
+    : lines;
+  const { subtotal } = cartTotals(pricedLines);
   // placeOrder is the SINGLE SOURCE OF TRUTH for the delivery fee, and it reads
   // membership itself rather than trusting a caller to pass it.
   //
@@ -269,8 +280,7 @@ export async function placeOrder(params: {
   // was then debited X + 15. Consenting to one number and being charged another
   // is the same defect class as the subscription quote bug, and in backend mode
   // the inflated total is POSTed to /orders too.
-  const isPlus = await isPlusActive();
-  const delivery_fee = deliveryFeeFor(subtotal, isPlus);
+  const delivery_fee = deliveryFeeFor(subtotal, isPlusMember);
   // Monsoon surcharge: INSTANT orders only, read from the serving store's zone
   // (via serviceability). The backend re-applies it authoritatively on create.
   const monsoon_fee = isInstant ? (svc.monsoonRupees || 0) : 0;
@@ -308,14 +318,22 @@ export async function placeOrder(params: {
     placed_at: placedAt.toISOString(),
     // Instant rides the express lane at high priority; the backend stores lane
     // and mints etaAt = placed + 20 min on the delivery task.
-    priority: lane === 'instant' ? 'high' : params.priority ?? 'normal',
+    // PYAAS Plus buys "the first morning delivery window". That perk was sold on
+    // the membership screen and implemented nowhere: a grep for priority 'vip'
+    // returned zero call sites and every caller passed 'normal'. A Plus member's
+    // morning order now carries the same high priority the instant lane uses, so
+    // the store and rider queue order it ahead of standard morning deliveries.
+    priority: lane === 'instant' || isPlusMember ? 'high' : params.priority ?? 'normal',
     delivery_window,
     lane,
     delivery_date: lane === 'instant' ? null : params.deliveryDate ?? null,
     etaAt: lane === 'instant' ? new Date(placedAt.getTime() + INSTANT_ETA_MINUTES * 60 * 1000).toISOString() : null,
     order_type: params.orderType ?? 'instant',
     buyer_gstin: params.buyerGstin?.trim() || null,
-    order_items: lines.map((l) => ({
+    // pricedLines, not lines: the invoice must itemise the SAME prices the
+    // subtotal and the wallet debit were computed from, or a Plus member's bill
+    // will not add up to what they were charged.
+    order_items: pricedLines.map((l) => ({
       id: newId('item'),
       product_id: l.id,
       name: l.name,

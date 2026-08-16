@@ -169,8 +169,8 @@ export function PromoGate() {
         title={lapsedVip ? 'Renew PYAAS Plus' : 'Become a PYAAS VIP'}
         body={
           lapsedVip
-            ? 'Priority morning slots, free delivery and member-only offers. Renew your PYAAS Plus and keep the perks. Cancel anytime.'
-            : 'Priority morning slots, free delivery and member-only offers. Start your free trial. No card needed, cancel anytime.'
+            ? 'Priority morning slots, free delivery and member price on milk. Renew your PYAAS Plus and keep the perks.'
+            : 'Priority morning slots, free delivery and member price on milk. Start your free trial. No card needed.'
         }
         cta={lapsedVip ? 'Renew Plus' : 'Become VIP'}
         onAccept={() => { setDismissedMoney(true); void snoozeVipUpsell(); router.push('/(tabs)/vip'); }}

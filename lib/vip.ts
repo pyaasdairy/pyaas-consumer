@@ -32,15 +32,33 @@ export const PLUS_PRICE_MONTH = 99;
 export const VIP_EXPIRY_WARN_DAYS = 5;
 
 /**
- * Illustrative PYAAS Plus member price on milk, shown on the Plus comparison.
- * The real, permanent Plus value is service (free delivery + priority slots);
- * this modest member price makes the "VIP vs regular" comparison concrete.
+ * The PYAAS Plus member price on milk.
+ *
+ * This was labelled "Illustrative" and had exactly three references in the repo:
+ * its own definition, an import, and the marketing screen that rendered it as a
+ * struck-through "Regular" beside a gold "PLUS ₹X" with a "₹Y saved / month"
+ * figure. No cart, checkout, product or sweep path ever called it, so a member
+ * paid ₹99 for a discount that did not exist. It is now applied for real, in
+ * placeOrder, which is the single place money is computed.
  */
 export const VIP_MILK_DISCOUNT_PCT = 10;
 
 /** The Plus member price for a regular rupee price (rounded to the nearest ₹). */
 export function vipPriceFor(regular: number): number {
   return Math.round(regular * (1 - VIP_MILK_DISCOUNT_PCT / 100));
+}
+
+/**
+ * The price a given SKU actually bills at for this member.
+ *
+ * The member price applies to MILK only, which is what the Plus screen claims
+ * ("Plus members pay member price on milk"). Everything else bills at the
+ * regular price, so the discount can never silently widen to the whole catalog.
+ */
+export function memberLinePrice(category: string | undefined, regular: number, isPlus: boolean): number {
+  if (!isPlus) return regular;
+  const milkish = category === 'milk' || category === 'super_tea';
+  return milkish ? vipPriceFor(regular) : regular;
 }
 
 export type VipStatus = 'trial' | 'active' | 'expired' | 'cancelled';
