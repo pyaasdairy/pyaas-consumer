@@ -196,7 +196,9 @@ export default function ProductDetail() {
         if (!alive || !product) return;
         const t = product.price * qty;
         const laneNow: DeliveryMode = freq === 'one_time' ? deliverBy : 'morning';
-        const need = t + deliveryFeeFor(t) + (laneNow === 'instant' ? (monsoonRupees || 0) : 0);
+        // Instant is COD: the wallet is irrelevant, so never show a shortfall.
+        if (laneNow === 'instant') { setShortfall(0); return; }
+        const need = t + deliveryFeeFor(t);
         if (useWallet.getState().balance >= need) setShortfall(0);
       })();
       return () => { alive = false; };
@@ -282,16 +284,19 @@ export default function ProductDetail() {
     busyRef.current = true;
     setBusy(true); setErr('');
     try {
-      // WALLET-FIRST, BOTH MODES, NO COD ESCAPE: an order is never placed unless the
-      // prepaid wallet covers the FULL charge (items + delivery + monsoon fees). If
-      // short, route to recharge — preserving qty/freq/start/lane so the funded order
-      // resumes with the member's original choices — and STOP; the order is not sent.
-      await refreshWallet();
-      const bal = useWallet.getState().balance;
-      if (bal < chargeTotal) {
-        setShortfall(chargeTotal - bal);
-        goRecharge(chargeTotal - bal);
-        return;
+      // MORNING = WALLET-FIRST: a morning/scheduled order is never placed unless
+      // the prepaid wallet covers the FULL charge (items + delivery + monsoon).
+      // If short, route to recharge and STOP; the order is not sent.
+      // ⚡ INSTANT = COD/UPI-on-the-way: the wallet is never used, so there is no
+      // funding gate — the member pays the rider (cash or UPI while we deliver).
+      if (laneSel !== 'instant') {
+        await refreshWallet();
+        const bal = useWallet.getState().balance;
+        if (bal < chargeTotal) {
+          setShortfall(chargeTotal - bal);
+          goRecharge(chargeTotal - bal);
+          return;
+        }
       }
 
       // With a shared backend, place a REAL delivery order so it reaches the
@@ -314,7 +319,7 @@ export default function ProductDetail() {
           orderId = await placeOrder({
             lines: [{ id: product.id, lane: laneSel === 'instant' ? ('instant' as const) : ('morning' as const), name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
             address,
-            paymentMethod: 'prepaid',
+            paymentMethod: laneSel === 'instant' ? 'cod' : 'prepaid',
             priority: 'normal',
             orderType: isInstant ? 'instant' : 'subscription',
             buyerGstin: gstinValid ? gstin : null,
@@ -357,7 +362,7 @@ export default function ProductDetail() {
       const localOrderId = await placeOrder({
         lines: [{ id: product.id, lane: laneSel === 'instant' ? ('instant' as const) : ('morning' as const), name: product.name, variant: product.variant, price: unit, image: product.image, qty }],
         address: localAddress,
-        paymentMethod: 'prepaid',
+        paymentMethod: laneSel === 'instant' ? 'cod' : 'prepaid',
         priority: 'normal',
         orderType: isInstant ? 'instant' : 'subscription',
         buyerGstin: gstinValid ? gstin : null,

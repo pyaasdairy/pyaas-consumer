@@ -104,6 +104,14 @@ export type Order = {
   trial_free?: boolean;
   // Optional company GSTIN captured at checkout → printed on the proforma bill.
   buyer_gstin?: string | null;
+  // ── Pay-while-we-deliver (instant lane) ─────────────────────────────────
+  // Instant orders are placed as COD: nothing is debited at placement, and the
+  // member may settle by UPI while the rider is on the way, or cash at the door.
+  // `paid` flips when an online payment lands; a COD order that stays unpaid is
+  // simply collected in cash. The wallet is NEVER used on the instant lane.
+  paid?: boolean;
+  paid_at?: string | null;
+  payment_ref?: string | null;
   // Review-after-delivery (populated by the shared backend when configured).
   can_review?: boolean;
   review?: { rating: number; comment: string; created_at: string } | null;
@@ -438,6 +446,27 @@ export async function getOrder(id: string): Promise<Order | null> {
  * refundToWallet is idempotent by `ref`, so a double-tap or a retry cannot pay
  * out twice.
  */
+/**
+ * Record an ONLINE payment against an instant COD order (pay-while-we-deliver).
+ *
+ * LOCAL MODE ONLY. In backend mode the order row lives server-side and there is
+ * no payment endpoint on parag-saathi-be yet, so this returns false and the
+ * pay-online bar never renders there — the honest state is "COD until the
+ * backend can verify a payment", not a client-side "paid" the server has never
+ * heard of. When the backend gains POST /orders/:id/pay with signature
+ * verification, route this through it.
+ */
+export async function markOrderPaid(id: string, paymentRef: string): Promise<boolean> {
+  if (isBackendConfigured()) return false;
+  const uid = await requireUserId();
+  await updateRows<Order>('orders', uid, (o) => o.id === id && !o.paid, {
+    paid: true,
+    paid_at: new Date().toISOString(),
+    payment_ref: paymentRef,
+  });
+  return true;
+}
+
 export async function cancelOrder(id: string): Promise<void> {
   const uid = await requireUserId();
   if (isBackendConfigured()) { await api.post(`/orders/${id}/cancel`); return; }
@@ -453,9 +482,13 @@ export async function cancelOrder(id: string): Promise<void> {
     status: 'cancelled',
   });
 
+  // Wallet/prepaid orders were debited at placement; an instant COD order that
+  // the member already settled by UPI (paid === true) has also parted with real
+  // money. Both get the money back. An unpaid COD cancel moves nothing.
   const paidFromWallet = order!.payment_method === 'wallet' || order!.payment_method === 'prepaid';
+  const paidOnline = order!.paid === true;
   const amount = Number(order!.total) || 0;
-  if (paidFromWallet && amount > 0) {
+  if ((paidFromWallet || paidOnline) && amount > 0) {
     await refundToWallet(amount, `cancel:${id}`, {
       remark: `Refund for cancelled order ${id}`,
     });

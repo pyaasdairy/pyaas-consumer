@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, Linking, TextInput } from 'react-native';
+import { View, ScrollView, Linking, TextInput, Modal, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,7 +9,9 @@ import { colors, radius, spacing, shadow, rupee, fonts } from '../../lib/theme';
 import { SkeletonBlock } from '../../components/Skeleton';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Divider } from '../../components/ui';
 import { RiderTrackMap } from '../../components/RiderTrackMap';
-import { getOrder, cancelOrder, simulateRiderAssignment, simulateDelivered, reviewOrder, type Order } from '../../lib/api';
+import { getOrder, cancelOrder, markOrderPaid, simulateRiderAssignment, simulateDelivered, reviewOrder, type Order } from '../../lib/api';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { checkoutHtml, isRazorpayConfigured, RAZORPAY_KEY_ID } from '../../lib/razorpay';
 import { STATUS_FLOW, STATUS_LABEL, STATUS_SUB, statusIndex } from '../../lib/orderStatus';
 import { isBackendConfigured } from '../../lib/apiClient';
 import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
@@ -80,6 +82,8 @@ export default function OrderTracking() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const debitedRef = useRef(false);
+  // Pay-while-we-deliver checkout sheet (instant COD orders, local mode only).
+  const [payOpen, setPayOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -131,6 +135,34 @@ export default function OrderTracking() {
     // walletBalance is a dep so that returning from a top-up (balance changed) with
     // debitedRef reset re-fires the delivery debit and clears the owed banner.
   }, [order?.status, order?.id, order?.total, order?.payment_method, walletBalance, refreshWallet]);
+
+  /** Non-http(s) URLs inside checkout are UPI app deep links: hand them to the
+   *  OS so the chosen app opens, keep the web flow inside the sheet. */
+  function payNavGuard(req: { url?: string }): boolean {
+    const url = req?.url ?? '';
+    if (!url || /^(https?:|about:|data:|blob:)/i.test(url)) return true;
+    Linking.openURL(url).catch(() => { /* no app for the scheme — stay in sheet */ });
+    return false;
+  }
+
+  function onPayMessage(e: WebViewMessageEvent) {
+    try {
+      const msg = JSON.parse(e.nativeEvent.data ?? '{}');
+      if (msg.type === 'success' && order) {
+        // Client success is a HINT, not proof — but for an instant COD order it
+        // only flips the collection method from "cash at the door" to "paid
+        // online", the same trust level as a rider confirming cash. No stored
+        // value is created. When the backend gains a payment endpoint with
+        // signature verification, markOrderPaid routes through it instead.
+        void markOrderPaid(order.id, String(msg.razorpay_payment_id ?? '')).then((ok) => {
+          setPayOpen(false);
+          if (ok) { haptics.confirm(); void load(); }
+        });
+      } else if (msg.type === 'dismiss') {
+        setPayOpen(false);
+      }
+    } catch { /* not our message */ }
+  }
 
   async function submitReview() {
     if (!order) return;
@@ -272,7 +304,15 @@ export default function OrderTracking() {
                     <Pill label="⚡ INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
                     {/* flex:1 so the caption wraps INSIDE the card instead of leaking off the edge */}
                     <TextBody style={{ fontSize: 12, flex: 1 }} color={colors.inkSoft}>
-                      {order.payment_method === 'cod' ? 'Cash on delivery · keep the amount ready' : '~20 min express delivery'}
+                      {(order.status === 'assigned' || order.status === 'out_for_delivery'
+                        ? 'On the way'
+                        : 'Your order is being packed') +
+                        ' · ' +
+                        (order.paid
+                          ? 'Paid online, nothing to pay at the door'
+                          : order.payment_method === 'cod'
+                            ? 'Pay on delivery: UPI or cash'
+                            : '~20 min express delivery')}
                     </TextBody>
                   </View>
                 </View>
@@ -477,6 +517,64 @@ export default function OrderTracking() {
           <Button title="Simulate delivered (demo)" variant="sage" onPress={onSimulateDelivered} loading={busy} />
         ) : null}
       </ScrollView>
+
+      {/* PAY WHILE WE DELIVER — instant COD orders only, and only where an
+          online payment can actually land: local mode (backend mode has no
+          payment endpoint yet, so it stays honestly cash-or-UPI at the door)
+          with a configured gateway key. Cash at delivery always works. */}
+      {(() => {
+        if (!order) return null;
+        const instantLane = order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
+        const canPayOnline =
+          instantLane && order.payment_method === 'cod' && !order.paid &&
+          order.status !== 'delivered' && order.status !== 'cancelled' &&
+          !isBackendConfigured() && isRazorpayConfigured();
+        if (!canPayOnline) return null;
+        return (
+          <View style={{ borderTopWidth: 1, borderColor: colors.line, backgroundColor: colors.white, paddingHorizontal: spacing.lg, paddingTop: 12, paddingBottom: insets.bottom + 12, gap: 10 }}>
+            <TextBody style={{ fontSize: 12.5 }} color={colors.inkMute}>You can pay online now, or in cash at delivery.</TextBody>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <TextBody style={{ fontSize: 11, letterSpacing: 0.4 }} color={colors.inkMute}>PAYING VIA</TextBody>
+                <TextSemi style={{ fontSize: 15 }}>UPI · secure checkout</TextSemi>
+              </View>
+              <Tap onPress={() => setPayOpen(true)}>
+                <View style={{ height: 48, minWidth: 140, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, ...shadow.soft }}>
+                  <TextSemi color={colors.white} style={{ fontSize: 15.5 }}>Pay {rupee(order.total)}</TextSemi>
+                </View>
+              </Tap>
+            </View>
+          </View>
+        );
+      })()}
+
+      {/* Razorpay checkout sheet for the pay-while-we-deliver flow. */}
+      <Modal visible={payOpen} animationType="slide" onRequestClose={() => setPayOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: colors.cream }}>
+          <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderBottomWidth: 1, borderColor: colors.line }}>
+            <Tap haptic={false} onPress={() => setPayOpen(false)} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="chevron-back" size={20} color={colors.flameDeep} />
+            </Tap>
+            <TextSemi style={{ fontSize: 16 }}>Pay {order ? rupee(order.total) : ''}</TextSemi>
+          </View>
+          {payOpen && order ? (
+            <WebView
+              originWhitelist={['*']}
+              source={{ html: checkoutHtml({ keyId: RAZORPAY_KEY_ID, amountPaise: Math.round(order.total * 100), themeColor: colors.flameDeep }) }}
+              onShouldStartLoadWithRequest={payNavGuard}
+              onMessage={onPayMessage}
+              startInLoadingState
+              renderLoading={() => (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cream, gap: 12 }}>
+                  <ActivityIndicator color={colors.flameDeep} size="large" />
+                  <TextBody style={{ fontSize: 13 }} color={colors.inkSoft}>Loading secure payment…</TextBody>
+                </View>
+              )}
+              style={{ flex: 1, backgroundColor: colors.cream }}
+            />
+          ) : null}
+        </View>
+      </Modal>
     </View>
   );
 }

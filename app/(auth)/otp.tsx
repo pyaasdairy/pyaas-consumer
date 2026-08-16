@@ -25,8 +25,10 @@ import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
  *
  *   1. The disclosure is shown and accepted (DataDisclosure) BEFORE anything
  *      reads or sends the number. Until then the field is not editable.
- *   2. "Use the number on this phone" launches the Play Services chooser on an
- *      explicit tap. It FILLS THE FIELD AND STOPS — it does not send.
+ *   2. After that one-time acceptance the zero-typing feel is back: focusing
+ *      the field (or the explicit "Use the number on this phone" tap) opens the
+ *      Play Services chooser. Picking FILLS THE FIELD AND STOPS — it never
+ *      sends. Before acceptance, focus opens the disclosure instead.
  *   3. The member reviews the number and taps "Send verification code". That tap
  *      is the consent to transmit, and it is the only thing that transmits.
  *   4. The incoming OTP SMS is still auto-read and auto-verified — that reads a
@@ -102,20 +104,17 @@ export default function OtpLogin() {
    * ZERO-TYPING step 1: the phone-number chooser (the light "Continue with"
    * picker listing the SIM numbers; no runtime permission).
    *
-   * TWO THINGS CHANGED HERE FOR PLAY COMPLIANCE, and both are load-bearing:
+   * WHAT CHANGED FOR PLAY COMPLIANCE, and what came back:
    *
-   * 1. It no longer fires from the field's onFocus. Because this Play Services
-   *    API needs no Android permission, the OS shows no consent dialog — so
-   *    merely touching a text field caused the app to read the SIM's number with
-   *    nothing standing in between. It is now behind an explicit, labelled tap.
-   * 2. It NO LONGER AUTO-SENDS. It used to call sendCodeFor(hinted) the instant
-   *    a number was picked, so the number reached our servers (and MSG91) before
-   *    the member pressed anything. THAT was the violation. Picking now fills the
-   *    field and stops; the member reviews the number and presses the send button
-   *    themselves, and that press is the consent to transmit.
-   *
-   * The chooser, the autofill and the SMS auto-read all still work exactly as
-   * before — the mechanism is untouched, only the consent moment is restored.
+   * 1. Nothing fires before the disclosure is accepted — this API needs no
+   *    Android permission, so the OS shows no dialog of its own, and the
+   *    disclosure is the only consent moment that exists. Post-acceptance,
+   *    focus-launch returns (the zero-typing feel), because the read it
+   *    performs is exactly what the accepted disclosure describes.
+   * 2. It NEVER AUTO-SENDS. It used to call sendCodeFor(hinted) the instant a
+   *    number was picked, so the number reached our servers (and MSG91) before
+   *    the member pressed anything. THAT was the violation, and it stays dead:
+   *    picking fills the field; the send button transmits.
    */
   const [hintOpen, setHintOpen] = useState(false);
   const hintDone = useRef(false); // resolved once (picked or dismissed) — don't relaunch
@@ -293,9 +292,12 @@ export default function OtpLogin() {
                 <TextInput
                   value={phone}
                   onChangeText={setPhone}
-                  // Focus no longer launches the SIM chooser. Touching a text field
-                  // is not an affirmative act of consent to read the SIM's number.
-                  onFocus={() => { if (!consented) setDiscloseOpen(true); }}
+                  // BEFORE consent: focusing opens the disclosure, never the SIM.
+                  // AFTER consent: the one-tap chooser returns on focus — the
+                  // zero-typing feel — because the disclosure covering the SIM
+                  // read has been accepted. Picking still only FILLS the field;
+                  // nothing transmits until "Send verification code" is tapped.
+                  onFocus={() => { consented ? void launchHint() : setDiscloseOpen(true); }}
                   editable={consented === true}
                   keyboardType="phone-pad"
                   placeholder="Enter mobile number"

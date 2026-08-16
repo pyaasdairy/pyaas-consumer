@@ -9,11 +9,13 @@ import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../lib/t
 import { Serif, TextBody, TextMed, TextSemi, Tap, Button, BackButton, Stepper } from '../components/ui';
 import { ShineSweep } from '../components/Fx';
 import { haptics } from '../lib/haptics';
-import { isPlusActive } from '../lib/vip';
+import { isPlusActive, memberLinePrice } from '../lib/vip';
 import { useCart } from '../store/cart';
 import { useWallet } from '../store/wallet';
 import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER, type Address } from '../lib/api';
 import { AddressCaptureSheet } from '../components/AddressCapture';
+import { InstantPlaceSheet } from '../components/InstantPlaceSheet';
+import { getProduct } from '../constants/products';
 import { listSubscriptions, listVacations, subscriptionDueOn } from '../lib/subscriptions';
 import { useTrial } from '../lib/trial';
 import { tomorrowISO } from '../lib/dates';
@@ -153,11 +155,20 @@ export default function Cart() {
 
   const hasOutOfStock = lines.some((l) => l.outOfStock);
   const orderable = lines.filter((l) => !l.outOfStock);
-  // Bill is over ORDERABLE lines only — out-of-stock items are never charged.
-  const subtotal = orderable.reduce((sum, l) => sum + l.price * l.qty, 0);
+  // ⚡ INSTANT = pay on delivery. The wallet is NEVER used on the instant lane:
+  // the member settles by UPI while we deliver, or cash at the door. So every
+  // wallet gate below (unlock target, balance cover, recharge-when-short) is
+  // morning-lane only.
+  const isInstant = lane === 'instant';
+  // Bill is over ORDERABLE lines only — out-of-stock items are never charged —
+  // and at the price placeOrder will actually charge: Plus members pay the
+  // member price on milk, and placeOrder is the source of truth, so the cart
+  // must display the same numbers it computes.
+  const priceOf = (l: { id: string; price: number }) => memberLinePrice(getProduct(l.id)?.category, l.price, isPlus);
+  const subtotal = orderable.reduce((sum, l) => sum + priceOf(l) * l.qty, 0);
   const delivery = deliveryFeeFor(subtotal, isPlus);
   const total = subtotal + delivery;
-  const short = Math.max(0, total - balance);
+  const short = isInstant ? 0 : Math.max(0, total - balance);
   const blocked = serviceable === false;
   // Handling + small-cart fees are SHOWN then waived (on us), so the payable total
   // is unchanged. Small-cart applies under ₹199 (like a quick-commerce bill).
@@ -198,7 +209,21 @@ export default function Cart() {
     }).toString();
     router.push(`/recharge?${qs}`);
   }
-  const locked = unlocked === false;
+  const locked = !isInstant && unlocked === false;
+
+  // ⚡ Instant place sheet: the cart CTA opens it, the sheet's 3s cancel-grace
+  // fill (or a direct tap) then calls place(). The address shown is the same
+  // pinned default place() itself will resolve.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetAddr, setSheetAddr] = useState<Address | null>(null);
+  async function openInstantSheet() {
+    haptics.press();
+    const rows = await listAddresses().catch(() => [] as Address[]);
+    const addr = rows.find((a) => a.is_default && hasPin(a)) ?? rows.find(hasPin);
+    if (!addr) { setCapOpen(true); return; }
+    setSheetAddr(addr);
+    setSheetOpen(true);
+  }
 
   async function joinZoneWaitlist() {
     const s = useServiceability.getState();
@@ -243,16 +268,19 @@ export default function Cart() {
         return;
       }
 
-      // WALLET-FIRST: make sure the wallet covers the total before placing.
-      await refreshWallet();
-      if (useWallet.getState().balance < total) { setPlacing(false); goRecharge(); return; }
+      // WALLET-FIRST (morning lane only): make sure the wallet covers the total
+      // before placing. Instant is COD/UPI-on-the-way and skips the wallet whole.
+      if (!isInstant) {
+        await refreshWallet();
+        if (useWallet.getState().balance < total) { setPlacing(false); goRecharge(); return; }
+      }
 
       const address = savedAddr; // pinned + saved — guaranteed by gate 1 above
 
       const orderId = await placeOrder({
         lines: orderable,
         address,
-        paymentMethod: 'wallet',
+        paymentMethod: isInstant ? 'cod' : 'wallet',
         orderType: 'instant',
         lane,
         // Morning one-time add-ons arrive NEXT morning; instant rides the ⚡ lane.
@@ -404,7 +432,7 @@ export default function Cart() {
                   {l.outOfStock ? (
                     <TextMed color={colors.danger} style={{ fontSize: 11.5, marginTop: 2 }}>Out of stock · removed at checkout</TextMed>
                   ) : (
-                    <TextSemi style={{ fontSize: 13.5, marginTop: 2, ...tabular }} color={colors.flameDeep}>{rupee(l.price * l.qty)}</TextSemi>
+                    <TextSemi style={{ fontSize: 13.5, marginTop: 2, ...tabular }} color={colors.flameDeep}>{rupee(priceOf(l) * l.qty)}</TextSemi>
                   )}
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -450,15 +478,25 @@ export default function Cart() {
             <Row label="Saved on fees" value={`− ${rupee(feesSaved)}`} valueColor={colors.blue} />
           ) : null}
           <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 4 }} />
-          <Row label="PYAAS Wallet balance" value={rupee(balance)} valueColor={colors.inkSoft} />
-          <Row label="To pay from wallet" value={rupee(total)} valueColor={colors.flameDeep} bold />
+          {isInstant ? (
+            <Row label="To pay on delivery" value={rupee(total)} valueColor={colors.flameDeep} bold />
+          ) : (
+            <>
+              <Row label="PYAAS Wallet balance" value={rupee(balance)} valueColor={colors.inkSoft} />
+              <Row label="To pay from wallet" value={rupee(total)} valueColor={colors.flameDeep} bold />
+            </>
+          )}
 
           {/* Charged-after-delivery reassurance (our backend debits on delivery). */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.cream, borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 }}>
             <Ionicons name="time-outline" size={14} color={colors.flameDeep} />
-            {/* placeOrder debits the wallet at checkout (lib/api.ts), so there is
-                no "hold" and nothing is deferred to delivery. Cancelling refunds. */}
-            <TextBody style={{ fontSize: 11.5, flex: 1 }}>Paid from your PYAAS Wallet now. Cancel before pickup and it goes straight back.</TextBody>
+            {/* Morning: placeOrder debits the wallet at checkout, so say so.
+                Instant: COD/UPI-on-the-way — nothing moves at placement. */}
+            <TextBody style={{ fontSize: 11.5, flex: 1 }}>
+              {isInstant
+                ? 'Nothing is charged now. Pay by UPI while we deliver, or cash at the door.'
+                : 'Paid from your PYAAS Wallet now. Cancel before pickup and it goes straight back.'}
+            </TextBody>
           </View>
         </View>
         ) : null}
@@ -507,7 +545,7 @@ export default function Cart() {
           </View>
         ) : null}
 
-        <Tap onPress={blocked ? undefined : needsAddr ? () => { haptics.press(); setCapOpen(true); } : locked ? goUnlock : short > 0 ? goRecharge : place} disabled={placing || blocked || orderable.length === 0}>
+        <Tap onPress={blocked ? undefined : needsAddr ? () => { haptics.press(); setCapOpen(true); } : locked ? goUnlock : short > 0 ? goRecharge : isInstant ? () => { void openInstantSheet(); } : place} disabled={placing || blocked || orderable.length === 0}>
           <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: blocked || orderable.length === 0 ? colors.inkMute : colors.flameDeep, height: 56, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: placing ? 0.85 : 1, ...shadow.card }}>
             {placing ? <ActivityIndicator color={colors.white} /> : null}
             <TextSemi color={colors.white} style={{ fontSize: 16.5, ...tabular }}>
@@ -528,6 +566,15 @@ export default function Cart() {
         </Tap>
       </View>
       )}
+
+      <InstantPlaceSheet
+        visible={sheetOpen}
+        total={total}
+        addressLabel={sheetAddr?.label ?? 'your address'}
+        addressText={sheetAddr ? [sheetAddr.line1, sheetAddr.line2, sheetAddr.city, sheetAddr.pincode].filter(Boolean).join(', ') : ''}
+        onConfirm={() => { setSheetOpen(false); void place(); }}
+        onCancel={() => setSheetOpen(false)}
+      />
 
       {/* Address capture (gate 1) — on save, the flow resumes automatically:
           place() re-runs and lands on the NEXT missing gate (funds or place). */}
