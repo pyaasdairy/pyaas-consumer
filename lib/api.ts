@@ -229,6 +229,11 @@ export async function placeOrder(params: {
   lane?: 'instant' | 'morning';
   /** Picked delivery date (ISO YYYY-MM-DD) → delivered in that day's morning slot. */
   deliveryDate?: string | null;
+  /** A trial FREE-day delivery: the milk still goes out, the sticker price still
+   *  shows on the order, but NOTHING is debited. Set by the subscription sweep
+   *  from the trial phase. Without this the "free" days were charged in full in
+   *  local mode, because only a live backend was zeroing them. */
+  trialFree?: boolean;
 }): Promise<string> {
   const { lines, address, paymentMethod } = params;
   const couponDiscount = params.couponDiscount ?? 0;
@@ -269,7 +274,11 @@ export async function placeOrder(params: {
   // Monsoon surcharge: INSTANT orders only, read from the serving store's zone
   // (via serviceability). The backend re-applies it authoritatively on create.
   const monsoon_fee = isInstant ? (svc.monsoonRupees || 0) : 0;
-  const total = Math.max(0, subtotal - couponDiscount) + delivery_fee + monsoon_fee;
+  // A trial free day is genuinely free: the line prices still render on the
+  // order so the member can see what it would have cost, but the payable total
+  // is zero and the debit below is skipped.
+  const trialFree = params.trialFree === true;
+  const total = trialFree ? 0 : Math.max(0, subtotal - couponDiscount) + delivery_fee + monsoon_fee;
   const address_text = [address.line1, address.line2, address.city, address.pincode]
     .filter(Boolean)
     .join(', ');
@@ -291,6 +300,7 @@ export async function placeOrder(params: {
     delivery_fee,
     monsoon_fee,
     total,
+    trial_free: trialFree || undefined,
     payment_method: paymentMethod,
     address_label: address.label,
     address_text,
@@ -334,7 +344,7 @@ export async function placeOrder(params: {
   await insertRow<Order>('orders', uid, order);
   // Wallet/prepaid orders are settled immediately from the prepaid wallet (this
   // records a 'debit' in the ledger). COD orders are paid on delivery.
-  if (paymentMethod === 'wallet' || paymentMethod === 'prepaid') {
+  if ((paymentMethod === 'wallet' || paymentMethod === 'prepaid') && total > 0) {
     await debitWallet(total, 'order', `Order ${orderId.slice(-6)}`);
   }
   return orderId;

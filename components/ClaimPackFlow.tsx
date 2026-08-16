@@ -33,7 +33,7 @@ type Step = 'intro' | 'signin' | 'ineligible' | 'subscribed';
  * auto-starts a daily taaza-500ml subscription from tomorrow and opens the
  * four-day trial: days 1–2 are PAID (₹29/day from the wallet), days 3–4 are
  * FREE, and from then on it CONTINUES at ₹29/day until paused/cancelled. The
- * sheet copy says exactly that — pay 2, get 2 free, no surprise charges. Walks
+ * sheet copy says exactly that: the first 2 days are free, no surprise charges. Walks
  * the user from an intro card -> delivery address (typed + an EXACT map pin) -> a
  * confirmation box -> a delivery-window promise. Fires on first launch
  * (ClaimPackGate), from the home claim card and when a member starts their
@@ -149,12 +149,12 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   ? 'Trial already completed'
                   : step === 'signin'
                     ? 'Sign in to start'
-                    : `Pay ${TRIAL_PAID_DAYS} days, get ${TRIAL_FREE_DAYS} FREE`}
+                    : `First ${TRIAL_FREE_DAYS} days FREE`}
             </Serif>
             <TextBody color={colors.inkSoft} style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
               {step === 'ineligible' || step === 'signin' || step === 'subscribed'
                 ? 'PYAAS Gold Full Cream · 500 ml fresh every morning'
-                : `PYAAS Gold Full Cream · 500 ml daily · ${TRIAL_PAID_DAYS} paid + ${TRIAL_FREE_DAYS} free`}
+                : `PYAAS Gold Full Cream · 500 ml daily · ${TRIAL_FREE_DAYS} free, then ${TRIAL_PAID_DAYS} paid`}
             </TextBody>
           </View>
 
@@ -162,13 +162,13 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             {step === 'intro' ? (
               <Animated.View entering={FadeIn.duration(240)} style={{ gap: spacing.md }}>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Start your daily milk subscription. Pay for your first {TRIAL_PAID_DAYS} days, then the next {TRIAL_FREE_DAYS} days are FREE. Fresh at your door every morning.
+                  Start your daily milk subscription. Your first {TRIAL_FREE_DAYS} days are completely FREE, then it continues at the daily price from your wallet. Fresh at your door every morning.
                 </TextBody>
                 {/* The honest funnel explainer — exactly what starting does. */}
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 8 }}>
-                  <IntroLine icon="cash-outline" text={`First ${TRIAL_PAID_DAYS} days at ${rupee(FREE_PACK_DAILY_PRICE)}/day`} />
-                  <IntroLine icon="sparkles" text={`Next ${TRIAL_FREE_DAYS} days FREE 🎉`} />
-                  <IntroLine icon="infinite" text={`Then continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet`} />
+                  <IntroLine icon="sparkles" text={`First ${TRIAL_FREE_DAYS} days FREE 🎉`} />
+                  <IntroLine icon="cash-outline" text={`Then ${rupee(FREE_PACK_DAILY_PRICE)}/day from day ${TRIAL_FREE_DAYS + 1}`} />
+                  <IntroLine icon="infinite" text={`Continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet`} />
                   <IntroLine icon="pause-circle" text="Pause anytime" />
                   <IntroLine icon="card-outline" text={`Applicable on a min. ${rupee(OFFER_QUALIFY_RECHARGE)} recharge at a time`} />
                 </View>

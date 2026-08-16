@@ -324,7 +324,7 @@ export function SubscribeSheet({
               </ScrollView>
             </View>
 
-            {/* The "pay 2, get 2 FREE" welcome trial is granted ONLY through the
+            {/* The "first 2 days FREE" welcome trial is granted ONLY through the
                 dedicated claim funnel (the Home offer → ClaimPackFlow), which mints
                 the promo credit + anchors the trial. A plain subscribe here does NOT
                 grant free days, so we never promise them — that would be a false

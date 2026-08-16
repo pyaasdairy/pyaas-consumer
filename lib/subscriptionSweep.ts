@@ -9,6 +9,8 @@ import {
 } from './subscriptions';
 import { listAddresses, placeOrder, deliveryFeeFor } from './api';
 import { isPlusActive } from './vip';
+import { getTrial, NO_TRIAL } from './trial';
+import { FREE_PACK_PRODUCT_ID } from './freePack';
 import { getBalances } from './walletApi';
 import { getProduct } from '../constants/products';
 import { isBackendConfigured } from './apiClient';
@@ -29,10 +31,10 @@ import { isBackendConfigured } from './apiClient';
  *
  * The DEBIT then rides the existing delivered-order settle path
  * (settleDeliveredOrders → debitWallet, rewards-first on the server). Under the
- * 2+2 trial the paid days (1–2) charge the wallet and the free days (3–4) are
- * zeroed by the backend (the local promo credit covers them), then it continues
- * daily. In local (no-backend) mode placeOrder debits the wallet immediately —
- * same rewards-first ledger.
+ * trial the FREE days (1-2) are placed with trialFree, so the milk goes out and
+ * nothing is debited, and the paid days (3-4) charge the wallet as normal;
+ * after that it continues daily. In local (no-backend) mode placeOrder debits
+ * immediately, so the free-day check has to happen HERE as well as server-side.
  *
  * If the wallet can't cover a due delivery the order is NOT placed (never place
  * milk that can't be paid for); reconcileWithBalance then auto-pauses the sub,
@@ -118,11 +120,23 @@ async function runSweep(): Promise<number> {
   // and this is the loop that actually takes the member's money each morning.
   const isPlus = await isPlusActive();
 
+  // The trial's FREE days must actually be free. This loop is the only thing
+  // that moves money for a subscription, and it never read the trial phase — so
+  // every "free" day was still debited in full locally, and only a live backend
+  // was ever going to zero it. The home banner promises the first two days, so
+  // the promise has to hold in both modes.
+  const trial = await getTrial().catch(() => NO_TRIAL);
+  const trialFreeToday = trial.phase === 'free';
+
   for (const sub of pending) {
     const product = getProduct(sub.product_id);
     if (!product) continue; // SKU no longer in the catalog
+    // Only the trial SKU rides the trial; a member's other subscriptions bill
+    // normally even while their milk trial is in its free window.
+    const isTrialSku = sub.product_id === FREE_PACK_PRODUCT_ID;
+    const freeDelivery = trialFreeToday && isTrialSku;
     const subtotal = sub.unit_price * sub.qty;
-    const cost = subtotal + deliveryFeeFor(subtotal, isPlus);
+    const cost = freeDelivery ? 0 : subtotal + deliveryFeeFor(subtotal, isPlus);
     if (balance < cost) { skippedShort = true; continue; }
     try {
       const orderId = await placeOrder({
@@ -140,6 +154,7 @@ async function runSweep(): Promise<number> {
         paymentMethod: 'wallet',
         priority: 'normal',
         orderType: 'subscription',
+        trialFree: freeDelivery,
         lane: 'morning', // subscriptions always ride the 05:00–07:30 route
       });
       // Marker AFTER the order lands: a failed placement leaves no marker, so

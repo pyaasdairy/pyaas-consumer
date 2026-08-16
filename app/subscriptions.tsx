@@ -194,7 +194,7 @@ export default function Subscriptions() {
             <Ionicons name="infinite-outline" size={40} color={colors.inkMute} />
             <TextBody>No active subscription.</TextBody>
             <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkMute}>
-              Start your subscription on the home screen: pay 2 days, get 2 FREE, then it continues daily from your wallet.
+              Start your subscription on the home screen: your first 2 days are free, then it continues daily from your wallet.
             </TextBody>
             <Button title="Start your subscription" small style={{ marginTop: 4, paddingHorizontal: 24 }} onPress={() => router.replace('/(tabs)')} />
           </View>

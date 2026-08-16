@@ -6,14 +6,26 @@ import { isBackendConfigured, api } from './apiClient';
 import { todayISO, parseISO } from './dates';
 
 /**
- * THE "2 + 2" TRIAL — the launch funnel that replaces the old "2 free days" pack.
- * Applies to PYAAS Taaza toned milk only.
+ * THE "2 FREE + 2" TRIAL. Applies to PYAAS Taaza toned milk only.
  *
  * A new member's daily-milk subscription opens with a four-day trial:
- *   • days 1–2  → PAID   (₹29/day, the wallet is debited as normal)
- *   • days 3–4  → FREE   (the backend zeroes the debit; the sweep still places
- *                         the daily order so milk keeps arriving)
+ *   • days 1–2  → FREE   (nothing is debited; the sweep still places the daily
+ *                         order so milk arrives, and the order is marked
+ *                         trial_free so it reads FREE on the orders list)
+ *   • days 3–4  → PAID   (₹29/day, the wallet is debited as normal)
  * after which the subscription simply continues at ₹29/day until paused.
+ *
+ * WHY THE ORDER FLIPPED. This used to charge days 1–2 and free days 3–4, while
+ * assets/banners/home-banner-1.png told every member on the home screen "Your
+ * first 2 days are completely free" and banner 2 spelled out "Day 1 FREE /
+ * Day 2 FREE". Charging for days the first screen of the app gives away is a
+ * false claim (Play's Deceptive Behavior policy), and the app was removed from
+ * Play once already. The marketing was the promise; the code now keeps it.
+ *
+ * There was a second, quieter defect: nothing local ever honoured the free days
+ * at all. lib/subscriptionSweep.ts debited the full cost on every delivery and
+ * never read the phase — only a live backend was going to zero it. The sweep now
+ * checks the phase itself, so the free days are free in both modes.
  *
  * The trial is OWNED BY THE BACKEND once it is live (GET /consumer/trial/me);
  * this module normalises that response and, in the local/no-backend demo,
@@ -58,10 +70,17 @@ function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((parseISO(toISO).getTime() - parseISO(fromISO).getTime()) / 86400000);
 }
 
+/**
+ * FREE DAYS COME FIRST. Days 1..freeDays are free, then the balance is paid.
+ * The argument order is kept as (paidDays, totalDays) so every existing caller
+ * still compiles; freeDays is derived, because totalDays - paidDays is exactly
+ * the free window.
+ */
 function phaseFor(overallDay: number, paidDays: number, totalDays: number): TrialPhase {
   if (overallDay < 1) return 'none';
-  if (overallDay <= paidDays) return 'paid';
-  if (overallDay <= totalDays) return 'free';
+  const freeDays = Math.max(0, totalDays - paidDays);
+  if (overallDay <= freeDays) return 'free';
+  if (overallDay <= totalDays) return 'paid';
   return 'completed';
 }
 
