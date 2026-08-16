@@ -27,7 +27,7 @@ export default function PrivacyPolicy() {
     <DocScreen
       title="Privacy Policy"
       updated="3 August 2026 · v1.0"
-      intro="At PYAAS our promise is simple — Know Your Milk. You should always be able to see where your milk came from, who produced it, how it was tested, and how it reached your home. You deserve that same clarity about your personal information. This policy explains what PYAAS DAIRY PRIVATE LIMITED collects, why, who we share it with, and how you stay in control. It is written to comply with the Digital Personal Data Protection Act, 2023, the Information Technology Act, 2000, and the SPDI Rules, 2011."
+      intro="At PYAAS our promise is simple: Know Your Milk. You should always be able to see where your milk came from, who produced it, how it was tested, and how it reached your home. You deserve that same clarity about your personal information. This policy explains what PYAAS DAIRY PRIVATE LIMITED collects, why, who we share it with, and how you stay in control. It is written to comply with the Digital Personal Data Protection Act, 2023, the Information Technology Act, 2000, and the SPDI Rules, 2011."
       sections={[
         {
           heading: 'Who we are',
@@ -65,7 +65,7 @@ export default function PrivacyPolicy() {
                 'To process payments, wallet recharges and refunds, and to issue your GST bill.',
                 'To send order, delivery and payment updates on the channels you have agreed to.',
                 'To provide support, prevent fraud and keep the service secure.',
-                'To improve the app, and — only where you have consented — to share offers.',
+                'To improve the app, and: only where you have consented: to share offers.',
               ],
             },
           ],
@@ -77,12 +77,12 @@ export default function PrivacyPolicy() {
             {
               kind: 'bullets',
               items: [
-                'Our SMS provider — receives your mobile number and the one-time code, so we can text it to you when you sign in.',
-                'Google Maps — receives what you type in address search, so it can suggest real addresses. You can avoid this by choosing your city and dropping a pin instead.',
-                'OpenStreetMap — serves the map tiles shown when you place a delivery pin or track a rider, which reveals the approximate area you are viewing.',
-                'Razorpay — our payment gateway, to take payments and process refunds securely.',
-                'Delivery partners and riders — your name, address, phone number and delivery instructions, so your order reaches you.',
-                'PCDF / Lucknow Milk Union and dairy supply partners — for fulfilment, quality assurance and traceability, on a need-to-know basis.',
+                'Our SMS provider: receives your mobile number and the one-time code, so we can text it to you when you sign in.',
+                'Google Maps: receives what you type in address search, so it can suggest real addresses. You can avoid this by choosing your city and dropping a pin instead.',
+                'OpenStreetMap: serves the map tiles shown when you place a delivery pin or track a rider, which reveals the approximate area you are viewing.',
+                'Razorpay: our payment gateway, to take payments and process refunds securely.',
+                'Delivery partners and riders: your name, address, phone number and delivery instructions, so your order reaches you.',
+                'PCDF / Lucknow Milk Union and dairy supply partners: for fulfilment, quality assurance and traceability, on a need-to-know basis.',
                 'Cloud hosting, communications and support providers, under confidentiality obligations.',
                 'Legal and regulatory authorities, where required by law.',
               ],
@@ -109,12 +109,12 @@ export default function PrivacyPolicy() {
             {
               kind: 'bullets',
               items: [
-                'Access — a summary of the personal data we hold about you and how we process it.',
-                'Correction — to have inaccurate or incomplete data fixed.',
-                'Erasure — to delete your account and data, subject to records the law requires us to keep. You can start this yourself from your profile.',
-                'Withdraw consent — at any time, as easily as you gave it.',
-                'Grievance redressal — to have complaints addressed by our Grievance Officer.',
-                'Nomination — to nominate someone to exercise your rights if you die or become incapacitated.',
+                'Access: a summary of the personal data we hold about you and how we process it.',
+                'Correction: to have inaccurate or incomplete data fixed.',
+                'Erasure: to delete your account and data, subject to records the law requires us to keep. You can start this yourself from your profile.',
+                'Withdraw consent: at any time, as easily as you gave it.',
+                'Grievance redressal: to have complaints addressed by our Grievance Officer.',
+                'Nomination: to nominate someone to exercise your rights if you die or become incapacitated.',
               ],
             },
             { kind: 'para', text: 'If you are not satisfied with our response you may escalate to the Data Protection Board of India under the DPDP Act.' },

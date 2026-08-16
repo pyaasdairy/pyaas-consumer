@@ -14,7 +14,7 @@ export default function ContactUs() {
         {
           heading: 'Customer care',
           blocks: [
-            { kind: 'para', text: 'Email us with your registered phone number and the order date, and we will reply on the same thread. The in-app chat and the complaint form draft that email for you — they open your mail app with what you told us already filled in.' },
+            { kind: 'para', text: 'Email us with your registered phone number and the order date, and we will reply on the same thread. The in-app chat and the complaint form draft that email for you. They open your mail app with what you told us already filled in.' },
             ...(HAS_CARE_PHONE
               ? []
               : [{ kind: 'note' as const, text: 'We do not have a published phone or WhatsApp line yet, so we do not list one. Until we do, email is the only way to reach us.' }]),

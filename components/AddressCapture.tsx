@@ -293,7 +293,7 @@ export function AddressCaptureSheet({
               </View>
               <Serif style={{ fontSize: 21, textAlign: 'center' }}>Coming soon to this area! 🐄</Serif>
               <TextBody style={{ fontSize: 13.5, lineHeight: 20, textAlign: 'center' }} color={colors.inkSoft}>
-                {svcBlocked.reason ?? "We can't deliver to this location yet — we're expanding fast. Move the pin to a serviceable area, or leave your number and we'll tell you the moment we launch here."}
+                {svcBlocked.reason ?? "We can't deliver to this location yet. We're expanding fast. Move the pin to a serviceable area, or leave your number and we'll tell you the moment we launch here."}
               </TextBody>
               {svcBlocked.storeName && svcBlocked.distanceKm ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.flameSoft, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6 }}>
@@ -307,7 +307,7 @@ export function AddressCaptureSheet({
                 <TextSemi color={colors.white} style={{ fontSize: 15 }}>Change location</TextSemi>
               </Tap>
               {waitlisted ? (
-                <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.blue}>You're on the list — we'll text you when PYAAS arrives here. 🎉</TextBody>
+                <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.blue}>You're on the list. We'll text you when PYAAS arrives here. 🎉</TextBody>
               ) : (
                 <Tap haptic={false} onPress={async () => { try { await joinWaitlist({ phone: profile?.phone ?? null, lat: coords?.lat ?? null, lng: coords?.lng ?? null, pincode: pincode.trim() || null }); setWaitlisted(true); haptics.success(); } catch { /* soft */ } }} style={{ height: 48, alignSelf: 'stretch', borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }}>
                   <TextSemi color={colors.flameDeep} style={{ fontSize: 14 }}>Notify me when you launch here</TextSemi>

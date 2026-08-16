@@ -364,12 +364,12 @@ export function SubscribeSheet({
             </View>
             {/* Policy — the exact terms, no surprises. */}
             <View style={{ gap: 6 }}>
-              <PolicyLine icon="pause-circle" text="Pause, skip or cancel anytime — no lock-in" />
+              <PolicyLine icon="pause-circle" text="Pause, skip or cancel anytime. No lock-in" />
               <PolicyLine icon="wallet-outline" text={`Keep at least ${MIN_SUB_DAYS_COVER} days funded in your PYAAS Wallet`} />
               {/* The sweep places each delivery's order in the morning and
                   placeOrder debits the wallet there and then, so "bills only
                   after it arrives" was not what the code does. */}
-              <PolicyLine icon="shield-checkmark-outline" text="Nothing is charged now — each delivery is billed from your wallet on the morning it goes out" />
+              <PolicyLine icon="shield-checkmark-outline" text="Nothing is charged now. Each delivery is billed from your wallet on the morning it goes out" />
             </View>
             {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
             <Tap onPress={busy ? undefined : confirm} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>

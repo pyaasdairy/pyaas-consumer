@@ -491,7 +491,7 @@ export default function Cart() {
         {needsAddr && !blocked ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
             <Ionicons name="location" size={16} color={colors.flameDeep} />
-            <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>First, set your delivery address — then fund the wallet and confirm.</TextMed>
+            <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>First, set your delivery address. Then fund the wallet and confirm.</TextMed>
           </View>
         ) : locked && !blocked ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>

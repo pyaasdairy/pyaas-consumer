@@ -498,7 +498,7 @@ export default function ProductDetail() {
             <Animated.View entering={FadeInDown.duration(420).delay(90)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 12 }}>
               <Ionicons name="flash" size={18} color={colors.flameDeep} />
               <TextMed style={{ flex: 1, fontSize: 13.5 }} color={colors.ink}>
-                ⚡ Instant delivery · arriving in ~20 minutes (by {instantEta}). One-time order — daily subscriptions live in the Morning tab.
+                ⚡ Instant delivery · arriving in ~20 minutes (by {instantEta}). One-time order. Daily subscriptions live in the Morning tab.
               </TextMed>
             </Animated.View>
           ) : subscribable ? (

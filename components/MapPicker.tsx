@@ -240,7 +240,7 @@ export default function MapPicker({
       const d = await placeDetails(s.placeId, { sessionToken: sessionTokenRef.current });
       sessionTokenRef.current = newSessionToken();
       if (d && d.lat != null && d.lng != null) recenterTo({ lat: d.lat, lng: d.lng });
-      else setSearchErr('Could not open that place — try another.');
+      else setSearchErr('Could not open that place. Try another.');
     } finally {
       setSearching(false);
     }
@@ -256,7 +256,7 @@ export default function MapPicker({
       const res = await Location.geocodeAsync(q);
       const hit = res?.[0];
       if (hit) recenterTo({ lat: hit.latitude, lng: hit.longitude });
-      else setSearchErr('No match found — try adding the area or a landmark.');
+      else setSearchErr('No match found. Try adding the area or a landmark.');
     } catch {
       setSearchErr('Search needs an internet connection.');
     } finally {

@@ -66,7 +66,7 @@ export default function SupportChat() {
       // This bot is scripted and saveSupportTicket() only writes to this phone —
       // it used to promise a reply "within 24 hours" that nobody at PYAAS could
       // ever have seen. Say what actually happens instead.
-      push('bot', 'Thanks — I have written this down on your phone. I cannot reach the team by myself yet, so one more tap sends it to them.');
+      push('bot', 'Thanks. I have written this down on your phone. I cannot reach the team by myself yet, so one more tap sends it to them.');
       setTimeout(() => push('bot', 'How was this chat experience?'), 500);
       setStage('rate');
     }, 300);
@@ -88,7 +88,7 @@ export default function SupportChat() {
       '',
       ...transcriptRef.current.map((m) => `${m.from === 'bot' ? 'PYAAS helper' : 'Me'}: ${m.text}`),
       '',
-      '— sent from the PYAAS app chat',
+      'Sent from the PYAAS app chat',
     ].join('\n');
     const opened = await emailCare(`PYAAS support: ${topicLabel || 'chat'}`, body);
     push('bot', opened

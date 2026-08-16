@@ -42,7 +42,7 @@ export default function Business() {
       city.trim() ? `City: ${city.trim()}` : '',
       message.trim() ? `Details: ${message.trim()}` : '',
       '',
-      '— sent from the PYAAS app',
+      'Sent from the PYAAS app',
     ].filter(Boolean).join('\n');
   }
 
@@ -54,7 +54,7 @@ export default function Business() {
       if (!backendLive) {
         // Keep the local row (it is the record for when the API lands) but the
         // enquiry only reaches a human if the customer sends the email.
-        const opened = await emailCare(`PYAAS ${kindLabel.toLowerCase()} enquiry — ${name.trim()}`, enquiryBody());
+        const opened = await emailCare(`PYAAS ${kindLabel.toLowerCase()} enquiry. ${name.trim()}`, enquiryBody());
         if (!opened) {
           setErr(`Could not open your email app. Please write to ${CARE_EMAIL}${HAS_CARE_PHONE ? ` or call ${SUPPORT.careNumber}` : ''} with these details.`);
           return;
@@ -81,8 +81,7 @@ export default function Business() {
           ) : (
             <>
               <TextBody style={{ textAlign: 'center' }}>
-                We’ve opened your email app with this enquiry. Send it to {CARE_EMAIL} and our cooperative team replies there —
-                the app can’t deliver enquiries on its own yet, so nothing reaches us until you hit send.
+                We’ve opened your email app with this enquiry. Send it to {CARE_EMAIL} and our cooperative team replies there.                 the app can’t deliver enquiries on its own yet, so nothing reaches us until you hit send.
               </TextBody>
               {HAS_CARE_PHONE ? (
                 <Tap onPress={callCare} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, paddingVertical: 12, paddingHorizontal: 18, borderRadius: radius.pill, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line }}>

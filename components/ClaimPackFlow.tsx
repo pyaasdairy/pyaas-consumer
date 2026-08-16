@@ -188,7 +188,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="checkmark" size={34} color={colors.blue} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  You are already subscribed — PYAAS Gold arrives every morning, billed day by day from your wallet. Pause, change quantity or cancel anytime from Manage.
+                  You are already subscribed. PYAAS Gold arrives every morning, billed day by day from your wallet. Pause, change quantity or cancel anytime from Manage.
                 </TextBody>
                 <PrimaryButton title="Manage subscription" onPress={() => { onClose(); router.push('/subscriptions'); }} />
                 <Tap haptic={false} onPress={startShopping} style={{ alignItems: 'center', paddingVertical: 4 }}>
