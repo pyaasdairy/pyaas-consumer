@@ -225,7 +225,7 @@ export default function Profile() {
             <TextMed color="#C0344D" style={{ fontSize: 14 }}>Delete account</TextMed>
           </Tap>
           <Tap haptic={false} onPress={() => Linking.openURL(SITE)} style={{ paddingVertical: 2 }}>
-            <TextBody style={{ fontSize: 12.5 }} color={colors.flameDeep}>pyaasdairy.in</TextBody>
+            <TextBody style={{ fontSize: 12.5 }} color={colors.flameDeep}>pyaasdairy.com</TextBody>
           </Tap>
           <Image source={require('../../assets/parag-logo.png')} style={{ width: 84, height: 84, opacity: 0.85 }} contentFit="contain" />
           <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>Version : {Constants.expoConfig?.version ?? '1.0.0'}</TextBody>

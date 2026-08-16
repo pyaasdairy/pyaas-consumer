@@ -219,7 +219,14 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
                   Your trial is tied to your phone number. Sign in (or finish setting up your profile) and come back, the offer will be waiting.
                 </TextBody>
-                <PrimaryButton title="Sign in" onPress={() => { onClose(); router.replace('/(auth)/sign-in'); }} />
+                {/* Phone OTP is the app's sign-in. This used to route to the
+                    email/password screen, which is the only thing that reaches
+                    signUpWithEmail — and that stores the password in CLEARTEXT in
+                    unencrypted AsyncStorage (lib/session.ts), alongside the email,
+                    name and phone of every account ever created on the handset.
+                    The copy directly above already says the trial is tied to the
+                    phone number, so OTP is also the correct destination. */}
+                <PrimaryButton title="Sign in" onPress={() => { onClose(); router.replace('/(auth)/otp'); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Not now</TextMed>
                 </Tap>

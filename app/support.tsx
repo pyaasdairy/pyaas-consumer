@@ -101,7 +101,7 @@ export default function Support() {
             <Ionicons name="globe-outline" size={20} color={colors.flameDeep} />
           </View>
           <View style={{ flex: 1 }}>
-            <TextSemi style={{ fontSize: 15 }}>Visit pyaasdairy.in</TextSemi>
+            <TextSemi style={{ fontSize: 15 }}>Visit pyaasdairy.com</TextSemi>
             {/* Was "Help centre and order tracking" — neither exists on the site today. */}
             <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>Our website</TextBody>
           </View>

@@ -32,7 +32,7 @@ export default function RefundPolicy() {
         {
           heading: 'How to report',
           blocks: [
-            { kind: 'para', text: 'Open the order, use Help and support, choose the issue type, and describe what happened. You can also email care@pyaasdairy.in. Reporting on the day of delivery helps us resolve it fastest.' },
+            { kind: 'para', text: 'Open the order, use Help and support, choose the issue type, and describe what happened. You can also email support@pyaasdairy.com. Reporting on the day of delivery helps us resolve it fastest.' },
           ],
         },
         {

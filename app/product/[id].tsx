@@ -705,9 +705,15 @@ export default function ProductDetail() {
               <InfoRow label="Storage" value={compliance.storage} />
               <InfoRow label="Country of origin" value={compliance.countryOfOrigin} />
               <InfoRow label="HSN / GST" value={`${compliance.hsn} · ${compliance.gstRate}% GST`} />
-              <InfoRow label="Manufacturer" value={compliance.manufacturer} />
+              {/* Manufacturer and marketer are shown as SEPARATE entities. The
+                  FSSAI licence belongs to the manufacturer, so it sits with them
+                  — printing it under our own name was the Legal Metrology r.6 /
+                  FSS Act s.63 problem. */}
+              <InfoRow label="Manufactured by" value={compliance.manufacturer} />
               <InfoRow label="Mfg. address" value={compliance.manufacturerAddress} />
-              <InfoRow label="FSSAI licence" value={compliance.fssaiLicense} />
+              <InfoRow label="FSSAI licence (manufacturer)" value={compliance.fssaiLicense} />
+              <InfoRow label="Marketed by" value={compliance.marketedBy} />
+              <InfoRow label="Marketer address" value={compliance.marketedByAddress} />
               <InfoRow label="Customer care" value={`${compliance.customerCare} · ${compliance.customerCareEmail}`} last />
             </View>
             <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>Batch number, packing date and best-before are printed on each pack and shown on your invoice.</TextBody>

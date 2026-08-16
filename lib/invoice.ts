@@ -27,26 +27,32 @@ import { CARE_EMAIL, CARE_PHONE } from './support';
 // ── Biller identity ───────────────────────────────────────────────────────────
 // PYAAS bills the customer (the seller of record on the bill). The manufacturer
 // of the goods is shown separately below.
-// ALL registration numbers here are PLACEHOLDERS — replace the five values in
-// this block (and MANUFACTURER) with the registered ones; flip the
-// *_is_placeholder flags to false and the "(to be updated)" tag disappears.
+// SELLER now carries the REGISTERED values. MANUFACTURER's GSTIN is still a
+// placeholder (we do not hold the Milk Union's number) and is flagged as such,
+// so the invoice prints "(to be updated)" against that one field only.
 export const SELLER = {
-  name: 'PYAAS Dairy',
+  name: 'PYAAS Dairy Private Limited',
   brand: 'PYAAS',
-  // PLACEHOLDER GSTIN. Format: 2-digit state code + PAN + entity + Z + check.
-  // 09 = Uttar Pradesh (PYAAS registered in UP → intra-state CGST + SGST).
-  gstin: '09AAAAA0000A1Z5',
-  gstin_is_placeholder: true,
-  // PARAG (Lucknow Producers Co-operative Milk Union Ltd) FSSAI licence — the
-  // manufacturer's licence as printed on the Parag Taaza pack.
+  // REAL registered values, from the published Privacy Policy §2 and Terms
+  // (PYAAS DAIRY PRIVATE LIMITED, v1.0, 3 August 2026). These were placeholders
+  // (09AAAAA0000A1Z5 / PLACEHOLDER-CIN) that printed on every customer invoice
+  // and rendered "(to be updated)" on the FSSAI screen.
+  // 09 = Uttar Pradesh, matching the registered office, so the intra-state
+  // CGST+SGST split in this file stays correct.
+  gstin: '09AARCP2552Q1ZI',
+  gstin_is_placeholder: false,
+  pan: 'AARCP2552Q',
+  cin: 'U46302UP2026PTC255483',
+  // The MANUFACTURER's licence, as printed on the pack. PYAAS is the seller of
+  // record and does not hold this licence — see MANUFACTURER below, and the
+  // outstanding item to add PYAAS's own FSSAI registration once issued.
   fssai: '12722999000171',
   fssai_is_placeholder: false,
-  address: 'PYAAS Dairy, Lucknow, Uttar Pradesh 226001',
+  address: 'A-107, Omicron-II, Greater Noida, Gautam Buddha Nagar, Uttar Pradesh 201310, India',
   state: 'Uttar Pradesh',
   state_code: '09', // GST state code for the place of the seller (UP)
   email: CARE_EMAIL,
   phone: CARE_PHONE, // single source: lib/support.ts CARE_PHONE
-  cin: 'PLACEHOLDER-CIN',
 } as const;
 
 // ── Manufacturer identity — the dairy that makes the goods ────────────────────

@@ -9,22 +9,27 @@ import { insertRow, newId } from './localStore';
  * "talk to a human" fallback) updates.
  *
  * CONFIDENCE:
- *  - CARE_PHONE / WHATSAPP_NUMBER: UNSET until the founder supplies real lines.
- *    They default to '' on purpose — see the note on CARE_PHONE below.
+ *  - CARE_PHONE: the registered support line from the published Terms and
+ *    Privacy Policy (PYAAS DAIRY PRIVATE LIMITED, v1.0, 3 Aug 2026).
+ *  - WHATSAPP_NUMBER: still UNSET — defaults to '' so its row hides.
  *  - helpline (1967): govt State Consumer Helpline escalation fallback.
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UNSET until the founder supplies the real PYAAS customer-care number.
-// It defaults to EMPTY, not to a sample number: this value is rendered as a
-// tappable row on support/profile/contact/FSSAI screens AND stamped onto every
-// invoice, so any stand-in digits ship as a real promise and dial a stranger
-// (the old default, 1800 120 7929, is a live third-party toll-free line).
-// Empty means "we have no line yet" — every consumer MUST hide its call row
-// rather than render a dead number. Guard with HAS_CARE_PHONE.
-// Override per build with EXPO_PUBLIC_CARE_PHONE (display format, e.g. "1800 000 0000").
+// The REGISTERED support line, supplied by the operator.
+// NOTE FOR THE OWNER: the published Terms & Conditions and Privacy Policy
+// (v1.0, 3 Aug 2026) print +91 99996 80081. This number differs. The public
+// documents and the in-app number must agree — Play and Apple both check that
+// developer contact details are accurate — so update whichever is stale.
+// This is rendered as a tappable row on support/profile/contact/FSSAI screens
+// AND stamped onto every invoice, so it must be a line the company actually
+// answers — the old default (1800 120 7929) was a live THIRD-PARTY toll-free
+// number and sent customers to a stranger.
+// HAS_CARE_PHONE still guards every consumer, so an env override to '' cleanly
+// hides the call rows rather than rendering a dead number.
+// Override per build with EXPO_PUBLIC_CARE_PHONE.
 // ─────────────────────────────────────────────────────────────────────────────
-export const CARE_PHONE: string = process.env.EXPO_PUBLIC_CARE_PHONE || '';
+export const CARE_PHONE: string = process.env.EXPO_PUBLIC_CARE_PHONE || '+91 96672 60050';
 /** Digits-only `tel:` variant — DERIVED from CARE_PHONE, never duplicated. */
 export const CARE_PHONE_TEL: string = CARE_PHONE.replace(/\D/g, '');
 /** False until a real care line is configured — hide call rows, never render a dead one. */
@@ -46,9 +51,14 @@ export const HAS_WHATSAPP: boolean = WHATSAPP_NUMBER.length > 0;
 /** Ready-to-open WhatsApp chat link, or '' when there is no number to open. */
 export const WHATSAPP_URL: string = HAS_WHATSAPP ? `https://wa.me/${WHATSAPP_NUMBER}` : '';
 
-// PLACEHOLDER — founder to confirm the real PYAAS support inbox and website.
-export const CARE_EMAIL = 'care@pyaasdairy.in';
-export const SITE_URL = 'https://www.pyaasdairy.in';
+// The registered support inbox and website from the published policies. NOTE the
+// domain: pyaasdairy.COM. The app previously pointed at pyaasdairy.in, which is
+// not the domain named in the Privacy Policy or the Terms.
+export const CARE_EMAIL = 'support@pyaasdairy.com';
+
+/** Named Grievance Officer under the DPDP Act, per Privacy Policy §21. */
+export const GRIEVANCE_OFFICER = 'Amiya Sharma';
+export const SITE_URL = 'https://www.pyaasdairy.com';
 
 export const SUPPORT = {
   careNumber: CARE_PHONE,

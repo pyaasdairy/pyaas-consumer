@@ -16,7 +16,7 @@
  * match. Keep this list short and honest (owner + ops only).
  */
 export const ADMIN_ALLOWLIST = {
-  emails: ['care@pyaasdairy.in', 'admin@pyaasdairy.in'],
+  emails: ['support@pyaasdairy.com', 'admin@pyaasdairy.com'],
   phones: ['9000000001'],
 } as const;
 
@@ -44,4 +44,4 @@ export function isAdminUser(email?: string | null, phone?: string | null): boole
 }
 
 /** The hosted PYAAS web admin console (placeholder until the real URL is live). */
-export const ADMIN_WEB_URL = 'https://www.pyaasdairy.in/admin';
+export const ADMIN_WEB_URL = 'https://www.pyaasdairy.com/admin';

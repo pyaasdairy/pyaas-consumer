@@ -87,10 +87,17 @@ export async function captureRestockLead(product: { id: string; name: string; va
     const prof = await getProfile().catch(() => null);
     if (isBackendConfigured()) {
       try {
+        // NO name/phone. Hearting an out-of-stock SKU is a one-tap gesture whose
+        // only affordance is a heart icon — shipping the member's name and mobile
+        // off-device as a side effect of it is the exact defect that had this app
+        // removed from Play (personal data transmitted with no disclosure and no
+        // affirmative consent to that transmission).
+        //
+        // Nothing is lost: the request is authenticated, so the server already
+        // knows who this is from the token and can join the profile itself. We
+        // send the product and the id the server has anyway.
         await api.post('/wishlist/leads', {
           user_id: uid,
-          name: prof?.full_name ?? null,
-          phone: prof?.phone ?? null,
           product_id: product.id,
           product_name: product.name,
           variant: product.variant,

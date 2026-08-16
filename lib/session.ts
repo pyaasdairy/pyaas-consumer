@@ -104,6 +104,20 @@ export async function signInWithPhone(phone: string, fullName?: string | null): 
 // device. In this build passwords are matched locally; when parag-api is live,
 // swap these for apiClient POST /auth/register + /auth/login (bcrypt server-side)
 // and store the returned JWTs via lib/apiClient.
+// SECURITY — DO NOT REACH THIS PATH.
+// `password` below is stored in CLEARTEXT in unencrypted AsyncStorage, in one
+// device-global blob alongside the email, name and phone of every account ever
+// created on this handset. That is a real exposure (readable on a rooted device,
+// and swept into some backup/transfer flows) and users reuse passwords.
+//
+// It is now unreachable: the app's only sign-in is phone OTP, and the last entry
+// point into the email screens (components/ClaimPackFlow.tsx) was repointed at
+// /(auth)/otp. deleteMyAccount() also prunes this key, which it previously missed
+// entirely — a "deleted" member could sign back in with the same password.
+//
+// BEFORE ever re-enabling email/password sign-in: store a salted hash via
+// expo-crypto into expo-secure-store (already a dependency, used for JWTs in
+// lib/apiClient.ts), or move authentication to the backend. Never re-ship this.
 const ACCOUNTS_KEY = 'parag:accounts';
 type Account = { uid: string; email: string; password: string; full_name: string | null; phone: string | null };
 

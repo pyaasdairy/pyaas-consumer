@@ -55,7 +55,7 @@ export default function ContactUs() {
         <DocLinkRow
           icon={<Ionicons name="globe-outline" size={20} color={colors.flameDeep} />}
           label="Website"
-          value="pyaasdairy.in"
+          value="pyaasdairy.com"
           href={SITE_URL}
           last
         />

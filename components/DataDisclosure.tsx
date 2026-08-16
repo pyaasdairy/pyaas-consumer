@@ -54,6 +54,15 @@ const FLOWS: { icon: React.ComponentProps<typeof Ionicons>['name']; what: string
     why: 'Stored on PYAAS servers so we know where to deliver. Only collected when you set an address or tap "use my location".',
   },
   {
+    // The address-search field streams what you type to Google on a 250ms
+    // debounce (lib/places.ts). That is a third-party recipient of address data,
+    // and it was previously disclosed nowhere — the same defect shape that had
+    // this app removed, on a second data type.
+    icon: 'search-outline',
+    what: 'What you type in address search',
+    why: 'Sent to Google Maps as you type, so it can suggest real addresses. Skip it by picking your city and dropping a pin on the map instead.',
+  },
+  {
     icon: 'receipt-outline',
     what: 'Your orders and wallet activity',
     why: 'Stored on PYAAS servers to run deliveries, subscriptions and refunds, and to issue your bills.',

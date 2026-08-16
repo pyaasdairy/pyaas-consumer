@@ -73,18 +73,34 @@ export type Product = {
 };
 
 /**
- * Shared FSSAI / Legal Metrology / seller block for every PYAAS SKU. These are
- * PLACEHOLDERS the founder confirms before launch. Shown on product listings
- * and on every tax invoice (Legal Metrology + FSSAI + GST require them).
+ * Shared FSSAI / Legal Metrology / seller block for every PYAAS SKU, shown on
+ * product listings and on every tax invoice.
+ *
+ * MANUFACTURER and MARKETED BY are deliberately separate. PYAAS resells milk
+ * made by the Lucknow Milk Union under the Parag brand; collapsing the two put
+ * our name above the Union's FSSAI licence, which is exactly what Legal
+ * Metrology r.6 and FSS Act s.63 prohibit. Keep them distinct.
+ *
+ * STILL OUTSTANDING: PYAAS's OWN FSSAI registration, once issued, so the listing
+ * can show both the maker's licence and ours.
  */
 export const COMPLIANCE = {
   brand: 'PYAAS',
-  manufacturer: 'PYAAS Dairy Private Limited', // PLACEHOLDER — founder to confirm legal entity
-  manufacturerAddress: 'PYAAS Dairy, Lucknow, Uttar Pradesh', // PLACEHOLDER — founder to confirm
-  fssaiLicense: '12722999000171',   // PARAG (Lucknow Producers Co-op Milk Union) licence, as printed on-pack
-  gstin: '09AAAAA0000A1Z5',         // PLACEHOLDER - confirm the real GSTIN
-  customerCare: CARE_PHONE,         // single source: lib/support.ts (PLACEHOLDER until founder confirms)
-  customerCareEmail: 'care@pyaasdairy.in', // PLACEHOLDER — founder to confirm
+  // MANUFACTURER is the entity that actually MAKES the goods, and the FSSAI
+  // licence must be that same entity's. The launch range is Parag milk made by
+  // the Lucknow Milk Union, so naming PYAAS here while printing the Union's
+  // licence (12722999000171) put our name above someone else's licence —
+  // Legal Metrology (Packaged Commodities) Rules 2011 r.6 and FSS Act 2006 s.63.
+  manufacturer: 'Lucknow Producers Co-operative Milk Union Ltd (PARAG)',
+  manufacturerAddress: 'Plot No. 166-167, 13 Km Stone, Sultanpur Road, Gosaiganj, Lucknow, Uttar Pradesh 226002',
+  fssaiLicense: '12722999000171', // the Union's licence, as printed on the pack
+  // MARKETED BY is us — the seller of record on the bill. Registered values from
+  // the published Privacy Policy / Terms of PYAAS DAIRY PRIVATE LIMITED.
+  marketedBy: 'PYAAS Dairy Private Limited',
+  marketedByAddress: 'A-107, Omicron-II, Greater Noida, Gautam Buddha Nagar, Uttar Pradesh 201310, India',
+  gstin: '09AARCP2552Q1ZI',
+  customerCare: CARE_PHONE,         // single source: lib/support.ts
+  customerCareEmail: 'support@pyaasdairy.com',
   countryOfOrigin: 'India',
 } as const;
 
@@ -860,7 +876,7 @@ export const PRODUCTS: Product[] = [
  * Nothing else needs changing — ids, prices and pack shots are unchanged.
  */
 export const WITHHELD_SKUS: Product[] = [
-  // Prices mirror PYAAS's founding prices (pyaasdairy.in).
+  // Prices mirror PYAAS's founding prices (pyaasdairy.com).
   {
     id: 'pyaas-a2-1l',
     name: 'A2 Cow Milk - PYAAS',
