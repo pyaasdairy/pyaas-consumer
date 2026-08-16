@@ -46,7 +46,7 @@ export default function ShippingPolicy() {
           ],
         },
       ]}
-      footerNote="This is a placeholder template. Serviceable pincodes, delivery windows and the free-delivery threshold are to be confirmed by the operator for each area."
+      footerNote="Serviceable pincodes, delivery windows and any free-delivery threshold are shown in the app for your address."
     />
   );
 }

@@ -16,11 +16,12 @@ import { insertRow, newId } from './localStore';
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The REGISTERED support line, supplied by the operator.
+// The REGISTERED support line, confirmed by the operator: 9667260050.
 // NOTE FOR THE OWNER: the published Terms & Conditions and Privacy Policy
-// (v1.0, 3 Aug 2026) print +91 99996 80081. This number differs. The public
-// documents and the in-app number must agree — Play and Apple both check that
-// developer contact details are accurate — so update whichever is stale.
+// (v1.0, 3 Aug 2026) still print +91 99996 80081. The app now carries the
+// confirmed number, so the PUBLIC DOCUMENTS are the stale ones and need
+// reissuing. Play and Apple both check that developer contact details are
+// accurate and consistent with the listing.
 // This is rendered as a tappable row on support/profile/contact/FSSAI screens
 // AND stamped onto every invoice, so it must be a line the company actually
 // answers — the old default (1800 120 7929) was a live THIRD-PARTY toll-free

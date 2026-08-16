@@ -18,7 +18,7 @@ export default function FssaiDetails() {
           ],
         },
       ]}
-      footerNote="The FSSAI licence shown is the manufacturer's (PARAG, Lucknow Producers Co-operative Milk Union Ltd), as printed on every pack. The GSTIN, registered address and customer care number are placeholders to be replaced with the operator's registered values before public release."
+      footerNote="The FSSAI licence shown is the manufacturer's (PARAG, Lucknow Producers Co-operative Milk Union Ltd), as printed on every pack. PYAAS is the seller of record and is marketing these products; our own FSSAI registration will be published here once issued."
     >
       <DocCard>
         <DocLinkRow
@@ -28,8 +28,8 @@ export default function FssaiDetails() {
         />
         <DocLinkRow
           icon={<Ionicons name="receipt-outline" size={20} color={colors.flameDeep} />}
-          label="GSTIN (placeholder)"
-          value={`${SELLER.gstin} · placeholder, pending registration`}
+          label="GSTIN"
+          value={SELLER.gstin}
         />
         <DocLinkRow
           icon={<Ionicons name="business-outline" size={20} color={colors.flameDeep} />}
@@ -38,7 +38,7 @@ export default function FssaiDetails() {
         />
         <DocLinkRow
           icon={<Ionicons name="location-outline" size={20} color={colors.flameDeep} />}
-          label="Registered address (placeholder)"
+          label="Registered address"
           value={SELLER.address}
           last
         />
@@ -47,7 +47,7 @@ export default function FssaiDetails() {
       <DocCard>
         <DocLinkRow
           icon={<Ionicons name="call-outline" size={20} color={colors.inkSoft} />}
-          label="Customer care (placeholder)"
+          label="Customer care"
           value={CARE_PHONE}
           href={`tel:${CARE_PHONE_TEL}`}
         />

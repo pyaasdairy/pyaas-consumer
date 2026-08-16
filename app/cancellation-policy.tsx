@@ -47,7 +47,7 @@ export default function CancellationPolicy() {
           ],
         },
       ]}
-      footerNote="This is a placeholder template. The exact daily cut-off time is to be confirmed by the operator for each delivery area."
+      footerNote="Cut-off times can differ by delivery area and are shown in the app for your address."
     />
   );
 }

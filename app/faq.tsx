@@ -54,7 +54,7 @@ export default function Faq() {
       title="Frequently Asked Questions"
       intro="Quick answers to common questions about PYAAS orders, subscriptions, payments and delivery. Still stuck? Reach us from Contact Us."
       sections={sections}
-      footerNote="Answers are indicative for the current app build. Serviceable areas, cut-off times and thresholds are to be confirmed by the operator for each area."
+      footerNote="Serviceable areas, cut-off times and thresholds differ by delivery area and are shown in the app for your address."
     />
   );
 }

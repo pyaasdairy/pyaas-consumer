@@ -55,7 +55,7 @@ export default function RefundPolicy() {
           ],
         },
       ]}
-      footerNote="This is a placeholder template. Exact refund windows and processing times are to be confirmed by the operator and by the customer's bank or payment provider."
+      footerNote="Wallet credits are immediate on approval. Refunds to a bank or card are subject to your bank or payment provider's processing time."
     />
   );
 }

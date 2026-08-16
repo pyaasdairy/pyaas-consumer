@@ -44,9 +44,18 @@ type Props = {
 /** One disclosed data flow: what we take, why, and who else sees it. */
 const FLOWS: { icon: React.ComponentProps<typeof Ionicons>['name']; what: string; why: string }[] = [
   {
+    // Names the SIM read explicitly. This is the exact capability Google
+    // enforced on: the Play Services chooser reads the number off the SIM, and
+    // because that API needs no Android permission the OS shows no dialog. If
+    // the disclosure does not say it, nothing does.
     icon: 'call-outline',
     what: 'Your mobile number',
-    why: 'Sent to PYAAS servers, and to our SMS provider, to text you a one-time code and create your account.',
+    why: 'Sent to PYAAS servers, and to our SMS provider, to text you a one-time code and create your account. If you tap "use the number on this phone", we read the number from your SIM so you do not have to type it.',
+  },
+  {
+    icon: 'chatbubble-ellipses-outline',
+    what: 'The sign-in code we text you',
+    why: 'On Android we read that one message automatically so the code fills itself in. We cannot read any of your other messages.',
   },
   {
     icon: 'location-outline',
@@ -61,6 +70,20 @@ const FLOWS: { icon: React.ComponentProps<typeof Ionicons>['name']; what: string
     icon: 'search-outline',
     what: 'What you type in address search',
     why: 'Sent to Google Maps as you type, so it can suggest real addresses. Skip it by picking your city and dropping a pin on the map instead.',
+  },
+  {
+    // Tile requests carry z/x/y plus the IP, which tells OpenStreetMap which
+    // block is on screen. leafletAssets.ts already inlines the Leaflet library
+    // to remove one undisclosed third-party call; the tiles were the hole left
+    // in that reasoning.
+    icon: 'map-outline',
+    what: 'The map, when you open it',
+    why: 'Map images come from OpenStreetMap, so it can see roughly which area you are looking at.',
+  },
+  {
+    icon: 'phone-portrait-outline',
+    what: 'A device identifier',
+    why: 'A random id stored on this phone, so a one-time offer cannot be claimed over and over on the same device. It is not your advertising id and we do not track you with it.',
   },
   {
     icon: 'receipt-outline',

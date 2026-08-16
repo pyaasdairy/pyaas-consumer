@@ -4,6 +4,7 @@ import { colors } from '../lib/theme';
 import { DocScreen, DocCard, DocLinkRow } from '../components/DocScreen';
 
 import { CARE_EMAIL, CARE_PHONE, CARE_PHONE_TEL, HAS_CARE_PHONE, HAS_WHATSAPP, SITE_URL, WHATSAPP_URL } from '../lib/support';
+import { SELLER } from '../lib/invoice';
 
 export default function ContactUs() {
   return (
@@ -21,7 +22,7 @@ export default function ContactUs() {
           ],
         },
       ]}
-      footerNote="The registered office address shown here is a placeholder to be confirmed by the operator before public release."
+      footerNote=""
     >
       <DocCard>
         <DocLinkRow
@@ -64,8 +65,8 @@ export default function ContactUs() {
       <DocCard>
         <DocLinkRow
           icon={<Ionicons name="business-outline" size={20} color={colors.inkSoft} />}
-          label="Registered office (placeholder)"
-          value="PYAAS Dairy Private Limited, Lucknow, Uttar Pradesh"
+          label="Registered office"
+          value={`${SELLER.name}, ${SELLER.address}`}
           last
         />
       </DocCard>
