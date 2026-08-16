@@ -125,8 +125,10 @@ type RawTrial = {
 function mapBackendPhase(raw: string | undefined, deliveredPaid: number, deliveredFree: number, paidDays: number, totalDays: number): TrialPhase {
   if (raw === 'done' || raw === 'completed') return 'completed';
   if (raw === 'paid' || raw === 'free' || raw === 'none') return raw as TrialPhase;
-  if (deliveredPaid < paidDays) return 'paid';
-  if (deliveredPaid + deliveredFree < totalDays) return 'free';
+  // Count fallback mirrors the backend ledger: the FREE window opens the trial.
+  const freeDays = Math.max(0, totalDays - paidDays);
+  if (deliveredFree < freeDays) return 'free';
+  if (deliveredFree + deliveredPaid < totalDays) return 'paid';
   return 'completed';
 }
 
@@ -143,11 +145,12 @@ function normalizeRemote(r: RawTrial): Trial {
     const freeDays = deliveredFree + (r.freeRemaining ?? Math.max(0, TRIAL_FREE_DAYS - deliveredFree));
     const totalDays = paidDays + freeDays;
     const phase = mapBackendPhase(r.phase, deliveredPaid, deliveredFree, paidDays, totalDays);
-    // The day you're currently ON: within the paid window, deliveredPaid+1; within
-    // the free window, past all paid days + deliveredFree+1; else 0 (done/none).
+    // The day you're currently ON. FREE days come first: within the free window,
+    // deliveredFree+1; within the paid window, past all free days + deliveredPaid+1;
+    // else 0 (done/none).
     let overallDay = 0;
-    if (phase === 'paid') overallDay = deliveredPaid + 1;
-    else if (phase === 'free') overallDay = paidDays + deliveredFree + 1;
+    if (phase === 'free') overallDay = deliveredFree + 1;
+    else if (phase === 'paid') overallDay = freeDays + deliveredPaid + 1;
     return {
       active: phase === 'paid' || phase === 'free',
       phase,
@@ -222,8 +225,10 @@ export async function beginTrial(startDate: string): Promise<void> {
 /** The chip copy for the current phase, or null when there is nothing to show. */
 export function trialLabel(t: Trial): string | null {
   if (!t.active) return null;
-  if (t.phase === 'paid') return `Day ${t.overallDay} of ${t.paidDays} · paid`;
+  // The day number runs across the whole trial (free days first), so both
+  // labels use the 4-day denominator: "Day 1 of 4 · FREE" → "Day 3 of 4 · paid".
   if (t.phase === 'free') return `Day ${t.overallDay} of ${t.totalDays} · FREE 🎉`;
+  if (t.phase === 'paid') return `Day ${t.overallDay} of ${t.totalDays} · paid`;
   return null;
 }
 

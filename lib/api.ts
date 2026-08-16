@@ -403,6 +403,12 @@ export async function settleDeliveredOrders(orders: Order[]): Promise<string[]> 
   const unsettled: string[] = [];
   for (const o of orders) {
     if (o.status !== 'delivered' || o.payment_method === 'cod') continue;
+    // Trial FREE days are FREE: the order shipped with trial_free (total 0 on
+    // rows this app placed), and the server settles its own ledger with a ₹0
+    // gate row. Debiting here would back-charge the exact days the home banner
+    // gives away — the defect that got the app removed once. Skip, always.
+    if (o.trial_free) continue;
+    if (!(o.total > 0)) continue; // nothing owed — never issue a ₹0/negative debit
     try {
       await debitWallet(o.total, 'delivery', o.id);
     } catch {
