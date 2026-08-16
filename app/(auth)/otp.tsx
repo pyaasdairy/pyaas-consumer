@@ -8,18 +8,33 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts } from '../../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap } from '../../components/ui';
 import { enterUp } from '../../lib/motion';
-import { signInWithPhone, saveProfile, DEMO_OTP } from '../../lib/session';
+import { signInWithPhone, saveProfile, getUserId, DEMO_OTP } from '../../lib/session';
 import { api, isBackendConfigured, setTokens } from '../../lib/apiClient';
 import { isMsg91Configured, msg91SendOtp, msg91RetryOtp, msg91VerifyOtp } from '../../lib/msg91';
-import { requestPhoneHint, startSmsRetriever } from '../../lib/nativeConvenience';
+import { requestPhoneHint, startSmsRetriever, hasNativeConvenience } from '../../lib/nativeConvenience';
+import { hasAcceptedDataDisclosure, recordDataDisclosureAccepted, linkDisclosureToAccount } from '../../lib/dataConsent';
+import { DataDisclosure } from '../../components/DataDisclosure';
 import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
 
 /**
- * Phone OTP sign-in, built for a ZERO-TYPING flow: tapping the number field
- * opens the Play-Services number chooser (one tap fills the SIM number and the
- * code sends itself), the incoming OTP SMS is auto-read and fanned into the
- * boxes, and a complete code verifies on its own. Typing stays available as the
- * fallback on devices without the native helpers.
+ * Phone OTP sign-in.
+ *
+ * Low-friction by design, but NOT zero-consent. Google Play removed this app
+ * under the User Data policy for uploading the phone number without a prominent
+ * disclosure, so the order of operations here is deliberate and load-bearing:
+ *
+ *   1. The disclosure is shown and accepted (DataDisclosure) BEFORE anything
+ *      reads or sends the number. Until then the field is not editable.
+ *   2. "Use the number on this phone" launches the Play Services chooser on an
+ *      explicit tap. It FILLS THE FIELD AND STOPS — it does not send.
+ *   3. The member reviews the number and taps "Send verification code". That tap
+ *      is the consent to transmit, and it is the only thing that transmits.
+ *   4. The incoming OTP SMS is still auto-read and auto-verified — that reads a
+ *      message addressed to this app, not the member's inbox, and needs no
+ *      permission.
+ *
+ * Typing remains the always-available fallback where the native helpers are
+ * absent (all of iOS, and Android without Play Services).
  */
 
 // The four landing creatives, in order, for the top slideshow.
@@ -59,20 +74,53 @@ export default function OtpLogin() {
   const digits = () => phone.replace(/\D/g, '').slice(-10);
 
   /**
+   * PROMINENT DISCLOSURE GATE.
+   *
+   * Google Play removed this app for "uploading users' phone number information
+   * without a prominent disclosure". Nothing that reads or transmits the number
+   * may run until the member has seen the disclosure and tapped Agree, so the
+   * gate is checked on mount and again at every entry point below.
+   *
+   * `null` = still reading the stored record. We render the field disabled while
+   * null rather than assuming either answer, so a slow read can never let
+   * collection slip through un-consented.
+   */
+  const [consented, setConsented] = useState<boolean | null>(null);
+  const [discloseOpen, setDiscloseOpen] = useState(false);
+  useEffect(() => {
+    hasAcceptedDataDisclosure().then(setConsented).catch(() => setConsented(false));
+  }, []);
+
+  /** The one place consent is granted — reached only from the Agree button. */
+  const acceptDisclosure = async () => {
+    await recordDataDisclosureAccepted();
+    setConsented(true);
+    setDiscloseOpen(false);
+  };
+
+  /**
    * ZERO-TYPING step 1: the phone-number chooser (the light "Continue with"
-   * picker listing the SIM numbers; no runtime permission) opens when the
-   * member TAPS the number field — never on its own over the landing page.
-   * Picking a number auto-sends the code with no Continue tap. While the
-   * system picker is up, the slideshow collapses (like the keyboard does) so
-   * the Get-started card floats above it and the field is never hidden.
-   * Cancelling ("None of the above") hands over to plain typing and the
-   * picker does not nag again this session. No-ops gracefully when the native
-   * module / Play Services is absent; autoComplete="tel" then offers OS
-   * autofill and typing still works.
+   * picker listing the SIM numbers; no runtime permission).
+   *
+   * TWO THINGS CHANGED HERE FOR PLAY COMPLIANCE, and both are load-bearing:
+   *
+   * 1. It no longer fires from the field's onFocus. Because this Play Services
+   *    API needs no Android permission, the OS shows no consent dialog — so
+   *    merely touching a text field caused the app to read the SIM's number with
+   *    nothing standing in between. It is now behind an explicit, labelled tap.
+   * 2. It NO LONGER AUTO-SENDS. It used to call sendCodeFor(hinted) the instant
+   *    a number was picked, so the number reached our servers (and MSG91) before
+   *    the member pressed anything. THAT was the violation. Picking now fills the
+   *    field and stops; the member reviews the number and presses the send button
+   *    themselves, and that press is the consent to transmit.
+   *
+   * The chooser, the autofill and the SMS auto-read all still work exactly as
+   * before — the mechanism is untouched, only the consent moment is restored.
    */
   const [hintOpen, setHintOpen] = useState(false);
   const hintDone = useRef(false); // resolved once (picked or dismissed) — don't relaunch
   const launchHint = async () => {
+    if (!consented) { setDiscloseOpen(true); return; } // never read the SIM un-consented
     if (hintBusy.current || hintDone.current || digits().length >= 10) return;
     hintBusy.current = true;
     setHintOpen(true);
@@ -82,9 +130,6 @@ export default function OtpLogin() {
       if (hinted && hinted.length >= 10 && digits().length < 10) {
         setPhone(hinted);
         Keyboard.dismiss();
-        // Auto-continue: the picked number is the SIM's own, so send the code
-        // without a second tap on Continue.
-        void sendCodeFor(hinted);
       }
     } finally {
       hintBusy.current = false;
@@ -121,6 +166,11 @@ export default function OtpLogin() {
   // SMS (EXPO_PUBLIC_MSG91_* env), else the offline dev fallback (which shows
   // no hint on screen and is dead the moment either real provider is set).
   async function sendCodeFor(raw: string) {
+    // HARD GATE on the transmit path itself, not just on the UI that reaches it.
+    // This is the exact call Google cited — it posts the number to our server and,
+    // on the MSG91 path, to a third party. Guarding only the button would leave
+    // the violation one refactor away from returning, so the guard lives here.
+    if (!consented) { setDiscloseOpen(true); return; }
     const ds = raw.replace(/\D/g, '').slice(-10);
     if (ds.length < 10) { setError('Enter a valid 10-digit mobile number.'); return; }
     setError(''); setLoading(true);
@@ -197,6 +247,14 @@ export default function OtpLogin() {
         setError('Sign-in is unavailable right now. Please try again later or contact support.');
         return;
       }
+
+      // Re-file the device-scoped disclosure acceptance against the account now
+      // that one exists, so the consent trail is attributable to a member rather
+      // than just a handset. Best-effort: never fail a sign-in over bookkeeping.
+      try {
+        const uid = await getUserId();
+        if (uid) await linkDisclosureToAccount(uid);
+      } catch { /* non-fatal */ }
     } catch (e: any) {
       setError(friendly(e, 'Could not sign you in. Please try again.'));
     } finally { setLoading(false); }
@@ -235,7 +293,10 @@ export default function OtpLogin() {
                 <TextInput
                   value={phone}
                   onChangeText={setPhone}
-                  onFocus={() => { void launchHint(); }}
+                  // Focus no longer launches the SIM chooser. Touching a text field
+                  // is not an affirmative act of consent to read the SIM's number.
+                  onFocus={() => { if (!consented) setDiscloseOpen(true); }}
+                  editable={consented === true}
                   keyboardType="phone-pad"
                   placeholder="Enter mobile number"
                   placeholderTextColor={colors.inkMute}
@@ -249,12 +310,35 @@ export default function OtpLogin() {
                 />
               </View>
 
+              {/* One-tap SIM number, now behind an explicit labelled tap instead of
+                  firing on field focus. Android-only: the chooser is a Play
+                  Services API, so this row simply never renders on iOS. */}
+              {consented && hasNativeConvenience() && !hintDone.current ? (
+                <Tap haptic={false} onPress={() => { void launchHint(); }} style={{ alignSelf: 'flex-start' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="phone-portrait-outline" size={15} color={colors.flameDeep} />
+                    <TextMed color={colors.flameDeep} style={{ fontSize: 13.5 }}>Use the number on this phone</TextMed>
+                  </View>
+                </Tap>
+              ) : null}
+
               {error ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{error}</TextBody> : null}
 
+              {/* The disclosure, in the normal flow and immediately above the action
+                  it describes — not in a menu, not only in the policy (rules 2 & 3).
+                  Kept to the sign-in data only, with no marketing copy (rule 4). */}
+              <TextBody color={colors.inkMute} style={{ fontSize: 12, lineHeight: 17 }}>
+                PYAAS sends your mobile number to our servers and to our SMS provider to text
+                you a one-time code and create your account.
+              </TextBody>
+
+              {/* Labelled with what it actually does. This tap IS the consent to
+                  transmit (consent rules 1 and 2), which is why nothing sends
+                  without it. */}
               <Tap onPress={loading ? undefined : sendCode}>
-                <View style={{ height: 54, borderRadius: radius.md, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+                <View style={{ height: 54, borderRadius: radius.md, backgroundColor: consented === true ? colors.flameDeep : colors.inkMute, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
                   {loading ? <ActivityIndicator color={colors.white} /> : (
-                    <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>Continue</TextSemi>
+                    <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>Send verification code</TextSemi>
                   )}
                 </View>
               </Tap>
@@ -310,6 +394,16 @@ export default function OtpLogin() {
           </>
         )}
       </ScrollView>
+
+      {/* Mounted at the screen root so it covers the whole sign-in surface. The
+          gate is enforced in launchHint() and sendCodeFor() regardless of what is
+          on screen — this modal is how the member grants consent, not the thing
+          that enforces it. */}
+      <DataDisclosure
+        visible={discloseOpen}
+        onAccept={() => { void acceptDisclosure(); }}
+        onDecline={() => setDiscloseOpen(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

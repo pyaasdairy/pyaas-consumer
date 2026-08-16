@@ -109,7 +109,7 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 28,
+      "versionCode": 29,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
