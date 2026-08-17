@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, ScrollView, RefreshControl } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +20,7 @@ import { HeroSlideshow } from '../../components/HeroSlideshow';
 import { CATEGORIES, type Category } from '../../constants/products';
 import { useCatalog, getMergedProducts, refreshCatalog, groupProducts, type GroupedProduct } from '../../lib/catalog';
 import { PromoGate } from '../../components/PromoGate';
+import { OutOfZoneSheet } from '../../components/OutOfZoneSheet';
 import { useServiceability } from '../../lib/serviceability';
 import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
@@ -99,6 +100,21 @@ export default function Shop() {
   const instantClosed = useServiceability((s) => s.instantClosed);
   const instantResumesLabel = useServiceability((s) => s.instantResumesLabel);
   const svcCheck = useServiceability((s) => s.check);
+  // Out-of-zone popout: slides up the moment a picked location resolves
+  // unserviceable — once per location, never re-nagging on every focus. The
+  // sheet offers the one action that opens the shop (switch to the launch
+  // zone); declining leaves the browse-only shop usable behind it.
+  const svcLat = useServiceability((s) => s.lat);
+  const svcLng = useServiceability((s) => s.lng);
+  const [oozOpen, setOozOpen] = useState(false);
+  const oozShownFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (svcServiceable !== false) return;
+    const sig = `${svcLat},${svcLng}`;
+    if (oozShownFor.current === sig) return;
+    oozShownFor.current = sig;
+    setOozOpen(true);
+  }, [svcServiceable, svcLat, svcLng]);
   // If the serving store doesn't run the ⚡ instant lane here, never leave the
   // member stranded on the (now disabled) Instant tab — fall back to Morning.
   useEffect(() => {
@@ -529,6 +545,7 @@ export default function Shop() {
       {/* Persistent promo loop · re-evaluates low-wallet / Become-VIP on every
           Home focus (dismissals reset so a banner re-shows next Home visit). */}
       <PromoGate />
+      <OutOfZoneSheet visible={oozOpen} onClose={() => setOozOpen(false)} />
 
       {/* Animated welcome offer: first signed-in landing only. Claiming hands
           straight into the subscription claim flow below. */}

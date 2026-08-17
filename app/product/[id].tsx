@@ -811,20 +811,11 @@ export default function ProductDetail() {
       <View
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.white, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, borderTopWidth: 1, borderTopColor: colors.line, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: spacing.md, ...shadow.card }}
       >
-        {/* SUBSCRIBE mode: the bar is ONLY the button. The qty-multiplied total
-            confused the recurring price ("₹60?!" for 2 pouches of a ₹30 daily
-            milk), so no price renders here; the sheet's Subscribe button carries
-            the true fee-inclusive per-delivery amount at the moment of
-            commitment. One-time purchases keep the running total (cart maths). */}
-        {product.subscribable && freq !== 'one_time' && !outOfZone && !product.outOfStock && shortfall <= 0 ? null : (
-        <View>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-            <Serif style={{ fontFamily: fonts.serifBlack, fontSize: 24, letterSpacing: -0.5, ...tabular }} color={headlineColor}>{rupee(total)}</Serif>
-            {strike * qty > total ? <TextBody style={{ fontSize: 13, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute}>{rupee(strike * qty)}</TextBody> : null}
-          </View>
-          <TextBody style={{ fontSize: 11 }}>{outOfZone ? (launchNotified ? "We'll text you at launch" : 'Not in your area yet') : product.outOfStock ? (notified ? "You're on the restock list" : 'Out of stock · we can notify you') : 'Charged after delivery'}</TextBody>
-        </View>
-        )}
+        {/* The bar is ONLY the action button — no price, in any mode. The
+            qty-multiplied running total kept reading as a changed unit price
+            ("₹90?!" at qty 3 of a ₹30 pouch). The static price lives on the
+            page under the size selector; the cart and the subscribe sheet show
+            the true totals at the moment of commitment. */}
         <View style={{ flex: 1 }}>
           {outOfZone ? (
             launchNotified ? (
