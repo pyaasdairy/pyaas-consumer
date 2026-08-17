@@ -14,6 +14,7 @@ import { isMsg91Configured, msg91SendOtp, msg91RetryOtp, msg91VerifyOtp } from '
 import { requestPhoneHint, startSmsRetriever, hasNativeConvenience } from '../../lib/nativeConvenience';
 import { hasAcceptedDataDisclosure, recordDataDisclosureAccepted, linkDisclosureToAccount } from '../../lib/dataConsent';
 import { DataDisclosure } from '../../components/DataDisclosure';
+import { ConsentWelcome } from '../../components/ConsentWelcome';
 import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
 
 /**
@@ -257,6 +258,18 @@ export default function OtpLogin() {
     } catch (e: any) {
       setError(friendly(e, 'Could not sign you in. Please try again.'));
     } finally { setLoading(false); }
+  }
+
+  // FIRST-RUN CONSENT, promoted from a modal to its own full-screen moment.
+  // Until acceptance is resolved (null) nothing renders that could collect;
+  // un-consented (false) renders ONLY the consent screen, so the phone field
+  // does not exist yet (disclosure before any collection, by construction).
+  // The hard gates in launchHint()/sendCodeFor() stay as defence in depth.
+  if (consented === null) {
+    return <View style={{ flex: 1, backgroundColor: colors.white }} />;
+  }
+  if (consented === false) {
+    return <ConsentWelcome onAgree={() => { void acceptDisclosure(); }} />;
   }
 
   return (

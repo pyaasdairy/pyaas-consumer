@@ -25,7 +25,10 @@ import Constants from 'expo-constants';
  * recipient, new purpose). A member who accepted v1 has not consented to v2, so
  * a bump re-prompts everyone — which is the point.
  */
-export const DATA_DISCLOSURE_VERSION = '2026-08-16.1';
+// Bumped 2026-08-18: the disclosure moved from a modal to the full-screen
+// ConsentWelcome. Same flows, stronger presentation; everyone re-consents once
+// under the new screen so every stored acceptance refers to what was shown.
+export const DATA_DISCLOSURE_VERSION = '2026-08-18.1';
 
 const ACCEPT_KEY = 'pyaas_data_disclosure_accepted';
 

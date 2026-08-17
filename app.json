@@ -201,10 +201,10 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/pyaas-logo-white-trim.png",
-          "imageWidth": 220,
+          "image": "./assets/splash-blank.png",
+          "imageWidth": 100,
           "resizeMode": "contain",
-          "backgroundColor": "#F36DB6"
+          "backgroundColor": "#F36CB5"
         }
       ],
       "expo-image"

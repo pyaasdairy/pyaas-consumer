@@ -31,8 +31,11 @@ import { insertRow, newId } from './localStore';
 // Override per build with EXPO_PUBLIC_CARE_PHONE.
 // ─────────────────────────────────────────────────────────────────────────────
 export const CARE_PHONE: string = process.env.EXPO_PUBLIC_CARE_PHONE || '+91 96672 60050';
-/** Digits-only `tel:` variant — DERIVED from CARE_PHONE, never duplicated. */
-export const CARE_PHONE_TEL: string = CARE_PHONE.replace(/\D/g, '');
+/** Dialable `tel:` variant — DERIVED from CARE_PHONE, never duplicated. The
+ *  leading + must SURVIVE: stripping it pastes "919667260050" into the dialer,
+ *  which is not a dialable Indian number; "+919667260050" dials anywhere. */
+export const CARE_PHONE_TEL: string =
+  (CARE_PHONE.trim().startsWith('+') ? '+' : '') + CARE_PHONE.replace(/\D/g, '');
 /** False until a real care line is configured — hide call rows, never render a dead one. */
 export const HAS_CARE_PHONE: boolean = CARE_PHONE_TEL.length > 0;
 

@@ -41,8 +41,10 @@ type Props = {
   onDecline: () => void;
 };
 
-/** One disclosed data flow: what we take, why, and who else sees it. */
-const FLOWS: { icon: React.ComponentProps<typeof Ionicons>['name']; what: string; why: string }[] = [
+/** One disclosed data flow: what we take, why, and who else sees it.
+ *  Exported as the single source of truth: the full-screen ConsentWelcome and
+ *  this modal must always disclose the identical set of flows. */
+export const FLOWS: { icon: React.ComponentProps<typeof Ionicons>['name']; what: string; why: string }[] = [
   {
     // Names the SIM read explicitly. This is the exact capability Google
     // enforced on: the Play Services chooser reads the number off the SIM, and

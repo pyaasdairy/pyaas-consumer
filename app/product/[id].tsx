@@ -8,7 +8,6 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Pill, Tap, Stepper, Divider } from '../../components/ui';
-import { Glass } from '../../components/Glass';
 import { Stars } from '../../components/Stars';
 import { StackedProductImage } from '../../components/StackedProductImage';
 import { ShineSweep, GlowPulse } from '../../components/Fx';
@@ -806,11 +805,11 @@ export default function ProductDetail() {
         </View>
       </ScrollView>
 
-      {/* Sticky bottom bar */}
-      <Glass
-        glass="regular"
-        intensity={70}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, borderTopWidth: 1, borderTopColor: colors.line, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: spacing.md }}
+      {/* Sticky bottom bar. SOLID white on purpose: the frosted Glass variant
+          let the sheet/content behind bleed through the price and CTA, which
+          read as a rendering glitch. Money UI is always fully opaque. */}
+      <View
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.white, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, borderTopWidth: 1, borderTopColor: colors.line, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: spacing.md, ...shadow.card }}
       >
         <View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
@@ -850,7 +849,7 @@ export default function ProductDetail() {
             />
           )}
         </View>
-      </Glass>
+      </View>
 
       {showCal ? (
         <StartDatePicker
