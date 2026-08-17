@@ -18,7 +18,8 @@ import { useCatalog, groupProducts, physicalAttributes } from '../../lib/catalog
 import { VariantSelector } from '../../components/VariantSelector';
 import { SubscribeSheet, type SubscribeResult } from '../../components/SubscribeSheet';
 import { createSubscription, NEEDS_EXACT_LOCATION, type Frequency } from '../../lib/subscriptions';
-import { useServiceability } from '../../lib/serviceability';
+import { useServiceability, joinWaitlist } from '../../lib/serviceability';
+import { useAuth } from '../../lib/auth';
 import { placeOrder, listAddresses, deliveryFeeFor } from '../../lib/api';
 import { captureRestockLead } from '../../lib/leads';
 import { isBackendConfigured } from '../../lib/apiClient';
@@ -174,6 +175,25 @@ export default function ProductDetail() {
   const setCartQty = useCart((s) => s.setQty);
   // Monsoon surcharge (₹) the serving store charges on INSTANT orders (0 = none).
   const monsoonRupees = useServiceability((s) => s.monsoonRupees);
+  // Out-of-zone: the member is browsing the catalogue but we don't deliver to
+  // their point yet. Ordering is replaced by a launch-waitlist CTA (and
+  // placeOrder refuses anyway). `false` only on an EXPLICIT out-of-zone result.
+  const outOfZone = useServiceability((s) => s.serviceable) === false;
+  const svcLat = useServiceability((s) => s.lat);
+  const svcLng = useServiceability((s) => s.lng);
+  const svcPincode = useServiceability((s) => s.pincode);
+  const { profile } = useAuth();
+  const [launchNotified, setLaunchNotified] = useState(false);
+  async function notifyLaunch() {
+    if (busy || launchNotified) return;
+    setBusy(true);
+    try {
+      await joinWaitlist({ phone: profile?.phone ?? null, lat: svcLat, lng: svcLng, pincode: svcPincode });
+      setLaunchNotified(true);
+    } catch {
+      setErr("Couldn't reach us just now. Please try again in a moment.");
+    } finally { setBusy(false); }
+  }
 
   // Changing qty/frequency/variant changes the cost, so re-arm the wallet gate.
   useEffect(() => { setShortfall(0); setErr(''); }, [qty, freq, selectedId]);
@@ -797,10 +817,19 @@ export default function ProductDetail() {
             <Serif style={{ fontFamily: fonts.serifBlack, fontSize: 24, letterSpacing: -0.5, ...tabular }} color={headlineColor}>{rupee(total)}</Serif>
             {strike * qty > total ? <TextBody style={{ fontSize: 13, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute}>{rupee(strike * qty)}</TextBody> : null}
           </View>
-          <TextBody style={{ fontSize: 11 }}>{product.outOfStock ? (notified ? "You're on the restock list" : 'Out of stock · we can notify you') : 'Charged after delivery'}</TextBody>
+          <TextBody style={{ fontSize: 11 }}>{outOfZone ? (launchNotified ? "We'll text you at launch" : 'Not in your area yet') : product.outOfStock ? (notified ? "You're on the restock list" : 'Out of stock · we can notify you') : 'Charged after delivery'}</TextBody>
         </View>
         <View style={{ flex: 1 }}>
-          {product.outOfStock ? (
+          {outOfZone ? (
+            launchNotified ? (
+              <View style={{ borderRadius: radius.pill, backgroundColor: colors.wash, borderWidth: 1.5, borderColor: colors.line, height: 54, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.flameDeep} />
+                <TextSemi color={colors.inkMute} style={{ fontSize: 14, letterSpacing: 0.5 }}>ON THE LIST</TextSemi>
+              </View>
+            ) : (
+              <ProceedButton title="Notify me at launch" loading={busy} onPress={notifyLaunch} />
+            )
+          ) : product.outOfStock ? (
             notified ? (
               <View style={{ borderRadius: radius.pill, backgroundColor: colors.wash, borderWidth: 1.5, borderColor: colors.line, height: 54, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="checkmark-circle" size={18} color={colors.flameDeep} />

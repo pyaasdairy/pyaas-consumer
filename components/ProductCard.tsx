@@ -29,7 +29,7 @@ import { discountPct, type Product } from '../constants/products';
  * separate lines. A base card renders as long as ANY variant exists; if the
  * chosen variant is out of stock the Add controls grey out.
  */
-export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD' }: { product: Product; variants?: Product[]; index?: number; ctaLabel?: string }) {
+export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', browseOnly = false }: { product: Product; variants?: Product[]; index?: number; ctaLabel?: string; browseOnly?: boolean }) {
   const router = useRouter();
   const vs = variants && variants.length > 0 ? variants : [product];
   // Open on the first in-stock size (falls back to the first variant).
@@ -108,8 +108,10 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD' }: 
             <Ionicons name={isFav ? 'heart' : 'heart-outline'} size={17} color={isFav ? colors.flameDeep : colors.inkMute} />
           </Tap>
 
-          {/* Quick add-to-cart bag (SELECTED variant) → wallet-first checkout. */}
-          {!selected.outOfStock ? (
+          {/* Quick add-to-cart bag (SELECTED variant) → wallet-first checkout.
+              Hidden in browse-only mode (out-of-zone showcase): the member can
+              look, not order. */}
+          {!browseOnly && !selected.outOfStock ? (
             <Tap
               haptic={false}
               onPress={drop}
@@ -147,8 +149,14 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD' }: 
           </View>
 
           {/* Full-width "Add" button, pinned to the card's bottom edge so every
-              CTA in the grid sits on the same line. */}
-          {selected.outOfStock ? (
+              CTA in the grid sits on the same line. In browse-only mode it's a
+              soft, non-ordering marker instead. */}
+          {browseOnly ? (
+            <View style={{ marginTop: 'auto', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: radius.pill, backgroundColor: colors.flameSoft }}>
+              <Ionicons name="time-outline" size={14} color={colors.flameDeep} />
+              <TextSemi color={colors.flameDeep} style={{ fontSize: 12.5, letterSpacing: 0.3 }}>AT LAUNCH</TextSemi>
+            </View>
+          ) : selected.outOfStock ? (
             <View style={{ marginTop: 'auto', alignItems: 'center', justifyContent: 'center', height: 38, borderRadius: radius.pill, backgroundColor: colors.wash, borderWidth: 1.5, borderColor: colors.line }}>
               <TextSemi color={colors.inkMute} style={{ fontSize: 13, letterSpacing: 0.5 }}>OUT OF STOCK</TextSemi>
             </View>
