@@ -29,8 +29,10 @@ import {
   type CheckoutResult,
 } from '../lib/razorpay';
 
-// Country-Delight-style recharge grid. Custom lets the member type any amount.
-const PACKS = [100, 250, 500, 1000];
+// The recharge grid. ₹500 leads (and is preselected); the ₹100 floor stays
+// available through the custom field but is never advertised — only a typed
+// amount below it gets told.
+const PACKS = [500, 1000, 5000, 10000];
 
 /** Snap a required minimum up to a clean amount the grid can preselect. */
 function snapUp(min: number): number {
@@ -84,10 +86,12 @@ export default function Recharge() {
   const refresh = useWallet((s) => s.refresh);
 
   const initial = useMemo(() => {
+    // ₹500 is ALWAYS the opening selection (the funnel), raised only when the
+    // caller's explicit amount or a large shortfall needs more. Members can
+    // still tap a smaller path by typing a custom amount (₹100 floor).
     const a = Math.round(Number(params.amount) || 0);
-    if (a > 0) return Math.max(a, min || 0);
-    if (min > 0) return snapUp(min);
-    return 500;
+    const want = Math.max(a, min > 0 ? snapUp(min) : 0);
+    return Math.max(PREPAID_TARGET, want);
   }, [params.amount, min]);
 
   // `amount` is the string the custom field holds; `selected` is the committed value.
@@ -324,7 +328,7 @@ export default function Recharge() {
             <Serif color={colors.white} style={{ fontFamily: fonts.serifBlack, fontSize: 38, letterSpacing: -0.5, ...tabular }}>{rupee(balance)}</Serif>
             {min > 0 ? (
               <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 12.5, marginTop: 4 }}>
-                Add at least {rupee(min)} {reason || 'to continue'}.
+                Add money {reason || 'to continue'}.
               </TextBody>
             ) : null}
             <ShineSweep dur={3200} travel={420} bandWidth={90} delay={500} />

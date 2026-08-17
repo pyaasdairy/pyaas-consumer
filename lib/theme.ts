@@ -107,6 +107,22 @@ export const type = {
 export const tabular = { fontVariant: ['tabular-nums'] as ['tabular-nums'] };
 
 /** Format paise-free rupee amounts the Indian way (e.g. 1,099). */
+/** Join display fragments, dropping empties and case/space-insensitive
+ *  repeats — "500ml" + "500 ml" renders once, never "500ml · 500 ml". */
+export function joinDistinct(parts: Array<string | null | undefined>, sep = ' · '): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of parts) {
+    const v = (raw ?? '').trim();
+    if (!v) continue;
+    const key = v.toLowerCase().replace(/\s+/g, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out.join(sep);
+}
+
 export function rupee(n: number): string {
   return '₹' + Math.round(n).toLocaleString('en-IN');
 }

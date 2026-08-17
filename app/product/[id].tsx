@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
-import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../lib/theme';
+import { colors, radius, spacing, shadow, rupee, fonts, tabular, joinDistinct } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Pill, Tap, Stepper, Divider } from '../../components/ui';
 import { Stars } from '../../components/Stars';
 import { StackedProductImage } from '../../components/StackedProductImage';
@@ -487,7 +487,7 @@ export default function ProductDetail() {
             </View>
 
             <Serif style={{ fontSize: 28, lineHeight: 32 }}>{product.name}</Serif>
-            <TextMed color={colors.inkSoft} style={{ fontSize: 14.5 }}>{product.variant} · {product.unit}</TextMed>
+            <TextMed color={colors.inkSoft} style={{ fontSize: 14.5 }}>{joinDistinct([product.variant, product.unit])}</TextMed>
 
             {/* Size selector — picking a size re-drives price / image / stock / CTA
                 for this same screen, no reload. Hidden for single-variant bases. */}
@@ -500,7 +500,17 @@ export default function ProductDetail() {
             {/* Physical attributes (Volume / Weight), driven by the selected variant. */}
             {physicalAttributes(product).length ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
-                {physicalAttributes(product).map((a) => (
+                {physicalAttributes(product)
+                  // Never repeat the size the page already states (subtitle +
+                  // size selector): an attribute whose value is just the
+                  // variant/unit again ("Volume 500 ml" under "500 ml") adds
+                  // nothing and reads as a glitch.
+                  .filter((a) => {
+                    const norm = (v: string | null | undefined) => (v ?? '').toLowerCase().replace(/\s+/g, '');
+                    const k = norm(a.value);
+                    return k !== norm(product.variant) && k !== norm(product.unit);
+                  })
+                  .map((a) => (
                   <View key={a.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.wash, borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 6 }}>
                     <TextBody style={{ fontSize: 12 }} color={colors.inkMute}>{a.label}</TextBody>
                     <TextSemi style={{ fontSize: 12.5 }} color={colors.ink}>{a.value}</TextSemi>
