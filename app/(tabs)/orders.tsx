@@ -7,6 +7,7 @@ import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-
 import { colors, radius, spacing, shadow, rupee, tabular } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../components/ui';
 import { listOrders, type Order } from '../../lib/api';
+import { useDeliveryMode } from '../../lib/deliveryMode';
 import { STATUS_LABEL, statusColor } from '../../lib/orderStatus';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
 import { useTabBarClearance } from '../../components/PyaasTabBar';
@@ -31,6 +32,16 @@ export default function Orders() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
+  // LANE PURITY (founder's rule): the Instant world lists only instant
+  // orders, the Morning world only morning ones — never a mixed list. The
+  // same truly-instant test as the home strip: lane says instant AND the
+  // window has the 'by HH:MM' shape (legacy rows carried lane defaults).
+  const mode = useDeliveryMode();
+  const instant = mode === 'instant';
+  const isInstantOrder = useCallback(
+    (o: Order) => o.lane === 'instant' && (o.delivery_window ?? '').toLowerCase().startsWith('by '),
+    [],
+  );
   const load = useCallback(async () => {
     try {
       const data = await listOrders();
@@ -67,7 +78,7 @@ export default function Orders() {
         <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 40 }} />
       ) : (
         <Animated.FlatList
-          data={orders}
+          data={orders.filter((o) => (instant ? isInstantOrder(o) : !isInstantOrder(o)))}
           keyExtractor={(o) => o.id}
           itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(200)}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: tabClearance, gap: spacing.sm }}

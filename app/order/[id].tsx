@@ -9,7 +9,7 @@ import { colors, radius, spacing, shadow, rupee, fonts } from '../../lib/theme';
 import { SkeletonBlock } from '../../components/Skeleton';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Divider } from '../../components/ui';
 import { RiderTrackMap } from '../../components/RiderTrackMap';
-import { getOrder, cancelOrder, markOrderPaid, reviewOrder, type Order } from '../../lib/api';
+import { getOrder, markOrderPaid, reviewOrder, type Order } from '../../lib/api';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { checkoutHtml, isRazorpayConfigured, RAZORPAY_KEY_ID } from '../../lib/razorpay';
 import { STATUS_LABEL, STATUS_SUB } from '../../lib/orderStatus';
@@ -104,7 +104,7 @@ export default function OrderTracking() {
   const trackScrollY = useSharedValue(0);
   const onTrackScroll = useAnimatedScrollHandler((e) => { trackScrollY.value = e.contentOffset.y; });
   const mapCollapseStyle = useAnimatedStyle(() => ({
-    height: interpolate(trackScrollY.value, [0, 240], [340, 128], Extrapolation.CLAMP),
+    height: interpolate(trackScrollY.value, [0, 120], [340, 120], Extrapolation.CLAMP),
   }));
 
   const load = useCallback(async () => {
@@ -233,20 +233,6 @@ export default function OrderTracking() {
   // the live rider). Standard orders keep the rider-only map.
   const isInstant =
     order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
-  const canCancel = order.status === 'placed' || order.status === 'confirmed';
-
-  async function onCancel() {
-    setBusy(true);
-    try {
-      await cancelOrder(order!.id);
-      await load();
-    } catch (e: any) {
-      setError(e?.message ?? 'Could not cancel.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
 
   // LIVE INSTANT = the quick-commerce tracking layout: the map is the hero,
   // the arrival card overlaps it, and the countdown leads. Everything else
@@ -286,7 +272,7 @@ export default function OrderTracking() {
         </View>
       )}
 
-      <Animated.ScrollView onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingBottom: liveInstant ? 420 : spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
         {/* THE ARRIVAL CARD — overlaps the map hero; the countdown leads. */}
         {liveInstant ? (
           <Animated.View entering={FadeIn.duration(420)} style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 6, ...shadow.card }}>
@@ -494,10 +480,6 @@ export default function OrderTracking() {
         </View>
 
         {error ? <TextBody color={colors.flameDeep} style={{ fontSize: 13 }}>{error}</TextBody> : null}
-
-        {/* Actions */}
-        <Button title="View bill" variant="outline" onPress={() => router.push(`/invoice/${order.id}`)} />
-        {canCancel ? <Button title="Cancel order" variant="outline" onPress={onCancel} loading={busy} /> : null}
 
       </Animated.ScrollView>
 
