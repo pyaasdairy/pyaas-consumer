@@ -10,7 +10,7 @@ import { haptics } from '../lib/haptics';
 import MapPicker from './MapPicker';
 import { addAddress, type Address } from '../lib/api';
 import { setAddressCoords, type Coords } from '../lib/location';
-import { geoAddress, useUserLocation } from '../lib/userLocation';
+import { geoAddress, placeLabelFromCoords, useUserLocation } from '../lib/userLocation';
 import { getServiceability, joinWaitlist } from '../lib/serviceability';
 import { useAuth } from '../lib/auth';
 
@@ -152,6 +152,12 @@ export function AddressCaptureSheet({
     const g = await geoAddress(c);
     if (g.city) setCity(g.city);
     if (g.pincode) setPincode(g.pincode);
+    // Area prefills from the pin's own neighbourhood label; stays editable and
+    // never overwrites something the member already typed.
+    try {
+      const label = await placeLabelFromCoords(c);
+      if (label) setLocality((cur) => cur || label);
+    } catch { /* best-effort */ }
   }
 
   function onMapClose() {

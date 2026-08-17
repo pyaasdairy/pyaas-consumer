@@ -7,7 +7,7 @@ import {
   subscriptionDueOn,
   reconcileWithBalance,
 } from './subscriptions';
-import { listAddresses, placeOrder, deliveryFeeFor } from './api';
+import { listAddresses, placeOrder } from './api';
 import { isPlusActive } from './vip';
 import { getTrial, NO_TRIAL } from './trial';
 import { FREE_PACK_PRODUCT_ID } from './freePack';
@@ -136,7 +136,9 @@ async function runSweep(): Promise<number> {
     const isTrialSku = sub.product_id === FREE_PACK_PRODUCT_ID;
     const freeDelivery = trialFreeToday && isTrialSku;
     const subtotal = sub.unit_price * sub.qty;
-    const cost = freeDelivery ? 0 : subtotal + deliveryFeeFor(subtotal, isPlus);
+    // Subscriptions bill at MRP — no delivery fee (matches the Subscribe
+    // button's quote; the fee remains a one-time-order concept only).
+    const cost = freeDelivery ? 0 : subtotal;
     if (balance < cost) { skippedShort = true; continue; }
     try {
       const orderId = await placeOrder({

@@ -9,7 +9,6 @@ import { haptics } from '../lib/haptics';
 import { createSubscription, minWalletToStart, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
 import { attachTrialAfterSubscribe, offerCompleted, offerQualified, OFFER_QUALIFY_RECHARGE, OFFER_SUGGESTED_RECHARGE, FREE_PACK_PRODUCT_ID } from '../lib/freePack';
 import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
-import { deliveryFeeFor } from '../lib/api';
 import { hasExactLocation } from '../lib/location';
 import { useUserLocation } from '../lib/userLocation';
 import { AddressCaptureSheet } from './AddressCapture';
@@ -21,6 +20,10 @@ import { useWallet } from '../store/wallet';
 import type { Product } from '../constants/products';
 
 const WD_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// The member's last qty/freq per product survives the sheet closing — closing
+// the popout must never forget what they dialled in.
+const lastChoice = new Map<string, { qty: number; freq: Frequency }>();
 
 const FREQS: { key: Frequency; label: string; sub: string }[] = [
   { key: 'daily', label: 'Daily', sub: 'Every morning' },
@@ -83,8 +86,9 @@ export function SubscribeSheet({
   // Reset to the caller's seed each time it opens.
   useEffect(() => {
     if (visible) {
-      setFreq(initialFreq === 'one_time' || initialFreq === 'custom' ? 'daily' : initialFreq);
-      setQty(Math.max(1, initialQty));
+      const remembered = lastChoice.get(product.id);
+      setFreq(remembered?.freq ?? (initialFreq === 'one_time' || initialFreq === 'custom' ? 'daily' : initialFreq));
+      setQty(remembered?.qty ?? Math.max(1, initialQty));
       // Honour the caller's picked start date (from the product page) instead of
       // silently resetting it to tomorrow; fall back to tomorrow when none/invalid.
       setStartDate(initialStartDate && initialStartDate >= tomorrowISO() ? initialStartDate : tomorrowISO());
@@ -92,13 +96,19 @@ export function SubscribeSheet({
     }
   }, [visible, initialFreq, initialQty, initialStartDate]);
 
+  useEffect(() => {
+    if (visible) lastChoice.set(product.id, { qty, freq });
+  }, [visible, product.id, qty, freq]);
+
   // The subscription sweep charges subtotal + delivery fee per delivery
   // (lib/subscriptionSweep.ts). Quoting the items alone understated a daily ₹35
   // subscription by ₹15 EVERY day — the member confirmed ₹35 and was debited ₹50.
   // Quote what we actually take, and show the fee on its own line below.
   const itemsSubtotal = unitPrice * qty;
-  const perDeliveryFee = deliveryFeeFor(itemsSubtotal);
-  const perDelivery = itemsSubtotal + perDeliveryFee;
+  // SUBSCRIPTIONS SELL AT MRP (founder, 18 Aug): no delivery fee on the daily
+  // milk — the button price IS the sticker price. lib/subscriptionSweep charges
+  // the same subtotal-only figure, so quote and debit stay identical.
+  const perDelivery = itemsSubtotal;
 
   const hasPin = (a: Address) => {
     const g = a as unknown as { lat?: number | null; lng?: number | null };
