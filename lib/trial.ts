@@ -6,26 +6,28 @@ import { isBackendConfigured, api } from './apiClient';
 import { todayISO, parseISO } from './dates';
 
 /**
- * THE "2 FREE + 2" TRIAL. Applies to PYAAS Taaza toned milk only.
+ * THE "PAY 2 + 2 FREE" TRIAL.
  *
  * A new member's daily-milk subscription opens with a four-day trial:
- *   • days 1–2  → FREE   (nothing is debited; the sweep still places the daily
+ *   • days 1–2  → PAID   (the wallet is debited as normal)
+ *   • days 3–4  → FREE   (nothing is debited; the sweep still places the daily
  *                         order so milk arrives, and the order is marked
  *                         trial_free so it reads FREE on the orders list)
- *   • days 3–4  → PAID   (₹29/day, the wallet is debited as normal)
- * after which the subscription simply continues at ₹29/day until paused.
+ * after which the subscription simply continues at full price until paused.
+ * Paid days come FIRST by design: the pitch everywhere is "pay for 2 days,
+ * 2 days on us", and this matches the deployed backend's ledger.
  *
- * WHY THE ORDER FLIPPED. This used to charge days 1–2 and free days 3–4, while
- * assets/banners/home-banner-1.png told every member on the home screen "Your
- * first 2 days are completely free" and banner 2 spelled out "Day 1 FREE /
- * Day 2 FREE". Charging for days the first screen of the app gives away is a
- * false claim (Play's Deceptive Behavior policy), and the app was removed from
- * Play once already. The marketing was the promise; the code now keeps it.
+ * MARKETING MUST MATCH THIS ORDER. Any banner art or copy that promises the
+ * FIRST days free while the code charges them is a false money claim (Play's
+ * Deceptive Behavior policy took the app down once already). home-banner-1
+ * ("Your first 2 days are completely free") and banner 2 ("Day 1 FREE / Day 2
+ * FREE") are both pulled from rotation for exactly this reason; reissue art
+ * before restoring them.
  *
- * There was a second, quieter defect: nothing local ever honoured the free days
- * at all. lib/subscriptionSweep.ts debited the full cost on every delivery and
- * never read the phase — only a live backend was going to zero it. The sweep now
- * checks the phase itself, so the free days are free in both modes.
+ * There was a second, quieter defect once: nothing local ever honoured the free
+ * days at all. lib/subscriptionSweep.ts debited the full cost on every delivery
+ * and never read the phase — only a live backend was going to zero it. The sweep
+ * now checks the phase itself, so the free days are free in both modes.
  *
  * The trial is OWNED BY THE BACKEND once it is live (GET /consumer/trial/me);
  * this module normalises that response and, in the local/no-backend demo,
@@ -71,16 +73,13 @@ function daysBetween(fromISO: string, toISO: string): number {
 }
 
 /**
- * FREE DAYS COME FIRST. Days 1..freeDays are free, then the balance is paid.
- * The argument order is kept as (paidDays, totalDays) so every existing caller
- * still compiles; freeDays is derived, because totalDays - paidDays is exactly
- * the free window.
+ * PAID DAYS COME FIRST. Days 1..paidDays are billed, then the balance is free.
+ * "First come the paid deliveries and then the free ones."
  */
 function phaseFor(overallDay: number, paidDays: number, totalDays: number): TrialPhase {
   if (overallDay < 1) return 'none';
-  const freeDays = Math.max(0, totalDays - paidDays);
-  if (overallDay <= freeDays) return 'free';
-  if (overallDay <= totalDays) return 'paid';
+  if (overallDay <= paidDays) return 'paid';
+  if (overallDay <= totalDays) return 'free';
   return 'completed';
 }
 
@@ -125,10 +124,9 @@ type RawTrial = {
 function mapBackendPhase(raw: string | undefined, deliveredPaid: number, deliveredFree: number, paidDays: number, totalDays: number): TrialPhase {
   if (raw === 'done' || raw === 'completed') return 'completed';
   if (raw === 'paid' || raw === 'free' || raw === 'none') return raw as TrialPhase;
-  // Count fallback mirrors the backend ledger: the FREE window opens the trial.
-  const freeDays = Math.max(0, totalDays - paidDays);
-  if (deliveredFree < freeDays) return 'free';
-  if (deliveredFree + deliveredPaid < totalDays) return 'paid';
+  // Count fallback mirrors the backend ledger: the PAID window opens the trial.
+  if (deliveredPaid < paidDays) return 'paid';
+  if (deliveredPaid + deliveredFree < totalDays) return 'free';
   return 'completed';
 }
 
@@ -145,12 +143,12 @@ function normalizeRemote(r: RawTrial): Trial {
     const freeDays = deliveredFree + (r.freeRemaining ?? Math.max(0, TRIAL_FREE_DAYS - deliveredFree));
     const totalDays = paidDays + freeDays;
     const phase = mapBackendPhase(r.phase, deliveredPaid, deliveredFree, paidDays, totalDays);
-    // The day you're currently ON. FREE days come first: within the free window,
-    // deliveredFree+1; within the paid window, past all free days + deliveredPaid+1;
+    // The day you're currently ON. PAID days come first: within the paid window,
+    // deliveredPaid+1; within the free window, past all paid days + deliveredFree+1;
     // else 0 (done/none).
     let overallDay = 0;
-    if (phase === 'free') overallDay = deliveredFree + 1;
-    else if (phase === 'paid') overallDay = freeDays + deliveredPaid + 1;
+    if (phase === 'paid') overallDay = deliveredPaid + 1;
+    else if (phase === 'free') overallDay = paidDays + deliveredFree + 1;
     return {
       active: phase === 'paid' || phase === 'free',
       phase,
@@ -225,8 +223,8 @@ export async function beginTrial(startDate: string): Promise<void> {
 /** The chip copy for the current phase, or null when there is nothing to show. */
 export function trialLabel(t: Trial): string | null {
   if (!t.active) return null;
-  // The day number runs across the whole trial (free days first), so both
-  // labels use the 4-day denominator: "Day 1 of 4 · FREE" → "Day 3 of 4 · paid".
+  // The day number runs across the whole trial (paid days first), so both
+  // labels use the 4-day denominator: "Day 1 of 4 · paid" → "Day 3 of 4 · FREE".
   if (t.phase === 'free') return `Day ${t.overallDay} of ${t.totalDays} · FREE`;
   if (t.phase === 'paid') return `Day ${t.overallDay} of ${t.totalDays} · paid`;
   return null;

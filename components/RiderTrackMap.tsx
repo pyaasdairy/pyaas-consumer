@@ -241,11 +241,16 @@ export function RiderTrackMap({
         </View>
       )}
       {/* Status ribbon over the map. "last reported" is the honest caveat: the pin
-          is where the rider app last said they were, not a live extrapolation. */}
-      <View pointerEvents="none" style={{ position: 'absolute', left: 10, top: 10, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 7, ...shadow.soft }}>
-        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#31B057' : colors.gold }} />
-        <TextSemi style={{ fontSize: 12 }}>{hasFix ? (active ? 'Rider on the way' : 'Rider assigned') : 'From your PYAAS store'}</TextSemi>
-        {hasFix ? <TextBody style={{ fontSize: 11 }} color={colors.inkSoft}>· last reported</TextBody> : null}
+          is where the rider app last said they were, not a live extrapolation.
+          HERO mode pins it to the map's BOTTOM edge: the hero map is full-bleed
+          to the very top of the screen, so `top` would bury the ribbon under the
+          status bar / notch (it read as a half-hidden sliver) and collide with
+          the floating back button. The bottom edge stays on screen through the
+          whole collapse, so the ribbon is always fully visible. */}
+      <View pointerEvents="none" style={{ position: 'absolute', left: hero ? 14 : 10, ...(hero ? { bottom: 14 } : { top: 10 }), flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: radius.pill, paddingHorizontal: hero ? 14 : 12, paddingVertical: hero ? 9 : 7, ...shadow.soft }}>
+        <View style={{ width: hero ? 9 : 8, height: hero ? 9 : 8, borderRadius: 5, backgroundColor: active ? '#31B057' : colors.gold }} />
+        <TextSemi style={{ fontSize: hero ? 13.5 : 12 }}>{hasFix ? (active ? 'Rider on the way' : 'Rider assigned') : 'From your PYAAS store'}</TextSemi>
+        {hasFix ? <TextBody style={{ fontSize: hero ? 12 : 11 }} color={colors.inkSoft}>· last reported</TextBody> : null}
       </View>
     </View>
   );

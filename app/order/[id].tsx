@@ -97,14 +97,16 @@ export default function OrderTracking() {
     }
   }, [order, storeOrigin]);
 
-  // COLLAPSING MAP: scrolling the sheet shrinks the map (340 → 128) so the
-  // text slides up instead of being cut behind it; scrolling back to the top
-  // restores the full map. Driven on the UI thread from the scroll offset, so
-  // it tracks the finger with no lag and reverses symmetrically.
+  // COLLAPSING MAP: the first phase of scroll is absorbed ENTIRELY by the map
+  // (340 → 120 over exactly 220px of scroll, 1:1), so the arrival card holds
+  // its place on screen while the map shrinks and its headline is never cut
+  // mid-collapse; only after the map hits its floor does content scroll off
+  // normally. Driven on the UI thread from the scroll offset, so it tracks the
+  // finger with no lag and reverses symmetrically.
   const trackScrollY = useSharedValue(0);
   const onTrackScroll = useAnimatedScrollHandler((e) => { trackScrollY.value = e.contentOffset.y; });
   const mapCollapseStyle = useAnimatedStyle(() => ({
-    height: interpolate(trackScrollY.value, [0, 120], [340, 120], Extrapolation.CLAMP),
+    height: interpolate(trackScrollY.value, [0, 220], [340, 120], Extrapolation.CLAMP),
   }));
 
   const load = useCallback(async () => {

@@ -111,13 +111,26 @@ export default function Shop() {
   //      LOCATION permanently (persisted on disk, not per-session), and only a
   //      DIFFERENT unserviceable location may show it again.
   //   3. Never over another popup.
+  //   4. Only on a verdict computed FOR the chosen location. The store keeps
+  //      the PREVIOUS point's verdict while a fresh check is in flight, so a
+  //      member switching from an out-of-zone pin to Lucknow briefly reads
+  //      `serviceable: false` next to the new coords — popping on that stale
+  //      pair showed "unserviceable" in a fully serviceable area.
   const userLoc = useUserLocation((s) => s.loc);
+  const svcLoading = useServiceability((s) => s.loading);
+  const svcLat = useServiceability((s) => s.lat);
+  const svcLng = useServiceability((s) => s.lng);
   const [oozOpen, setOozOpen] = useState(false);
   usePopupSlot(oozOpen);
   const oozSig = useRef<string | null>(null);
   useEffect(() => {
     if (!userLoc) return;                    // rule 1: no explicit location yet
     if (svcServiceable !== false) return;    // serviceable — nothing to say
+    if (svcLoading) return;                  // rule 4: verdict still resolving
+    if (svcLat == null || svcLng == null) return;
+    if (Math.abs(svcLat - userLoc.coords.lat) > 0.001 || Math.abs(svcLng - userLoc.coords.lng) > 0.001) {
+      return;                                // rule 4: verdict is for a different point
+    }
     const sig = `pyaas_ooz_ack:${userLoc.coords.lat.toFixed(3)},${userLoc.coords.lng.toFixed(3)}`;
     let on = true;
     AsyncStorage.getItem(sig).then((ack) => {
@@ -127,7 +140,7 @@ export default function Shop() {
       setOozOpen(true);
     }).catch(() => { /* storage unreadable — stay quiet */ });
     return () => { on = false; };
-  }, [svcServiceable, userLoc]);
+  }, [svcServiceable, svcLoading, svcLat, svcLng, userLoc]);
   const dismissOoz = useCallback(() => {
     setOozOpen(false);
     // The member clicked it — acknowledged for this location, permanently.
@@ -463,7 +476,7 @@ export default function Shop() {
                     </View>
                     <TextSemi color={colors.ink} style={{ fontSize: 15 }} numberOfLines={1}>Start your subscription</TextSemi>
                     <TextBody color={colors.inkMute} style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
-                      Pay {TRIAL_PAID_DAYS} days, get {TRIAL_FREE_DAYS} FREE · 500 ml every morning · pause anytime
+                      {TRIAL_FREE_DAYS} days worth of free milk · 1 L every morning · pause anytime
                     </TextBody>
                   </View>
                   <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>

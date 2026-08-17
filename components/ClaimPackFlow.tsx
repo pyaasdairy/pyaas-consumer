@@ -8,6 +8,12 @@ import { colors, radius, spacing, shadow, fonts, rupee } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import { shouldShowFreePack, snoozeFreePack, freePackEligible, OFFER_QUALIFY_RECHARGE, FREE_PACK_DAILY_PRICE, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
+import { minSubscriptionQty } from '../lib/subscriptionFloor';
+import { getProduct } from '../constants/products';
+
+// The offer plan delivers the 1 L/day floor (2 × 500 ml), so every ₹/day the
+// flow quotes is the floor quantity times the pack price — never the lone pack.
+const OFFER_DAY_QTY = minSubscriptionQty(getProduct(FREE_PACK_PRODUCT_ID) ?? { id: FREE_PACK_PRODUCT_ID, category: 'milk', variant: '500ml' });
 import { listSubscriptions } from '../lib/subscriptions';
 import { useAuth } from '../lib/auth';
 import { useUserLocation } from '../lib/userLocation';
@@ -33,7 +39,8 @@ type Step = 'intro' | 'signin' | 'ineligible' | 'subscribed';
  * auto-starts a daily taaza-500ml subscription from tomorrow and opens the
  * four-day trial: days 1–2 are PAID (₹29/day from the wallet), days 3–4 are
  * FREE, and from then on it CONTINUES at ₹29/day until paused/cancelled. The
- * sheet copy says exactly that: the first 2 days are free, no surprise charges. Walks
+ * sheet sells ONLY the hook ("2 days worth of free milk") with no sequence and
+ * no mechanics; the confirm step still shows the real charge. Walks
  * the user from an intro card -> delivery address (typed + an EXACT map pin) -> a
  * confirmation box -> a delivery-window promise. Fires on first launch
  * (ClaimPackGate), from the home claim card and when a member starts their
@@ -149,23 +156,20 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   ? 'Trial already completed'
                   : step === 'signin'
                     ? 'Sign in to start'
-                    : `First ${TRIAL_FREE_DAYS} days FREE`}
+                    : `${TRIAL_FREE_DAYS} days worth of free milk`}
             </Serif>
             <TextBody color={colors.inkSoft} style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
               {step === 'ineligible' || step === 'signin' || step === 'subscribed'
-                ? 'PYAAS Gold Full Cream · 500 ml fresh every morning'
-                : 'PYAAS Gold Full Cream · 500 ml daily'}
+                ? 'PYAAS Gold Full Cream · 1 L fresh every morning'
+                : 'PYAAS Gold Full Cream · 1 L daily'}
             </TextBody>
           </View>
 
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {step === 'intro' ? (
+              /* Packet + the one line in the header — nothing else to read.
+                 The confirm step still shows the real charge. */
               <Animated.View entering={FadeIn.duration(240)} style={{ gap: spacing.md }}>
-                {/* ONE line, founder's words. The mechanics live in the flow
-                    itself (the confirm step still shows the real charge). */}
-                <Serif style={{ fontSize: 20, textAlign: 'center', lineHeight: 27 }}>
-                  Pay 2 days, 2 days worth of milk is on us.
-                </Serif>
                 {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5, textAlign: 'center' }}>{err}</TextBody> : null}
                 <PrimaryButton title={busy ? 'Checking…' : 'Start my subscription'} loading={busy} onPress={() => { void startFromIntro(); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
@@ -198,7 +202,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                   <Ionicons name="gift-outline" size={30} color={colors.flameDeep} />
                 </View>
                 <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  {blockReason} You can still get PYAAS Gold every morning. A daily subscription is just {rupee(FREE_PACK_DAILY_PRICE)}/day, pause anytime.
+                  {blockReason} You can still get PYAAS Gold every morning. A daily 1 L subscription is {rupee(FREE_PACK_DAILY_PRICE * OFFER_DAY_QTY)}/day, pause anytime.
                 </TextBody>
                 <PrimaryButton title="Start shopping" onPress={startShopping} />
               </Animated.View>

@@ -3,7 +3,7 @@ import { api, isBackendConfigured } from './apiClient';
 import { getRows } from './localStore';
 import { getUserId } from './session';
 import { DEFAULT_REGION } from './location';
-import { currentUserLoc } from './userLocation';
+import { currentUserLoc, CITIES } from './userLocation';
 import type { Address } from './api';
 
 /**
@@ -139,9 +139,24 @@ function outOfZone(distanceKm: number): Serviceability {
 export async function getServiceability(point: CheckPoint): Promise<Serviceability> {
   // Launch geofence FIRST. A resolved point outside the service area is out of
   // zone, full stop — before any backend call or fail-open default.
+  //
+  // EXCEPT a coarse CITY pick of the city the service area itself sits in.
+  // "Lucknow" from the city list resolves to the metro centroid (~11 km from
+  // the fence center) — street-level truth the member never gave. Failing the
+  // 6 km fence on that centroid told members in the pilot city "we're
+  // unserviceable here". A centroid within HOME_CITY_KM of the fence center is
+  // the home city: serviceable for browsing; the exact address decides at
+  // order time. Any farther centroid (Barabanki ~24 km, Kanpur ~70 km) still
+  // fails the fence as before.
   if (point.lat != null && point.lng != null) {
+    const HOME_CITY_KM = 15;
+    const cityPick = CITIES.find(
+      (c) => Math.abs(c.coords.lat - point.lat!) < 1e-4 && Math.abs(c.coords.lng - point.lng!) < 1e-4,
+    );
+    const isHomeCityPick =
+      !!cityPick && distanceKmBetween(SERVICE_AREA.lat, SERVICE_AREA.lng, cityPick.coords.lat, cityPick.coords.lng) <= HOME_CITY_KM;
     const d = distanceKmBetween(SERVICE_AREA.lat, SERVICE_AREA.lng, point.lat, point.lng);
-    if (d > SERVICE_AREA.radiusKm) return outOfZone(d);
+    if (d > SERVICE_AREA.radiusKm && !isHomeCityPick) return outOfZone(d);
   }
   if (!isBackendConfigured()) {
     return { serviceable: true, standard: true, instant: true, storeName: `PYAAS ${SERVICE_AREA.label}`, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null };

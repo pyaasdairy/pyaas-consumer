@@ -58,13 +58,13 @@ export function WelcomeOffer({ visible, onClaim, onClose }: { visible: boolean; 
 
           <Animated.View entering={FadeIn.duration(420).delay(480)} style={{ borderWidth: 1.5, borderColor: colors.flameSoft, borderStyle: 'dashed', borderRadius: radius.lg, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, backgroundColor: colors.white }}>
             <TextSemi style={{ fontSize: 16.5, textAlign: 'center', lineHeight: 24 }} color={colors.ink}>
-              Your first {TRIAL_FREE_DAYS} days are FREE,{'\n'}then just {TRIAL_PAID_DAYS} paid days to finish
+              {TRIAL_FREE_DAYS} days worth of milk,{'\n'}on us, FREE
             </TextSemi>
           </Animated.View>
 
           <Animated.View entering={FadeIn.duration(420).delay(600)} style={{ alignItems: 'center' }}>
             <Image source={FREE_PACK_IMG} style={{ width: 150, height: 150 }} contentFit="contain" />
-            <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkSoft}>PYAAS Gold Full Cream · 500 ml fresh every morning</TextBody>
+            <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkSoft}>PYAAS Gold Full Cream · 1 L fresh every morning</TextBody>
           </Animated.View>
 
           <Animated.View entering={FadeInDown.duration(420).delay(720)} style={{ alignSelf: 'stretch', gap: 10, marginTop: spacing.sm }}>

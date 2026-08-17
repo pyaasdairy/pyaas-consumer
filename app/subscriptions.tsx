@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, ScrollView, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -11,6 +11,7 @@ import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackBut
 import { SkeletonBlock } from '../components/Skeleton';
 import { ConfirmSheet, type ConfirmConfig } from '../components/ConfirmSheet';
 import { resolveProduct, getMergedProducts } from '../lib/catalog';
+import { minSubscriptionQty } from '../lib/subscriptionFloor';
 import { listSubscriptions, createSubscription, setSubscriptionStatus, updateSubscription, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, NEEDS_EXACT_LOCATION, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
@@ -41,7 +42,11 @@ export default function Subscriptions() {
   // (store-manager-controlled) — no bundled/hardcoded list.
   const subscribable = getMergedProducts().filter((p) => p.subscribable && !p.outOfStock);
   const [pid, setPid] = useState(subscribable[0]?.id ?? '');
-  const [qty, setQty] = useState(1);
+  // ABSOLUTE FLOOR (founder): milk subscribes at 1 L a day minimum — qty
+  // follows the picked product and can never be stepped below its floor.
+  const formMinQty = minSubscriptionQty(subscribable.find((p) => p.id === pid));
+  const [qty, setQty] = useState(formMinQty);
+  useEffect(() => { setQty((q) => Math.max(formMinQty, q)); }, [formMinQty]);
   const [freq, setFreq] = useState<Frequency>('daily');
 
   const load = useCallback(async () => {
@@ -194,7 +199,7 @@ export default function Subscriptions() {
             <Ionicons name="infinite-outline" size={40} color={colors.inkMute} />
             <TextBody>No active subscription.</TextBody>
             <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkMute}>
-              Start your subscription on the home screen: your first 2 days are free, then it continues daily from your wallet.
+              Start your subscription on the home screen: 2 days worth of milk on us, delivered fresh every morning.
             </TextBody>
             <Button title="Start your subscription" small style={{ marginTop: 4, paddingHorizontal: 24 }} onPress={() => router.replace('/(tabs)')} />
           </View>
@@ -287,7 +292,7 @@ export default function Subscriptions() {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <TextMed style={{ fontSize: 14 }}>Quantity</TextMed>
-              <Stepper qty={qty} onChange={(n) => setQty(Math.max(1, n))} min={1} />
+              <Stepper qty={qty} onChange={(n) => setQty(Math.max(formMinQty, n))} min={formMinQty} />
             </View>
             <Button title="Start subscription" loading={busy} onPress={create} />
             <Button title="Cancel" variant="ghost" onPress={() => setAdding(false)} />
@@ -337,8 +342,11 @@ export default function Subscriptions() {
             onConfirm: () => { setConfirm(null); void doCancel(); },
           });
         };
+        // The 1 L/day milk floor binds edits too — a live plan can't be
+        // stepped below its product's minimum quantity.
+        const detailMinQty = minSubscriptionQty(resolveProduct(d.product_id));
         const editQty = async (n: number) => {
-          if (n < 1 || n > 10 || n === d.qty) return;
+          if (n < detailMinQty || n > 10 || n === d.qty) return;
           setBusy(true); setErr('');
           try { await updateSubscription(d.id, { qty: n }); await load(); setDetailSub({ ...d, qty: n }); }
           catch (e: any) { setErr(e?.message ?? 'Could not update the plan.'); }
@@ -389,7 +397,7 @@ export default function Subscriptions() {
                 <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <TextSemi style={{ fontSize: 14 }}>Quantity</TextSemi>
-                    <Stepper qty={d.qty} onChange={editQty} min={1} max={10} />
+                    <Stepper qty={d.qty} onChange={editQty} min={detailMinQty} max={10} />
                   </View>
                   <View style={{ gap: 8 }}>
                     <TextSemi style={{ fontSize: 14 }}>Frequency</TextSemi>

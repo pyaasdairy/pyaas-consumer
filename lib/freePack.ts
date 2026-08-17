@@ -9,6 +9,7 @@ import { createSubscription, listSubscriptions, reactivateSubscription } from '.
 import { tomorrowISO } from './dates';
 import { getProduct } from '../constants/products';
 import { beginTrial, getTrial, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
+import { minSubscriptionQty } from './subscriptionFloor';
 
 // Re-exported so screens can pull the trial shape from one funnel-facing module.
 export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
@@ -276,7 +277,9 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
       subscriptionId = await createSubscription({
         productId: FREE_PACK_PRODUCT_ID,
         variant: sku?.variant ?? '500ml Pouch',
-        qty: 1,
+        // The 1 L/day milk floor is absolute — the claim funnel's auto-created
+        // plan subscribes 2 × 500 ml, same as every hand-built subscription.
+        qty: minSubscriptionQty(sku ?? { id: FREE_PACK_PRODUCT_ID, category: 'milk', variant: '500ml' }),
         unitPrice: FREE_PACK_DAILY_PRICE,
         frequency: 'daily',
         startDate: tomorrowISO(),
@@ -345,15 +348,12 @@ export async function freePackShowEligible(phone: string): Promise<boolean> {
   }
   const seen = await getSingle<{ seen: boolean }>(SEEN_TABLE, uid);
   if (seen?.seen) return false;
-  // Only an ACTIVE FULL-CREAM (offer SKU) subscription pauses the sell — its
-  // live progress card owns the home screen while the paid days tick down. A
-  // PAUSED or CANCELLED full-cream sub (day(s) still owed), or any OTHER SKU's
-  // subscription (e.g. Taaza toned), keeps the 2+2 funnel visible: the offer
-  // applies only to SUBSCRIBING the full cream, so those members are still
-  // candidates until their 2 paid days are complete.
+  // ANY live subscription (active or paused, any SKU) kills the sell: a member
+  // who has already set a subscription must never be pitched the 2+2 popup
+  // again. Only a fully CANCELLED member becomes a prospect once more.
   try {
     const subs = await listSubscriptions();
-    if (subs.some((s) => s.product_id === FREE_PACK_PRODUCT_ID && s.status === 'active' && s.frequency !== 'one_time')) {
+    if (subs.some((s) => (s.status === 'active' || s.status === 'paused') && s.frequency !== 'one_time')) {
       return false;
     }
   } catch { /* offline — fall through to the claim gate */ }

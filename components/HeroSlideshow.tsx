@@ -13,13 +13,14 @@ import { colors, radius, spacing, shadow } from '../lib/theme';
 // slides stay for everyone, always (the claim popup/card have their own
 // eligibility; the carousel is the billboard).
 //
-// banner-2 is PULLED from rotation until the artwork is reissued: it still
-// claims a "7-DAY SUBSCRIPTION" and "free milk packets on us" for days 3-7,
-// neither of which the product does (the real offer is 2 free days then
-// Rs 29/day until paused). Showing it is a false money claim (Play Deceptive
-// Behavior) — do not re-add the file, add the corrected art.
+// banner-1 and banner-2 are PULLED from rotation until the artwork is reissued:
+// banner-1 claims "Your first 2 days are completely free" and banner-2 claims a
+// "7-DAY SUBSCRIPTION" with "free milk packets on us" for days 3-7. The real
+// offer is 2 PAID days first, then 2 free, then Rs 29/day until paused; art
+// that promises the first days free while the app charges them is a false
+// money claim (Play Deceptive Behavior — the takedown reason). Do not re-add
+// the files, add corrected 2+2 art.
 const SLIDES: ReturnType<typeof require>[] = [
-  require('../assets/banners/home-banner-1.png'),
   require('../assets/banners/home-banner-3.png'),
 ];
 
@@ -50,7 +51,7 @@ export function HeroSlideshow() {
     resumeTimer.current = setTimeout(() => { heldRef.current = false; }, 2500);
   };
   useEffect(() => {
-    if (cardW <= 0) return;
+    if (cardW <= 0 || SLIDES.length < 2) return;
     const t = setInterval(() => {
       if (heldRef.current) return; // reading — hold the slide
       const next = (idxRef.current + 1) % SLIDES.length;
@@ -82,15 +83,15 @@ export function HeroSlideshow() {
         />
       </View>
 
-      {/* pagination pills */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+      {/* pagination pills (pointless for a single slide) */}
+      {SLIDES.length > 1 ? <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
         {SLIDES.map((_, i) => (
           <View
             key={i}
             style={{ width: i === idx ? 18 : 6, height: 6, borderRadius: 3, backgroundColor: i === idx ? colors.flameDeep : colors.line }}
           />
         ))}
-      </View>
+      </View> : null}
     </View>
   );
 }

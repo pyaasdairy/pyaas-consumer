@@ -19,6 +19,7 @@ import { currentMandate, createMandate } from '../lib/autopay';
 import { tomorrowISO, addDaysISO, parseISO } from '../lib/dates';
 import { useWallet } from '../store/wallet';
 import type { Product } from '../constants/products';
+import { minSubscriptionQty } from '../lib/subscriptionFloor';
 
 const WD_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -69,8 +70,12 @@ export function SubscribeSheet({
   const router = useRouter();
   const refreshWallet = useWallet((s) => s.refresh);
   const setFromPin = useUserLocation((s) => s.setFromPin);
+  // ABSOLUTE FLOOR (founder): a milk subscription is at least 1 L a day — a
+  // 500 ml pack never subscribes below qty 2. Every set/clamp below goes
+  // through minQty so no path (seed, sticky memory, stepper) can dip under it.
+  const minQty = minSubscriptionQty(product);
   const [freq, setFreq] = useState<Frequency>(initialFreq);
-  const [qty, setQty] = useState(initialQty);
+  const [qty, setQty] = useState(Math.max(minQty, initialQty));
   const [startDate, setStartDate] = useState(tomorrowISO());
   const [busy, setBusy] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -91,7 +96,7 @@ export function SubscribeSheet({
     if (visible) {
       const remembered = lastChoice.get(product.id);
       setFreq(remembered?.freq ?? (initialFreq === 'one_time' || initialFreq === 'custom' ? 'daily' : initialFreq));
-      setQty(remembered?.qty ?? Math.max(1, initialQty));
+      setQty(Math.max(minQty, remembered?.qty ?? initialQty));
       // Honour the caller's picked start date (from the product page) instead of
       // silently resetting it to tomorrow; fall back to tomorrow when none/invalid.
       setStartDate(initialStartDate && initialStartDate >= tomorrowISO() ? initialStartDate : tomorrowISO());
@@ -258,7 +263,7 @@ export function SubscribeSheet({
 
   return (
     <>
-    <Modal visible={visible && !mapOpen && !addrPickOpen} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible && !mapOpen} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' }}>
         {/* Tap-out backdrop */}
         <Tap haptic={false} onPress={onClose} style={{ flex: 1 }} scaleTo={1}>
@@ -302,9 +307,14 @@ export function SubscribeSheet({
             </View>
 
             {/* Quantity */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <TextSemi style={{ fontSize: 14.5 }}>Quantity</TextSemi>
-              <Stepper qty={qty} onChange={(n) => setQty(Math.max(1, n))} min={1} max={10} />
+            <View style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <TextSemi style={{ fontSize: 14.5 }}>Quantity</TextSemi>
+                <Stepper qty={qty} onChange={(n) => setQty(Math.max(minQty, n))} min={minQty} max={10} />
+              </View>
+              {minQty > 1 ? (
+                <TextBody color={colors.inkMute} style={{ fontSize: 11.5, textAlign: 'right' }}>Minimum 1 L a day</TextBody>
+              ) : null}
             </View>
 
             {/* Start date · tomorrow default, 7-day chips */}
@@ -375,14 +385,19 @@ export function SubscribeSheet({
             </TextBody>
           </ScrollView>
         </Animated.View>
+
+        {/* EMBEDDED overlay, not a second Modal: iOS silently drops a modal
+            presented while this one is mid-dismissal, which is exactly what a
+            sibling <Modal> did here — the Change button read as dead. */}
+        <AddressPicker
+          embedded
+          visible={addrPickOpen}
+          onClose={() => setAddrPickOpen(false)}
+          onPicked={(a) => { setAddrPickOpen(false); setDeliverTo(a); }}
+          onAddNew={() => { setAddrPickOpen(false); setMapOpen(true); }}
+        />
       </View>
     </Modal>
-    <AddressPicker
-      visible={addrPickOpen}
-      onClose={() => setAddrPickOpen(false)}
-      onPicked={(a) => { setAddrPickOpen(false); setDeliverTo(a); }}
-      onAddNew={() => { setAddrPickOpen(false); setMapOpen(true); }}
-    />
     <AddressCaptureSheet visible={mapOpen} onClose={() => setMapOpen(false)} onSaved={onAddressSaved} />
     </>
   );
