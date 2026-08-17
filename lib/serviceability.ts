@@ -94,6 +94,16 @@ const SERVICE_AREA = {
   label: process.env.EXPO_PUBLIC_SERVICE_AREA_LABEL || 'Sushant Golf City, Lucknow',
 };
 
+/** The serving dark store: Chandra Panorama, Sushant Golf City, Lucknow.
+ *  Drawn as the trip origin on every tracking map (store icon → the member's
+ *  door), before and after a rider reports positions. Coordinates are
+ *  env-overridable so the exact rooftop can be corrected without a release. */
+export const STORE_POINT = {
+  lat: Number(process.env.EXPO_PUBLIC_STORE_LAT) || 26.7738,
+  lng: Number(process.env.EXPO_PUBLIC_STORE_LNG) || 81.0089,
+  label: process.env.EXPO_PUBLIC_STORE_LABEL || 'PYAAS Store · Chandra Panorama',
+};
+
 /** Great-circle distance (km) between two coordinates. */
 function distanceKmBetween(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371;

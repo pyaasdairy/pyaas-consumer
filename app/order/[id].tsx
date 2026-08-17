@@ -12,8 +12,9 @@ import { RiderTrackMap } from '../../components/RiderTrackMap';
 import { getOrder, cancelOrder, markOrderPaid, reviewOrder, type Order } from '../../lib/api';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { checkoutHtml, isRazorpayConfigured, RAZORPAY_KEY_ID } from '../../lib/razorpay';
-import { STATUS_FLOW, STATUS_LABEL, STATUS_SUB, statusIndex } from '../../lib/orderStatus';
+import { STATUS_LABEL, STATUS_SUB } from '../../lib/orderStatus';
 import { isBackendConfigured } from '../../lib/apiClient';
+import { STORE_POINT } from '../../lib/serviceability';
 import { debitWallet } from '../../lib/walletApi';
 import { useWallet } from '../../store/wallet';
 import { haptics } from '../../lib/haptics';
@@ -215,7 +216,6 @@ export default function OrderTracking() {
     );
   }
 
-  const idx = statusIndex(order.status);
   const cancelled = order.status === 'cancelled';
   const delivered = order.status === 'delivered';
   const hasRider = !!order.riders && (order.status === 'assigned' || order.status === 'out_for_delivery' || delivered);
@@ -254,8 +254,9 @@ export default function OrderTracking() {
             riderLat={order.riders?.current_lat}
             riderLng={order.riders?.current_lng}
             active={order.status === 'out_for_delivery'}
-            originLat={storeOrigin?.lat}
-            originLng={storeOrigin?.lng}
+            originLat={storeOrigin?.lat ?? STORE_POINT.lat}
+            originLng={storeOrigin?.lng ?? STORE_POINT.lng}
+            originLabel={STORE_POINT.label}
             height={340}
             hero
           />
@@ -318,65 +319,13 @@ export default function OrderTracking() {
           </Tap>
         ) : null}
 
-        {/* Status hero */}
-        <View
-          style={{
-            borderRadius: radius.xl,
-            padding: spacing.lg,
-            gap: 6,
-            backgroundColor: cancelled ? colors.cream : delivered ? '#2A1018' : colors.flameDeep,
-            borderWidth: cancelled ? 1 : 0,
-            borderColor: colors.line,
-            ...shadow.soft,
-          }}
-        >
-          <TextSemi color={cancelled ? colors.inkSoft : colors.white} style={{ fontSize: 13, opacity: 0.9 }}>
-            {delivered ? 'Delivered' : cancelled ? 'Cancelled' : 'Arriving soon'}
-          </TextSemi>
-          <Serif color={cancelled ? colors.ink : colors.white} style={{ fontSize: 28, lineHeight: 32 }}>
-            {STATUS_LABEL[order.status]}
-          </Serif>
-          <TextBody color={cancelled ? colors.inkSoft : 'rgba(255,255,255,0.92)'} style={{ fontSize: 14 }}>
-            {STATUS_SUB[order.status]}
-          </TextBody>
-        </View>
 
-        {/* ETA hero — instant-lane orders get a big "Arriving by HH:MM · ⚡
-            Instant" card (server etaAt when on the wire, else placed + 20 min);
-            morning orders keep the window strip. Hidden when nothing parses. */}
+        {/* Morning ETA strip. (The live-instant state is owned entirely by the
+            arrival card over the map hero above — nothing renders here.) */}
         {(() => {
           const isInstantLane =
             order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
-          if (isInstantLane && !delivered && !cancelled) {
-            const eta = instantEtaOf(order);
-            return eta ? (
-              <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.flameDeep, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 14, ...shadow.card }}>
-                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="flash" size={24} color={colors.flameDeep} />
-                </View>
-                <View style={{ flex: 1, gap: 3 }}>
-                  <Serif style={{ fontSize: 22, lineHeight: 26 }} color={colors.flameDeep}>Arriving by {formatClock(eta)}</Serif>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Pill label="INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
-                    {/* flex:1 so the caption wraps INSIDE the card instead of leaking off the edge */}
-                    <TextBody style={{ fontSize: 12, flex: 1 }} color={colors.inkSoft}>
-                      {(order.status === 'assigned' || order.status === 'out_for_delivery'
-                        ? 'On the way'
-                        : 'Your order is being packed') +
-                        ' · ' +
-                        (order.paid
-                          ? 'Paid online, nothing to pay at the door'
-                          : order.payment_method === 'cod'
-                            ? 'Pay on delivery: UPI or cash'
-                            : order.payment_method === 'wallet' || order.payment_method === 'prepaid'
-                              ? 'Paid from your PYAAS Wallet, nothing to pay at the door'
-                              : '~20 min express delivery')}
-                    </TextBody>
-                  </View>
-                </View>
-              </View>
-            ) : null;
-          }
+          if (isInstantLane && !delivered && !cancelled) return null;
           const eta =
             !delivered && !cancelled && order.delivery_window
               ? formatWindowEnd(order.delivery_window)
@@ -442,8 +391,9 @@ export default function OrderTracking() {
                 riderLat={order.riders.current_lat}
                 riderLng={order.riders.current_lng}
                 active={order.status === 'out_for_delivery'}
-                originLat={isInstant ? storeOrigin?.lat : undefined}
-                originLng={isInstant ? storeOrigin?.lng : undefined}
+                originLat={storeOrigin?.lat ?? STORE_POINT.lat}
+                originLng={storeOrigin?.lng ?? STORE_POINT.lng}
+                originLabel={STORE_POINT.label}
               />
             ) : null}
             <View style={{ padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -480,45 +430,6 @@ export default function OrderTracking() {
               <TextSemi style={{ fontSize: 14.5 }}>Delivered · see photo</TextSemi>
             </View>
             <Image source={{ uri: order.proof_photo_url }} style={{ width: '100%', height: 200 }} contentFit="cover" />
-          </View>
-        ) : null}
-
-        {/* Timeline */}
-        {!cancelled ? (
-          <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, ...shadow.soft }}>
-            <TextSemi style={{ fontSize: 16, marginBottom: spacing.md }}>Progress</TextSemi>
-            {STATUS_FLOW.map((s, i) => {
-              const done = i <= idx;
-              const current = i === idx;
-              const last = i === STATUS_FLOW.length - 1;
-              return (
-                <View key={s} style={{ flexDirection: 'row', gap: 12 }}>
-                  <View style={{ alignItems: 'center' }}>
-                    <View
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 11,
-                        backgroundColor: done ? colors.flameDeep : colors.white,
-                        borderWidth: 2,
-                        borderColor: done ? colors.flameDeep : colors.line,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      {done ? <Ionicons name="checkmark" size={13} color={colors.white} /> : null}
-                    </View>
-                    {!last ? <View style={{ width: 2, flex: 1, minHeight: 26, backgroundColor: i < idx ? colors.flameDeep : colors.line }} /> : null}
-                  </View>
-                  <View style={{ paddingBottom: last ? 0 : spacing.sm, flex: 1 }}>
-                    <TextMed color={done ? colors.ink : colors.inkMute} style={{ fontSize: 14.5, fontFamily: current ? undefined : undefined }}>
-                      {STATUS_LABEL[s]}
-                    </TextMed>
-                    {current ? <TextBody style={{ fontSize: 12.5 }}>{STATUS_SUB[s]}</TextBody> : null}
-                  </View>
-                </View>
-              );
-            })}
           </View>
         ) : null}
 

@@ -21,8 +21,9 @@ import { LEAFLET_CSS, LEAFLET_JS } from './leafletAssets';
  * rider had never reported a position at all. With no reported position there is
  * now no map, just the honest "not shared yet" state.
  */
-function mapHtml(home: Coords | null, rider: Coords, origin: Coords | null, originLabel: string): string {
+function mapHtml(home: Coords | null, rider: Coords | null, origin: Coords | null, originLabel: string): string {
   const homeJs = home ? `[${home.lat},${home.lng}]` : 'null';
+  const riderJs = rider ? `[${rider.lat},${rider.lng}]` : 'null';
   const originJs = origin ? `[${origin.lat},${origin.lng}]` : 'null';
   const originLabelJs = JSON.stringify(originLabel);
   return `<!DOCTYPE html><html><head>
@@ -56,7 +57,7 @@ function mapHtml(home: Coords | null, rider: Coords, origin: Coords | null, orig
   else try {
   var home=${homeJs};
   var origin=${originJs};
-  var start=[${rider.lat},${rider.lng}];
+  var start=${riderJs};
   var map=L.map('map',{zoomControl:false,attributionControl:true,dragging:true});
   var tiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
   // Tiles are the only network dependency left, and Leaflet renders a perfectly
@@ -68,12 +69,13 @@ function mapHtml(home: Coords | null, rider: Coords, origin: Coords | null, orig
   var homeIcon=L.divIcon({html:'<div class="pin home"></div>',className:'',iconSize:[30,30],iconAnchor:[15,15]});
   var storeIcon=L.divIcon({html:'<div class="pin store"></div><div class="tag">'+${originLabelJs}+'</div>',className:'',iconSize:[30,30],iconAnchor:[15,15]});
   var riderIcon=L.divIcon({html:'<div style="position:relative"><div class="pulse"></div><div class="pin rider"></div></div>',className:'',iconSize:[30,30],iconAnchor:[15,15]});
-  var rider=L.marker(start,{icon:riderIcon}).addTo(map);
+  var rider=start?L.marker(start,{icon:riderIcon}).addTo(map):null;
   var route=null;   // the LIVE remaining leg: rider → home, redrawn as the rider moves
   var plan=null;    // the FULL planned trip: store → home, static and faint
-  var bounds=[start];
-  // Store pin + planned store→you line: drawn only when we actually know the
-  // pickup point. For an instant order the trip origin IS the serving store.
+  var bounds=[];
+  if(start)bounds.push(start);
+  // Store pin + planned store→you line. The map renders from the moment the
+  // order exists: store → home first, the rider joining live when they report.
   if(origin){
     L.marker(origin,{icon:storeIcon}).addTo(map);
     bounds.push(origin);
@@ -83,14 +85,21 @@ function mapHtml(home: Coords | null, rider: Coords, origin: Coords | null, orig
   if(home){
     L.marker(home,{icon:homeIcon}).addTo(map);
     bounds.push(home);
-    route=L.polyline([start,home],{color:'#F36CB5',weight:3,dashArray:'6 8',opacity:0.85}).addTo(map);
+    if(start) route=L.polyline([start,home],{color:'#F36CB5',weight:3,dashArray:'6 8',opacity:0.85}).addTo(map);
   }
   if(bounds.length>1){ map.fitBounds(L.latLngBounds(bounds).pad(0.32)); }
-  else { map.setView(start,15); }
-  // The marker moves ONLY when the rider app reports a new position. No timer,
-  // no interpolation — a still marker means the rider has not moved (or has not
+  else if(bounds.length===1){ map.setView(bounds[0],15); }
+  else { map.setView([26.7715,81.0176],13); }
+  // The marker moves ONLY when the rider app reports a new position (created on
+  // the first report if the map opened before the trip). No timer, no
+  // interpolation — a still marker means the rider has not moved (or has not
   // reported), and that is the truth we owe the member.
   window.__setRider=function(la,ln){
+    if(!rider){
+      rider=L.marker([la,ln],{icon:riderIcon}).addTo(map);
+      if(home) route=L.polyline([[la,ln],home],{color:'#F36CB5',weight:3,dashArray:'6 8',opacity:0.85}).addTo(map);
+      return;
+    }
     rider.setLatLng([la,ln]);
     if(route) route.setLatLngs([[la,ln],home]);
   };
@@ -142,16 +151,17 @@ export function RiderTrackMap({
   const [failed, setFailed] = useState(false);
   const readyRef = useRef(false);
 
+  const hasOriginPt = originLat != null && originLng != null;
   useEffect(() => {
-    // Only look up the member's coordinate when there is a rider position to plot
-    // it against — no map, no reason to touch location at all.
-    if (!hasFix) return;
+    // Look up the member's coordinate whenever there is ANYTHING to plot it
+    // against (a rider fix or the store origin) — no map, no location touch.
+    if (!hasFix && !hasOriginPt) return;
     let on = true;
     getUserCoords()
       .then((c) => { if (on) setHome(isDefaultRegion(c) ? null : c); })
       .catch(() => { if (on) setHome(null); });
     return () => { on = false; };
-  }, [hasFix]);
+  }, [hasFix, hasOriginPt]);
 
   // Live re-anchor: whenever polled rider coords change after load, hand the new
   // point to the map without reloading the WebView.
@@ -160,20 +170,21 @@ export function RiderTrackMap({
     webRef.current?.injectJavaScript(`window.__setRider && window.__setRider(${riderLat},${riderLng}); true;`);
   }, [riderLat, riderLng]);
 
-  const hasOrigin = originLat != null && originLng != null;
+  const hasOrigin = hasOriginPt;
   const html = useMemo(
-    () => (hasFix && home !== undefined
-      ? mapHtml(home, { lat: riderLat!, lng: riderLng! }, hasOrigin ? { lat: originLat!, lng: originLng! } : null, originLabel)
+    () => ((hasFix || hasOrigin) && home !== undefined
+      ? mapHtml(home, hasFix ? { lat: riderLat!, lng: riderLng! } : null, hasOrigin ? { lat: originLat!, lng: originLng! } : null, originLabel)
       : null),
-    // The HTML is frozen once built; later rider fixes ride injectJavaScript, not
-    // a reload. The origin is fixed for the trip, so it too is baked in once.
+    // The HTML is frozen once built; later rider fixes ride injectJavaScript
+    // (which CREATES the marker on the first report if the map opened before
+    // the trip). The origin is fixed for the trip, so it too is baked in once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasFix, home !== undefined, hasOrigin],
+    [hasFix || hasOrigin, home !== undefined],
   );
 
-  // No reported position → say that, plainly. Anything else here would be a
-  // rider we invented.
-  if (!hasFix) {
+  // Nothing at all to plot (no origin AND no rider) → say that, plainly.
+  // Anything else here would be a rider we invented.
+  if (!hasFix && !hasOrigin) {
     return (
       <View style={{ backgroundColor: colors.cream, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, alignItems: 'center', justifyContent: 'center', gap: 6, height: hero ? height : undefined }}>
         <Ionicons name="navigate-circle-outline" size={26} color={colors.inkMute} />
@@ -233,8 +244,8 @@ export function RiderTrackMap({
           is where the rider app last said they were, not a live extrapolation. */}
       <View pointerEvents="none" style={{ position: 'absolute', left: 10, top: 10, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 7, ...shadow.soft }}>
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#31B057' : colors.gold }} />
-        <TextSemi style={{ fontSize: 12 }}>{active ? 'Rider on the way' : 'Rider assigned'}</TextSemi>
-        <TextBody style={{ fontSize: 11 }} color={colors.inkSoft}>· last reported</TextBody>
+        <TextSemi style={{ fontSize: 12 }}>{hasFix ? (active ? 'Rider on the way' : 'Rider assigned') : 'From your PYAAS store'}</TextSemi>
+        {hasFix ? <TextBody style={{ fontSize: 11 }} color={colors.inkSoft}>· last reported</TextBody> : null}
       </View>
     </View>
   );
