@@ -82,9 +82,7 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
           {/* Top-left badge · boxed to stop short of the heart button (right: 44 =
               32px heart + 6px inset + 6px gap) so a long label can never overlap it. */}
           <View pointerEvents="none" style={{ position: 'absolute', top: 8, left: 8, right: 44, flexDirection: 'row' }}>
-            {browseOnly ? (
-              <Pill small label="COMING SOON" bg={colors.ink} color={colors.white} />
-            ) : selected.outOfStock ? (
+            {browseOnly || selected.outOfStock ? (
               <Pill small label="OUT OF STOCK" bg={colors.ink} color={colors.white} />
             ) : selected.mostOrdered ? (
               <Pill small label="MOST ORDERED" bg={colors.flameDeep} color={colors.white} />
@@ -154,12 +152,7 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
           {/* Full-width "Add" button, pinned to the card's bottom edge so every
               CTA in the grid sits on the same line. In browse-only mode it's a
               soft, non-ordering marker instead. */}
-          {browseOnly ? (
-            <View style={{ marginTop: 'auto', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: radius.pill, backgroundColor: colors.flameSoft }}>
-              <Ionicons name="time-outline" size={14} color={colors.flameDeep} />
-              <TextSemi color={colors.flameDeep} style={{ fontSize: 12.5, letterSpacing: 0.3 }}>COMING SOON</TextSemi>
-            </View>
-          ) : selected.outOfStock ? (
+          {browseOnly || selected.outOfStock ? (
             <View style={{ marginTop: 'auto', alignItems: 'center', justifyContent: 'center', height: 38, borderRadius: radius.pill, backgroundColor: colors.wash, borderWidth: 1.5, borderColor: colors.line }}>
               <TextSemi color={colors.inkMute} style={{ fontSize: 13, letterSpacing: 0.5 }}>OUT OF STOCK</TextSemi>
             </View>
