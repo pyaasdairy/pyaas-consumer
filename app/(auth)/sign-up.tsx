@@ -96,6 +96,17 @@ export default function SignUp() {
               </View>
             </Tap>
 
+            {/* The consent record written on submit is clickwrap: it is only
+                honest because this agreement line sits beside the button that
+                triggers it, with the documents one tap away (they are public
+                routes, readable before an account exists). */}
+            <TextBody color={colors.inkMute} style={{ fontSize: 12.5, textAlign: 'center', marginTop: 12 }}>
+              By creating an account you agree to our{' '}
+              <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }} onPress={() => router.push('/terms')}>Terms</TextMed>
+              {' '}and{' '}
+              <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }} onPress={() => router.push('/privacy-policy')}>Privacy Policy</TextMed>.
+            </TextBody>
+
             <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: spacing.xl, gap: 6 }}>
               <TextBody style={{ fontSize: 14 }}>Already have an account?</TextBody>
               <Tap haptic={false} onPress={() => { Haptics.selectionAsync(); router.replace('/(auth)/sign-in'); }}>

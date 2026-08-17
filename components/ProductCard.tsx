@@ -12,7 +12,6 @@ import { haptics } from '../lib/haptics';
 import { useFavorites } from '../store/favorites';
 import { useCart, activeLane } from '../store/cart';
 import { useDeliveryMode } from '../lib/deliveryMode';
-import { captureRestockLead } from '../lib/leads';
 import { defaultVariant } from '../lib/catalog';
 import { discountPct, type Product } from '../constants/products';
 
@@ -97,11 +96,12 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD' }: 
             haptic={false}
             onPress={() => {
               haptics.press();
-              const adding = !isFav;
+              // Favouriting stays on-device. Restock interest (name + phone to
+              // the backend) is only ever sent from the product page's explicit
+              // "Notify me" button — a heart tap must never upload personal
+              // data the member didn't knowingly send (Play User Data policy,
+              // the exact category the app was removed under).
               toggleFav(selected.id);
-              // Hearting an out-of-stock SKU = a restock request: the member's
-              // data lands on the backend right there (fire-and-forget).
-              if (adding && selected.outOfStock) void captureRestockLead(selected);
             }}
             style={{ position: 'absolute', top: 6, right: 6, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', ...shadow.soft }}
           >
