@@ -56,7 +56,7 @@ export function AddressCaptureSheet({
   const [receiver, setReceiver] = useState('');
   const [city, setCity] = useState('');
   const [pincode, setPincode] = useState('');
-  const [ringBell, setRingBell] = useState(true);
+  const [ringBell, setRingBell] = useState(false); // hang-outside default
   const [callBefore, setCallBefore] = useState(false);
   const [instructions, setInstructions] = useState('');
   const [doorPhoto, setDoorPhoto] = useState<string | null>(null);
@@ -125,9 +125,12 @@ export function AddressCaptureSheet({
     setGeoLabel(null);
     setFlat('');
     setLocality('');
-    setCity('');
+    // City prefills from where the member already told us they are (the
+    // located/picked city — Lucknow across the launch zone); the pin's
+    // reverse-geocode refines it, and the field stays editable.
+    setCity(useUserLocation.getState().loc?.city ?? 'Lucknow');
     setPincode('');
-    setRingBell(true);
+    setRingBell(false); // default drop style: hang it outside (no bell)
     setCallBefore(false);
     setInstructions('');
     setDoorPhoto(null);
@@ -332,7 +335,24 @@ export function AddressCaptureSheet({
 
           {/* Delivery preferences */}
           <TextSemi style={{ fontSize: 14.5, marginTop: 2 }}>Delivery preferences</TextSemi>
-          <ToggleRow icon="notifications-outline" label="Ring the bell" on={ringBell} onToggle={() => { haptics.select(); setRingBell((v) => !v); }} />
+          {/* Drop style — an explicit choice, HANG IT OUTSIDE preselected (the
+              5 AM default that wakes nobody). ring_bell stays the saved field. */}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {([
+              { label: 'Hang it outside', icon: 'bag-handle-outline', bell: false },
+              { label: 'Ring the bell', icon: 'notifications-outline', bell: true },
+            ] as const).map((o) => {
+              const active = ringBell === o.bell;
+              return (
+                <Tap key={o.label} haptic={false} onPress={() => { haptics.select(); setRingBell(o.bell); }} style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: radius.md, borderWidth: 1.5, borderColor: active ? colors.flameDeep : colors.line, backgroundColor: active ? colors.flameSoft : colors.white }}>
+                    <Ionicons name={o.icon} size={15} color={active ? colors.flameDeep : colors.inkMute} />
+                    <TextMed style={{ fontSize: 12.5 }} color={active ? colors.flameDeep : colors.ink}>{o.label}</TextMed>
+                  </View>
+                </Tap>
+              );
+            })}
+          </View>
           <ToggleRow icon="call-outline" label="Call before delivery" on={callBefore} onToggle={() => { haptics.select(); setCallBefore((v) => !v); }} />
 
           {/* Sample door photo — helps the rider find the exact door. */}

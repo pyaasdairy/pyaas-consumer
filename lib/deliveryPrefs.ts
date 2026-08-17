@@ -11,7 +11,9 @@ export type DeliveryPrefs = {
 
 export const DEFAULT_PREFS: DeliveryPrefs = {
   call_before: false,
-  ring_bell: true,
+  // Default drop style is HANG IT OUTSIDE: the 5 AM delivery wakes nobody
+  // unless the member explicitly asks for the bell.
+  ring_bell: false,
   voice_instructions_url: null,
   door_image_url: null,
   notes: null,
