@@ -14,6 +14,7 @@ import { PREPAID_TARGET, prepaidTier, shouldShowPrepaidFunnel } from '../lib/pre
 import { freePackShowEligible } from '../lib/freePack';
 import { getLedger } from '../lib/walletApi';
 import { listSubscriptions } from '../lib/subscriptions';
+import { usePopupSlot, useOtherPopupsOpen } from '../lib/popupGate';
 
 /**
  * PERSISTENT MONEY FUNNEL (Country-Delight discipline)
@@ -111,7 +112,10 @@ export function PromoGate() {
   // Money-first, one sheet at a time (priority: prepaid → Plus-expiring → become-VIP).
   // Every one stands down while the 2+2 trial is still on offer (trial owns the
   // not-yet-claimed member) and once ANY money sheet is dismissed this visit.
-  const showPrepaid = ready && !trialShowable && !dismissedMoney && shouldShowPrepaidFunnel({ balance, hasActiveSub, everFunded });
+  // ONE POPUP AT A TIME: the money nudges are the lowest-priority popups —
+  // they stand down whenever anything else (out-of-zone, welcome, claim) is up.
+  const othersOpen = useOtherPopupsOpen(false);
+  const showPrepaid = !othersOpen && ready && !trialShowable && !dismissedMoney && shouldShowPrepaidFunnel({ balance, hasActiveSub, everFunded });
   const tier = prepaidTier();
   const critical = lowEligible; // balance so low tomorrow's delivery could pause
   const daysLeft = vipDaysLeft(vip);
@@ -119,16 +123,18 @@ export function PromoGate() {
   // window. Push a recharge so it renews (keeps free delivery + member prices)
   // instead of silently lapsing.
   const showVipExpiring =
-    ready && !trialShowable && !dismissedMoney && !showPrepaid && vipActive(vip) && daysLeft <= VIP_EXPIRY_WARN_DAYS;
+    !othersOpen && ready && !trialShowable && !dismissedMoney && !showPrepaid && vipActive(vip) && daysLeft <= VIP_EXPIRY_WARN_DAYS;
   // Become-VIP is a soft UPSELL for a WELL-FUNDED active subscriber who isn't a
   // member — NOT a low-balance case (that gets the prepaid recharge modal, which
   // would always out-prioritise it and left this permanently unreachable before).
   const showVip =
-    ready && !trialShowable && !dismissedMoney && !showPrepaid && !showVipExpiring && !vipUpsellOff &&
+    !othersOpen && ready && !trialShowable && !dismissedMoney && !showPrepaid && !showVipExpiring && !vipUpsellOff &&
     !vipActive(vip) && hasActiveSub && balance >= PREPAID_TARGET;
   // A LAPSED member (Plus record exists but expired/cancelled) is asked to RENEW,
   // not to "start a free trial" — that copy is only right for a never-joined user.
   const lapsedVip = !!vip && !vipActive(vip);
+
+  usePopupSlot(showPrepaid || showVipExpiring || showVip);
 
   return (
     <>

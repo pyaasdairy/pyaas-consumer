@@ -258,7 +258,7 @@ export default function OrderTracking() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       {liveInstant ? (
-        <Animated.View style={[{ overflow: 'hidden' }, mapCollapseStyle]}>
+        <Animated.View style={[{ overflow: 'hidden', borderBottomLeftRadius: 24, borderBottomRightRadius: 24, zIndex: 2, backgroundColor: colors.milk, ...shadow.soft }, mapCollapseStyle]}>
           {/* Full-bleed live map hero (store pin → home, rider in between). */}
           <RiderTrackMap
             riderLat={order.riders?.current_lat}
@@ -289,7 +289,7 @@ export default function OrderTracking() {
       <Animated.ScrollView onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
         {/* THE ARRIVAL CARD — overlaps the map hero; the countdown leads. */}
         {liveInstant ? (
-          <Animated.View entering={FadeIn.duration(420)} style={{ marginTop: -30, backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 6, ...shadow.card }}>
+          <Animated.View entering={FadeIn.duration(420)} style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 6, ...shadow.card }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <TextBody color={colors.inkMute} style={{ fontSize: 13.5 }}>Arriving in</TextBody>

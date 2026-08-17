@@ -20,6 +20,7 @@ import { CATEGORIES, type Category } from '../../constants/products';
 import { useCatalog, getMergedProducts, refreshCatalog, groupProducts, type GroupedProduct } from '../../lib/catalog';
 import { PromoGate } from '../../components/PromoGate';
 import { OutOfZoneSheet } from '../../components/OutOfZoneSheet';
+import { usePopupSlot, anyPopupOpen } from '../../lib/popupGate';
 import { useServiceability } from '../../lib/serviceability';
 import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
@@ -106,11 +107,15 @@ export default function Shop() {
   const svcLat = useServiceability((s) => s.lat);
   const svcLng = useServiceability((s) => s.lng);
   const [oozOpen, setOozOpen] = useState(false);
+  // ONE POPUP AT A TIME (founder's rule): every self-presenting surface
+  // registers a slot; auto-open triggers stand down while any slot is taken.
+  usePopupSlot(oozOpen);
   const oozShownFor = useRef<string | null>(null);
   useEffect(() => {
     if (svcServiceable !== false) return;
     const sig = `${svcLat},${svcLng}`;
     if (oozShownFor.current === sig) return;
+    if (anyPopupOpen()) return; // never stack popups — retry on the next resolve
     oozShownFor.current = sig;
     setOozOpen(true);
   }, [svcServiceable, svcLat, svcLng]);
@@ -182,6 +187,8 @@ export default function Shop() {
   // the animated confetti offer (once per account). On later launches an eligible
   // fresh member goes straight to the 2-day-free claim popup, once per app launch.
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  usePopupSlot(welcomeOpen);
+  usePopupSlot(claimOpen);
   const autoOpenedClaim = React.useRef(false);
   useEffect(() => {
     if (autoOpenedClaim.current || !freshUser || !claimEligible) return;
@@ -190,8 +197,10 @@ export default function Shop() {
     if (claimFlowOnScreen()) return;
     const uid = profile?.id;
     if (!uid) return;
+    if (anyPopupOpen()) return; // one popup at a time — retry next focus
     autoOpenedClaim.current = true;
     void welcomeOfferSeen(uid).then((seen) => {
+      if (anyPopupOpen()) return;
       if (seen) { if (!claimFlowOnScreen()) setClaimOpen(true); return; }
       void markWelcomeOfferSeen(uid);
       setWelcomeOpen(true);
