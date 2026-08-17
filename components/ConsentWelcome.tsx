@@ -55,6 +55,10 @@ export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
   // One-shot guard: the tap records consent exactly once even if double-tapped
   // while the exit transition plays.
   const [agreed, setAgreed] = useState(false);
+  // Visible decline path (consent rules): declining is a real option — it
+  // simply and honestly explains that sign-in needs this, and nothing is
+  // collected in the meantime. It never dismisses the screen as consent.
+  const [declined, setDeclined] = useState(false);
 
   // The CTA breathes — a slow, subtle scale loop that reads as an invitation.
   // It stops the moment the member agrees (motion must never imply urgency).
@@ -150,6 +154,14 @@ export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
             </View>
           </Tap>
         </Animated.View>
+        <Tap haptic={false} onPress={() => setDeclined(true)} style={{ alignItems: 'center', paddingVertical: 2 }}>
+          <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Not now</TextMed>
+        </Tap>
+        {declined ? (
+          <TextBody style={{ fontSize: 12, textAlign: 'center', lineHeight: 17 }} color={colors.inkMute}>
+            No problem. Nothing is collected until you agree, and PYAAS can't sign you in without it. Agree whenever you're ready.
+          </TextBody>
+        ) : null}
         {/* Policy links are an ADDITION to the on-screen disclosure, never the
             substitute (rule 3). Both routes are public — readable signed out. */}
         <Animated.View entering={FadeIn.duration(420).delay(700)}>

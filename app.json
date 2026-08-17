@@ -155,7 +155,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
-      "usesCleartextTraffic": false
+      "usesCleartextTraffic": false,
+      "allowBackup": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
