@@ -258,7 +258,7 @@ export function SubscribeSheet({
 
   return (
     <>
-    <Modal visible={visible && !mapOpen} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible && !mapOpen && !addrPickOpen} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' }}>
         {/* Tap-out backdrop */}
         <Tap haptic={false} onPress={onClose} style={{ flex: 1 }} scaleTo={1}>

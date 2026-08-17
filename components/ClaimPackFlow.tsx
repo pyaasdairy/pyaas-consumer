@@ -154,24 +154,18 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
             <TextBody color={colors.inkSoft} style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
               {step === 'ineligible' || step === 'signin' || step === 'subscribed'
                 ? 'PYAAS Gold Full Cream · 500 ml fresh every morning'
-                : `PYAAS Gold Full Cream · 500 ml daily · ${TRIAL_FREE_DAYS} free, then ${TRIAL_PAID_DAYS} paid`}
+                : 'PYAAS Gold Full Cream · 500 ml daily'}
             </TextBody>
           </View>
 
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {step === 'intro' ? (
               <Animated.View entering={FadeIn.duration(240)} style={{ gap: spacing.md }}>
-                <TextBody style={{ fontSize: 14.5, textAlign: 'center', lineHeight: 22 }}>
-                  Start your daily milk subscription. Your first {TRIAL_FREE_DAYS} days are completely FREE, then it continues at the daily price from your wallet. Fresh at your door every morning.
-                </TextBody>
-                {/* The honest funnel explainer — exactly what starting does. */}
-                <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 8 }}>
-                  <IntroLine icon="sparkles" text={`First ${TRIAL_FREE_DAYS} days FREE`} />
-                  <IntroLine icon="cash-outline" text={`Then ${rupee(FREE_PACK_DAILY_PRICE)}/day from day ${TRIAL_FREE_DAYS + 1}`} />
-                  <IntroLine icon="infinite" text={`Continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet`} />
-                  <IntroLine icon="pause-circle" text="Pause anytime" />
-                  <IntroLine icon="card-outline" text={`Applicable on a min. ${rupee(OFFER_QUALIFY_RECHARGE)} recharge at a time`} />
-                </View>
+                {/* ONE line, founder's words. The mechanics live in the flow
+                    itself (the confirm step still shows the real charge). */}
+                <Serif style={{ fontSize: 20, textAlign: 'center', lineHeight: 27 }}>
+                  Pay 2 days, 2 days worth of milk is on us.
+                </Serif>
                 {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5, textAlign: 'center' }}>{err}</TextBody> : null}
                 <PrimaryButton title={busy ? 'Checking…' : 'Start my subscription'} loading={busy} onPress={() => { void startFromIntro(); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
