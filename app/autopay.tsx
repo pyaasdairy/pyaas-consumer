@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
 import { fireHaptic } from '../lib/haptics';
@@ -28,6 +28,11 @@ const BENEFITS = [
  * revoke, per-debit cap); offline it keeps the on-device placeholder.
  */
 export default function Autopay() {
+  // Defense in depth: AutoPay is __DEV__-only until a real UPI-AutoPay recurring
+  // checkout is wired (approval can't complete against a real backend yet). The
+  // nav entries are already __DEV__-gated; this stops the route rendering if
+  // reached by deep link in a release build.
+  if (!__DEV__) return <Redirect href="/(tabs)/wallet" />;
   const insets = useSafeAreaInsets();
   const [mandate, setMandate] = useState<AutopayMandate | null>(null);
   const [loading, setLoading] = useState(true);

@@ -362,14 +362,15 @@ function fmtDate(iso: string): string {
 export function renderInvoiceText(inv: Invoice): string {
   const L: string[] = [];
   L.push(`${inv.title}`);
+  // Never print a fabricated GSTIN/FSSAI on a bill — omit any placeholder line.
   L.push(`Billed by: ${inv.seller.name}`);
-  L.push(`GSTIN: ${inv.seller.gstin}${inv.seller.gstin_is_placeholder ? ' (to be updated)' : ''}`);
-  L.push(`FSSAI: ${inv.seller.fssai}${inv.seller.fssai_is_placeholder ? ' (to be updated)' : ''}`);
+  if (!inv.seller.gstin_is_placeholder) L.push(`GSTIN: ${inv.seller.gstin}`);
+  if (!inv.seller.fssai_is_placeholder) L.push(`FSSAI: ${inv.seller.fssai}`);
   L.push(inv.seller.address);
   L.push('');
   L.push(`Goods manufactured by: ${inv.manufacturer.name}`);
-  L.push(`GSTIN: ${inv.manufacturer.gstin}${inv.manufacturer.gstin_is_placeholder ? ' (to be updated)' : ''}`);
-  L.push(`FSSAI: ${inv.manufacturer.fssai}${inv.manufacturer.fssai_is_placeholder ? ' (to be updated)' : ''}`);
+  if (!inv.manufacturer.gstin_is_placeholder) L.push(`GSTIN: ${inv.manufacturer.gstin}`);
+  if (!inv.manufacturer.fssai_is_placeholder) L.push(`FSSAI: ${inv.manufacturer.fssai}`);
   L.push('');
   L.push(`Invoice No: ${inv.invoice_no}`);
   L.push(`Date: ${fmtDate(inv.date)}`);
@@ -438,10 +439,10 @@ export function renderInvoiceHtml(inv: Invoice): string {
     <div class="head">
       <h1>${escapeHtml(inv.title)}</h1>
       <div class="muted"><b>Billed by</b> ${escapeHtml(inv.seller.name)}</div>
-      <div class="muted">GSTIN ${escapeHtml(inv.seller.gstin)}${inv.seller.gstin_is_placeholder ? ' (to be updated)' : ''} · FSSAI ${escapeHtml(inv.seller.fssai)}${inv.seller.fssai_is_placeholder ? ' (to be updated)' : ''}</div>
+      <div class="muted">${inv.seller.gstin_is_placeholder ? '' : 'GSTIN ' + escapeHtml(inv.seller.gstin) + ' · '}${inv.seller.fssai_is_placeholder ? '' : 'FSSAI ' + escapeHtml(inv.seller.fssai)}</div>
       <div class="muted">${escapeHtml(inv.seller.address)}</div>
       <div class="muted" style="margin-top:6px"><b>Goods manufactured by</b> ${escapeHtml(inv.manufacturer.name)}</div>
-      <div class="muted">GSTIN ${escapeHtml(inv.manufacturer.gstin)}${inv.manufacturer.gstin_is_placeholder ? ' (to be updated)' : ''} · FSSAI ${escapeHtml(inv.manufacturer.fssai)}${inv.manufacturer.fssai_is_placeholder ? ' (to be updated)' : ''}</div>
+      <div class="muted">${inv.manufacturer.gstin_is_placeholder ? '' : 'GSTIN ' + escapeHtml(inv.manufacturer.gstin) + ' · '}${inv.manufacturer.fssai_is_placeholder ? '' : 'FSSAI ' + escapeHtml(inv.manufacturer.fssai)}</div>
     </div>
     <table style="font-size:12px;margin-bottom:12px">
       <tr><td><b>Invoice No</b><br>${escapeHtml(inv.invoice_no)}</td>
@@ -454,7 +455,7 @@ export function renderInvoiceHtml(inv: Invoice): string {
       <tbody>${rows}</tbody>
     </table>
     <table class="totals">${summary}</table>
-    <div class="foot">Prices are inclusive of GST. This is a proforma bill (indicative), not a valid tax invoice, and does not require a signature.${inv.seller.gstin_is_placeholder || inv.seller.fssai_is_placeholder || inv.manufacturer.gstin_is_placeholder ? ' GSTIN/FSSAI marked "to be updated" are pending registration.' : ''}</div>
+    <div class="foot">Prices are inclusive of GST. This is a proforma bill (indicative), not a valid tax invoice, and does not require a signature.</div>
   </body></html>`;
 }
 

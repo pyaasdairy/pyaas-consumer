@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { Serif, TextBody, TextMed, TextSemi } from '../components/ui';
@@ -29,6 +29,10 @@ function fmtTime(ts: number): string {
  * API/auth/network events captured by lib/diag. Reachable from Profile.
  */
 export default function DiagnosticsScreen() {
+  // Developer console — dev builds only. The Profile entry is already __DEV__-
+  // gated; this self-guard stops the route rendering if a release build is
+  // reached via the pyaas:// / parag:// deep-link scheme (Guideline 2.2).
+  if (!__DEV__) return <Redirect href="/(tabs)/profile" />;
   const router = useRouter();
   const [events, setEvents] = useState<DiagEvent[]>(getDiagEvents());
   const [tokens, setTokens] = useState<{ access: boolean; refresh: boolean } | null>(null);

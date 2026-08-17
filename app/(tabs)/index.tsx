@@ -501,7 +501,7 @@ export default function Shop() {
           data.some((g) => g.variants.some((v) => v.manufacturer)) ? (
             <View style={{ alignItems: 'center', paddingTop: spacing.lg, gap: 7 }}>
               <Image source={require('../../assets/pyaas-logo.png')} style={{ width: 62, height: 17, opacity: 0.35 }} contentFit="contain" />
-              <TextBody color={colors.inkMute} style={{ fontSize: 10.5, letterSpacing: 0.4 }}>PYAAS range · marketed & manufactured by PYAAS</TextBody>
+              <TextBody color={colors.inkMute} style={{ fontSize: 10.5, letterSpacing: 0.4 }}>PYAAS range · marketed by PYAAS</TextBody>
             </View>
           ) : null
         }

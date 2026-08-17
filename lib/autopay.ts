@@ -137,11 +137,18 @@ export async function createMandate(params: { maxAmount: number; upiId?: string 
  * testable end-to-end.
  */
 export async function approveMandate(id: string, checkout?: { paymentId: string; signature: string; token?: string }): Promise<UpiMandate> {
+  // A real approval needs a completed UPI-AutoPay checkout (paymentId+signature
+  // from the PG). Until that recurring checkout is wired, only DEV may fall back
+  // to the backend's dev seam — a release build must NEVER transmit fabricated
+  // 'demo' credentials to /mandate/verify. (The AutoPay UI itself is __DEV__-only
+  // in release for the same reason.)
+  const pg = checkout ?? (__DEV__ ? { paymentId: `demo_${id}`, signature: 'demo', token: '' } : null);
+  if (!pg) throw new Error('AutoPay approval needs a completed UPI AutoPay checkout.');
   const m = await api.post<BackendMandate>('/mandate/verify', {
     mandate_id: id,
-    razorpay_payment_id: checkout?.paymentId ?? `demo_${id}`,
-    razorpay_signature: checkout?.signature ?? 'demo',
-    razorpay_token: checkout?.token ?? '',
+    razorpay_payment_id: pg.paymentId,
+    razorpay_signature: pg.signature,
+    razorpay_token: pg.token ?? '',
   });
   return toUpiMandate(m);
 }

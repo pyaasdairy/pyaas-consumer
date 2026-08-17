@@ -114,9 +114,13 @@ export default function InvoiceScreen() {
         <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 3 }}>
           <TextBody color={colors.inkMute} style={{ fontSize: 11, letterSpacing: 0.5 }}>GOODS MANUFACTURED BY</TextBody>
           <TextSemi style={{ fontSize: 14 }}>{inv.manufacturer.name}</TextSemi>
-          <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>
-            GSTIN {inv.manufacturer.gstin}{inv.manufacturer.gstin_is_placeholder ? ' (to be updated)' : ''}
-          </TextBody>
+          {/* Never print a fabricated GSTIN on a document represented as a bill.
+              Until the real Union GSTIN is issued the line is simply omitted. */}
+          {!inv.manufacturer.gstin_is_placeholder ? (
+            <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>
+              GSTIN {inv.manufacturer.gstin}
+            </TextBody>
+          ) : null}
           <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>
             FSSAI {inv.manufacturer.fssai}{inv.manufacturer.fssai_is_placeholder ? ' (to be updated)' : ''}
           </TextBody>

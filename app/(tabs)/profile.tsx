@@ -157,8 +157,13 @@ export default function Profile() {
         <ListCard delay={340}>
           <Row icon="person-outline" label="Account & Preferences" sub="Profile, addresses, delivery preferences" onPress={() => router.push('/profile-edit')} />
           <Row icon="location-outline" label="Saved Addresses" sub="Where your mornings arrive" onPress={() => router.push('/addresses')} />
-          <Row icon="options-outline" label="Delivery Preferences" sub="Slot and drop instructions" onPress={() => router.push('/delivery-preferences')} />
-          <Row icon="flash-outline" label="Smart Recharge Autopay" sub="Auto top-up when the wallet runs low" onPress={() => router.push('/autopay')} last />
+          <Row icon="options-outline" label="Delivery Preferences" sub="Slot and drop instructions" onPress={() => router.push('/delivery-preferences')} last={!__DEV__} />
+          {/* AutoPay is __DEV__-only until the real UPI-AutoPay recurring checkout
+              is wired — it can't complete against a real backend yet, so it must
+              not appear in a Play build. */}
+          {__DEV__ ? (
+            <Row icon="flash-outline" label="Smart Recharge Autopay" sub="Auto top-up when the wallet runs low" onPress={() => router.push('/autopay')} last />
+          ) : null}
         </ListCard>
 
         <ListCard delay={380}>

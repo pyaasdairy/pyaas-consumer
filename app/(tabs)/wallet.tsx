@@ -148,8 +148,11 @@ export default function Wallet() {
 
         {/* AutoPay · UPI mandate. Hidden without a backend: there is no PSP to
             register the mandate with, so the card would advertise a recurring
-            payment method that cannot exist and whose Approve button no-ops. */}
-        {isBackendConfigured() ? (
+            payment method that cannot exist and whose Approve button no-ops.
+            __DEV__ ONLY until a real UPI-AutoPay recurring checkout is wired:
+            approval currently can't complete against a real backend, so the
+            feature must not ship to Play (2.1 completeness + no fake approval). */}
+        {__DEV__ && isBackendConfigured() ? (
         <Animated.View entering={FadeInDown.duration(460).delay(80)}>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flame, padding: spacing.lg, gap: 12, ...shadow.soft }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

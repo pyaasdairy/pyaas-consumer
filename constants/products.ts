@@ -200,7 +200,7 @@ const IMG = {
   peda: require('../assets/products/peda.png'),
   gulabJamun: require('../assets/products/gulab-jamun.png'),
   riceKheer: require('../assets/products/rice-kheer.png'),
-  // PYAAS's own SKUs (marketed & manufactured by PYAAS) — held back from the
+  // PYAAS's own SKUs (marketed by PYAAS) — held back from the
   // catalog until launch; see WITHHELD_SKUS below.
   pyaasA2Carton: require('../assets/products/pyaas-a2-1l.png'),
   pyaasA2Pouch: require('../assets/products/pyaas-a2-pouch.png'),
@@ -889,7 +889,7 @@ export const WITHHELD_SKUS: Product[] = [
     // "Naturally easy to digest" removed: a health claim, and FSSAI Advertising &
     // Claims Regulations 2018 reg. 4/7 needs it substantiated before it can be made.
     description:
-      'Single-origin A2 cow milk from desi cows, gently pasteurised and sealed in a carton, with the full, creamy taste of real milk. Marketed & manufactured by PYAAS.',
+      'Single-origin A2 cow milk from desi cows, gently pasteurised and sealed in a carton, with the full, creamy taste of real milk. Marketed by PYAAS.',
     image: IMG.pyaasA2Carton,
     subscribable: true,
     outOfStock: true,
@@ -908,7 +908,7 @@ export const WITHHELD_SKUS: Product[] = [
     // "plant-based packaging" removed: nothing in the repo substantiates it, and an
     // unbacked green claim is exactly what the CCPA Greenwashing Guidelines 2024 bite.
     description:
-      'Everyday A2 cow milk in a fresh daily pouch - the format your milkman delivers. Marketed & manufactured by PYAAS.',
+      'Everyday A2 cow milk in a fresh daily pouch - the format your milkman delivers. Marketed by PYAAS.',
     image: IMG.pyaasA2Pouch,
     subscribable: true,
     outOfStock: true,
@@ -926,7 +926,7 @@ export const WITHHELD_SKUS: Product[] = [
     unit: '1 L',
     tag: 'Toned · 3% Fat · 8.5% SNF',
     description:
-      'Everyday toned milk, gently pasteurised and homogenised, sealed in a carton for a longer, fresher shelf. Light and dependable for chai, coffee and the whole family. Marketed & manufactured by PYAAS.',
+      'Everyday toned milk, gently pasteurised and homogenised, sealed in a carton for a longer, fresher shelf. Light and dependable for chai, coffee and the whole family. Marketed by PYAAS.',
     image: IMG.pyaasTonedCarton,
     subscribable: true,
     outOfStock: true,
@@ -945,7 +945,7 @@ export const WITHHELD_SKUS: Product[] = [
     // Same green claim removed here; "traceability built in" also goes, since there
     // is no per-pack traceability to point a customer at yet.
     description:
-      'Fresh daily toned milk in a pouch - the format your milkman delivers. Marketed & manufactured by PYAAS.',
+      'Fresh daily toned milk in a pouch - the format your milkman delivers. Marketed by PYAAS.',
     image: IMG.pyaasTonedPouch,
     subscribable: true,
     outOfStock: true,
