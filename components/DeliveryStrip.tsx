@@ -119,7 +119,7 @@ export function DeliveryStrip() {
               </>
             ) : (
               <>
-                <TextSemi style={{ fontSize: 14 }}>{isToday ? "Add today's order" : `No delivery · ${selDay.rel}`}</TextSemi>
+                <TextSemi style={{ fontSize: 14 }}>{isToday ? 'Add more subscription' : `No delivery · ${selDay.rel}`}</TextSemi>
                 <TextBody style={{ fontSize: 12 }}>{isToday ? 'Fresh milk at your door by 7 AM' : 'Tap add to schedule it'}</TextBody>
               </>
             )}
