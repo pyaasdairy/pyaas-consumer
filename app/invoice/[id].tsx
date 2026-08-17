@@ -104,9 +104,11 @@ export default function InvoiceScreen() {
           <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>
             GSTIN {s.gstin}{s.gstin_is_placeholder ? ' (to be updated)' : ''}
           </TextBody>
-          <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>
-            FSSAI {s.fssai}{s.fssai_is_placeholder ? ' (to be updated)' : ''}
-          </TextBody>
+          {s.fssai !== inv.manufacturer.fssai ? (
+            <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>
+              FSSAI {s.fssai}{s.fssai_is_placeholder ? ' (to be updated)' : ''}
+            </TextBody>
+          ) : null}
           <TextBody color={colors.inkMute} style={{ fontSize: 11.5 }}>{s.address}</TextBody>
         </View>
 
@@ -149,15 +151,22 @@ export default function InvoiceScreen() {
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               <Chip text={`HSN ${it.hsn}`} />
               <Chip text={`GST ${it.gst_rate}%`} />
-              <Chip text={`Taxable ₹${it.taxable.toFixed(2)}`} />
-              {inv.intra_state ? (
+              {/* 0%-rated items (milk, paneer): the taxable value equals the
+                  line total and every tax chip is ₹0.00 — printing them just
+                  repeated the amount. Chips render only when tax exists. */}
+              {it.gst_rate > 0 ? (
                 <>
-                  <Chip text={`CGST ₹${it.cgst.toFixed(2)}`} />
-                  <Chip text={`SGST ₹${it.sgst.toFixed(2)}`} />
+                  <Chip text={`Taxable ₹${it.taxable.toFixed(2)}`} />
+                  {inv.intra_state ? (
+                    <>
+                      <Chip text={`CGST ₹${it.cgst.toFixed(2)}`} />
+                      <Chip text={`SGST ₹${it.sgst.toFixed(2)}`} />
+                    </>
+                  ) : (
+                    <Chip text={`IGST ₹${it.igst.toFixed(2)}`} />
+                  )}
                 </>
-              ) : (
-                <Chip text={`IGST ₹${it.igst.toFixed(2)}`} />
-              )}
+              ) : null}
             </View>
           </View>
         ))}

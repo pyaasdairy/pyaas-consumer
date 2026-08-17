@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, useSharedValue, useAnimatedScrollHandler, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts } from '../../lib/theme';
 import { SkeletonBlock } from '../../components/Skeleton';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Divider } from '../../components/ui';
@@ -96,6 +96,16 @@ export default function OrderTracking() {
       setStoreOrigin({ lat: r.current_lat, lng: r.current_lng });
     }
   }, [order, storeOrigin]);
+
+  // COLLAPSING MAP: scrolling the sheet shrinks the map (340 → 128) so the
+  // text slides up instead of being cut behind it; scrolling back to the top
+  // restores the full map. Driven on the UI thread from the scroll offset, so
+  // it tracks the finger with no lag and reverses symmetrically.
+  const trackScrollY = useSharedValue(0);
+  const onTrackScroll = useAnimatedScrollHandler((e) => { trackScrollY.value = e.contentOffset.y; });
+  const mapCollapseStyle = useAnimatedStyle(() => ({
+    height: interpolate(trackScrollY.value, [0, 240], [340, 128], Extrapolation.CLAMP),
+  }));
 
   const load = useCallback(async () => {
     try {
@@ -248,7 +258,7 @@ export default function OrderTracking() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       {liveInstant ? (
-        <View>
+        <Animated.View style={[{ overflow: 'hidden' }, mapCollapseStyle]}>
           {/* Full-bleed live map hero (store pin → home, rider in between). */}
           <RiderTrackMap
             riderLat={order.riders?.current_lat}
@@ -266,7 +276,7 @@ export default function OrderTracking() {
           >
             <Ionicons name="chevron-back" size={22} color={colors.ink} />
           </Tap>
-        </View>
+        </Animated.View>
       ) : (
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Tap onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/orders'))} style={iconBtn}>
@@ -276,7 +286,7 @@ export default function OrderTracking() {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
         {/* THE ARRIVAL CARD — overlaps the map hero; the countdown leads. */}
         {liveInstant ? (
           <Animated.View entering={FadeIn.duration(420)} style={{ marginTop: -30, backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 6, ...shadow.card }}>
@@ -386,7 +396,7 @@ export default function OrderTracking() {
             one is assigned, gliding towards their door while out for delivery. */}
         {hasRider && order.riders ? (
           <Animated.View entering={FadeIn} style={{ backgroundColor: colors.white, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.card }}>
-            {!delivered ? (
+            {!delivered && !liveInstant ? (
               <RiderTrackMap
                 riderLat={order.riders.current_lat}
                 riderLng={order.riders.current_lng}
@@ -437,7 +447,9 @@ export default function OrderTracking() {
         <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, ...shadow.soft }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <TextSemi style={{ fontSize: 16 }}>Order details</TextSemi>
-            <Pill label={order.payment_method === 'cod' ? 'COD' : 'PREPAID'} bg={colors.cream} color={colors.inkSoft} />
+            {delivered || cancelled ? (
+              <Pill label={order.payment_method === 'cod' ? 'COD' : 'PREPAID'} bg={colors.cream} color={colors.inkSoft} />
+            ) : null}
           </View>
           {(order.order_items ?? []).map((it) => (
             <View key={it.id} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -473,7 +485,7 @@ export default function OrderTracking() {
         <Button title="View bill" variant="outline" onPress={() => router.push(`/invoice/${order.id}`)} />
         {canCancel ? <Button title="Cancel order" variant="outline" onPress={onCancel} loading={busy} /> : null}
 
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* PAY WHILE WE DELIVER — instant COD orders only, and only where an
           online payment can actually land: local mode (backend mode has no

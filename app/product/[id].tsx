@@ -481,13 +481,28 @@ export default function ProductDetail() {
         {/* Body */}
         <View style={{ padding: spacing.lg, gap: 12 }}>
           <Animated.View entering={FadeInDown.duration(420)} style={{ gap: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Pill label={product.tag} bg={colors.blueSoft} color={colors.blue} />
-              {pct ? <Pill label={`${pct}% OFF`} bg="rgba(199,91,110,0.12)" color={colors.flameDeep} /> : null}
-            </View>
+            {/* The tag pill only carries what the NAME below doesn't already
+                say: "Full Cream" over "Full Cream Milk - Parag Gold" was the
+                same fact twice, so name-duplicated segments are dropped and an
+                emptied tag hides the pill entirely. */}
+            {(() => {
+              const norm = (v: string) => v.toLowerCase().replace(/\s+/g, '');
+              const nameKey = norm(product.name);
+              const tagLeft = (product.tag ?? '').split('·').map((t) => t.trim()).filter((t) => t && !nameKey.includes(norm(t))).join(' · ');
+              return tagLeft || pct ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {tagLeft ? <Pill label={tagLeft} bg={colors.blueSoft} color={colors.blue} /> : null}
+                  {pct ? <Pill label={`${pct}% OFF`} bg="rgba(199,91,110,0.12)" color={colors.flameDeep} /> : null}
+                </View>
+              ) : null;
+            })()}
 
             <Serif style={{ fontSize: 28, lineHeight: 32 }}>{product.name}</Serif>
-            <TextMed color={colors.inkSoft} style={{ fontSize: 14.5 }}>{joinDistinct([product.variant, product.unit])}</TextMed>
+            {/* With multiple sizes the highlighted selector chip IS the size
+                statement; a subtitle above it repeated the same string. */}
+            {variants.length <= 1 ? (
+              <TextMed color={colors.inkSoft} style={{ fontSize: 14.5 }}>{joinDistinct([product.variant, product.unit])}</TextMed>
+            ) : null}
 
             {/* Size selector — picking a size re-drives price / image / stock / CTA
                 for this same screen, no reload. Hidden for single-variant bases. */}

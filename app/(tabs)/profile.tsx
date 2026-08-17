@@ -196,7 +196,6 @@ export default function Profile() {
         </ListCard>
 
         <ListCard delay={500}>
-          <Row icon="document-text-outline" label="Legal" sub="Privacy, terms and policies" onPress={() => router.push('/legal')} />
           <Row icon="lock-closed-outline" label="Privacy Policy" sub="How we handle your data" onPress={() => router.push('/privacy-policy')} />
           <Row icon="reader-outline" label="Terms & Conditions" sub="The fine print, in plain words" onPress={() => router.push('/terms')} />
           <Row icon="cash-outline" label="Refund Policy" sub="When and how refunds work" onPress={() => router.push('/refund-policy')} />

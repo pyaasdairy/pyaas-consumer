@@ -29,7 +29,7 @@ import { discountPct, type Product } from '../constants/products';
  * separate lines. A base card renders as long as ANY variant exists; if the
  * chosen variant is out of stock the Add controls grey out.
  */
-export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', browseOnly = false }: { product: Product; variants?: Product[]; index?: number; ctaLabel?: string; browseOnly?: boolean }) {
+export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', browseOnly = false, suppressMostOrdered = false }: { product: Product; variants?: Product[]; index?: number; ctaLabel?: string; browseOnly?: boolean; suppressMostOrdered?: boolean }) {
   const router = useRouter();
   const vs = variants && variants.length > 0 ? variants : [product];
   // Open on the first in-stock size (falls back to the first variant).
@@ -84,7 +84,7 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
           <View pointerEvents="none" style={{ position: 'absolute', top: 8, left: 8, right: 44, flexDirection: 'row' }}>
             {browseOnly || selected.outOfStock ? (
               <Pill small label="OUT OF STOCK" bg={colors.ink} color={colors.white} />
-            ) : selected.mostOrdered ? (
+            ) : selected.mostOrdered && !suppressMostOrdered ? (
               <Pill small label="MOST ORDERED" bg={colors.flameDeep} color={colors.white} />
             ) : pct ? (
               <Pill small label={`${pct}% OFF`} bg={colors.blue} color={colors.white} />

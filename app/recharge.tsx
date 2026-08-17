@@ -401,8 +401,9 @@ export default function Recharge() {
           ) : null}
         </Animated.View>
 
-        {/* Recharge summary — Amount to pay · Cashback · To be credited (the wallet
-            is credited the full amount + bonus). */}
+        {/* Recharge summary — only when a bonus makes pay ≠ credited; with no
+            bonus the strip printed the same number twice beside itself. */}
+        {bonus && bonus.bonus > 0 ? (
         <View style={{ flexDirection: 'row', backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.flame, overflow: 'hidden', ...shadow.soft }}>
           {[
             { l: 'Amount to pay', v: rupee(value), c: colors.ink },
@@ -417,6 +418,7 @@ export default function Recharge() {
             </View>
           ))}
         </View>
+        ) : null}
 
         {error ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{error}</TextBody> : null}
 

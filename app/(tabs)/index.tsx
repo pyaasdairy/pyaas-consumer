@@ -402,7 +402,6 @@ export default function Shop() {
                       Order now · at your door by {hhmmTo12(instantEtaHHMM()) ?? 'the next slot'}
                     </TextBody>
                   </View>
-                  <Pill label="INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
                 </View>
               </Animated.View>
             ) : (
@@ -426,7 +425,7 @@ export default function Shop() {
                   <Image source={FREE_PACK_IMG} style={{ width: 58, height: 58 }} contentFit="contain" />
                   <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                     <View style={{ flexDirection: 'row' }}>
-                      <Pill small label={`${TRIAL_FREE_DAYS} DAYS FREE`} bg={colors.flameSoft} color={colors.flameDeep} />
+                      <Pill small label="FREE TRIAL" bg={colors.flameSoft} color={colors.flameDeep} />
                     </View>
                     <TextSemi color={colors.ink} style={{ fontSize: 15 }} numberOfLines={1}>Start your subscription</TextSemi>
                     <TextBody color={colors.inkMute} style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
@@ -480,7 +479,7 @@ export default function Shop() {
                   {/* Static pack-shot cards: the shelf scrolls, the cards never flip. */}
                   {popular.map((p, i) => (
                     <View key={p.id} style={{ width: 168 }}>
-                      <ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} browseOnly={comingSoon} />
+                      <ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} browseOnly={comingSoon} suppressMostOrdered />
                     </View>
                   ))}
                 </ScrollView>
@@ -596,7 +595,7 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
           onPress={() => setDeliveryMode('instant')}
           icon="flash"
           label="Instant"
-          badge="20 min"
+          badge={instant && instantServed ? undefined : '20 min'}
           a11yLabel={instantServed ? 'Instant delivery, 20 minutes' : closedForNight ? `Instant closed, resumes ${resumesLabel ?? 'soon'}` : 'Instant delivery not available at your address yet'}
         />
       </View>

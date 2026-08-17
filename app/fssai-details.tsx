@@ -18,7 +18,7 @@ export default function FssaiDetails() {
           ],
         },
       ]}
-      footerNote="The FSSAI licence shown is the manufacturer's (PARAG, Lucknow Producers Co-operative Milk Union Ltd), as printed on every pack. PYAAS is the seller of record and is marketing these products; our own FSSAI registration will be published here once issued."
+      footerNote="The FSSAI licence shown is the manufacturer's, as printed on every pack. PYAAS is the seller of record and is marketing these products; our own FSSAI registration will be published here once issued."
     >
       <DocCard>
         <DocLinkRow

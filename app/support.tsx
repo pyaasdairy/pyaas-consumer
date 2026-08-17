@@ -40,7 +40,7 @@ export default function Support() {
       const label = TYPES.find((t) => t.key === kind)?.label ?? 'Support';
       const opened = await emailCare(
         `PYAAS complaint: ${label}`,
-        `Issue: ${label}\n\n${detail.trim()}\n\nSent sent from the PYAAS app`,
+        `Issue: ${label}\n\n${detail.trim()}\n\nSent from the PYAAS app`,
       );
       if (!opened) {
         setErr(`Could not open your email app. Please write to ${SUPPORT_ADDRESS}${HAS_CARE_PHONE ? ` or call ${SUPPORT.careNumber}` : ''}.`);
@@ -113,8 +113,7 @@ export default function Support() {
             <Ionicons name="mail-open-outline" size={56} color={colors.blue} />
             <TextSemi style={{ fontSize: 16 }}>Complaint ready to send</TextSemi>
             <TextBody style={{ textAlign: 'center' }}>
-              We’ve opened your email app with the details. Send that mail to {SUPPORT_ADDRESS} and our team replies to you there.               the app can’t deliver complaints on its own yet{HAS_CARE_PHONE ? `, so call ${SUPPORT.careNumber} if it’s urgent` : ''}.
-            </TextBody>
+              We’ve opened your email app with the details filled in. Send that mail and our team replies to you there{HAS_CARE_PHONE ? ', or use the Call customer care button above if it’s urgent' : ''}.</TextBody>
           </View>
         ) : (
           <>

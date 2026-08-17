@@ -117,7 +117,7 @@ export function InstantPlaceSheet({ visible, method, total, addressLabel, addres
               <Serif style={{ fontSize: 24 }}>Placing your order</Serif>
               <TextBody color={colors.inkMute} style={{ fontSize: 13.5 }}>
                 {method === 'wallet'
-                  ? `${rupee(total)} is paid from your PYAAS Wallet when you place. Cancel before pickup and it comes straight back.`
+                  ? 'Cancel before pickup and your payment comes straight back.'
                   : 'Nothing is charged now. Pay by UPI while we deliver, or cash at the door.'}
               </TextBody>
             </View>

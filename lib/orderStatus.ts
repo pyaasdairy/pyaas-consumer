@@ -27,9 +27,9 @@ export const STATUS_SUB: Record<OrderStatus, string> = {
   confirmed: 'Reserved from your nearest PYAAS store.',
   preparing: 'Being packed fresh for your morning route.',
   assigned: 'A rider accepted your order and will pick it up shortly. Live tracking is on.',
-  out_for_delivery: 'Your rider is on the way. Track them live.',
-  delivered: 'Delivered. Your wallet was charged on delivery.',
-  cancelled: 'This order was cancelled.',
+  out_for_delivery: 'Track them live on the map above.',
+  delivered: 'Your wallet was charged on delivery.',
+  cancelled: 'Any amount held has been released back to your wallet.',
 };
 
 export function statusColor(s: OrderStatus): string {

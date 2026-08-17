@@ -365,7 +365,9 @@ export function renderInvoiceText(inv: Invoice): string {
   // Never print a fabricated GSTIN/FSSAI on a bill — omit any placeholder line.
   L.push(`Billed by: ${inv.seller.name}`);
   if (!inv.seller.gstin_is_placeholder) L.push(`GSTIN: ${inv.seller.gstin}`);
-  if (!inv.seller.fssai_is_placeholder) L.push(`FSSAI: ${inv.seller.fssai}`);
+  // The seller FSSAI prints only when it is a DISTINCT licence — while it
+  // mirrors the manufacturer's, one bill printed the same number twice.
+  if (!inv.seller.fssai_is_placeholder && inv.seller.fssai !== inv.manufacturer.fssai) L.push(`FSSAI: ${inv.seller.fssai}`);
   L.push(inv.seller.address);
   L.push('');
   L.push(`Goods manufactured by: ${inv.manufacturer.name}`);
@@ -385,8 +387,10 @@ export function renderInvoiceText(inv: Invoice): string {
   inv.items.forEach((it, i) => {
     L.push(`${i + 1}. ${it.name} (${it.variant})`);
     L.push(`   HSN ${it.hsn} · GST ${it.gst_rate}% · ${it.qty} x ₹${it.unit_price} = ${inr(it.gross)}`);
-    if (inv.intra_state) L.push(`   Taxable ${inr(it.taxable)} · CGST ${inr(it.cgst)} · SGST ${inr(it.sgst)}`);
-    else L.push(`   Taxable ${inr(it.taxable)} · IGST ${inr(it.igst)}`);
+    if (it.gst_rate > 0) {
+      if (inv.intra_state) L.push(`   Taxable ${inr(it.taxable)} · CGST ${inr(it.cgst)} · SGST ${inr(it.sgst)}`);
+      else L.push(`   Taxable ${inr(it.taxable)} · IGST ${inr(it.igst)}`);
+    }
   });
   L.push('');
   invoiceSummaryRows(inv).forEach((r) => L.push(`${r.label}: ${r.value}`));
@@ -439,7 +443,7 @@ export function renderInvoiceHtml(inv: Invoice): string {
     <div class="head">
       <h1>${escapeHtml(inv.title)}</h1>
       <div class="muted"><b>Billed by</b> ${escapeHtml(inv.seller.name)}</div>
-      <div class="muted">${inv.seller.gstin_is_placeholder ? '' : 'GSTIN ' + escapeHtml(inv.seller.gstin) + ' · '}${inv.seller.fssai_is_placeholder ? '' : 'FSSAI ' + escapeHtml(inv.seller.fssai)}</div>
+      <div class="muted">${inv.seller.gstin_is_placeholder ? '' : 'GSTIN ' + escapeHtml(inv.seller.gstin) + ' · '}${inv.seller.fssai_is_placeholder || inv.seller.fssai === inv.manufacturer.fssai ? '' : 'FSSAI ' + escapeHtml(inv.seller.fssai)}</div>
       <div class="muted">${escapeHtml(inv.seller.address)}</div>
       <div class="muted" style="margin-top:6px"><b>Goods manufactured by</b> ${escapeHtml(inv.manufacturer.name)}</div>
       <div class="muted">${inv.manufacturer.gstin_is_placeholder ? '' : 'GSTIN ' + escapeHtml(inv.manufacturer.gstin) + ' · '}${inv.manufacturer.fssai_is_placeholder ? '' : 'FSSAI ' + escapeHtml(inv.manufacturer.fssai)}</div>

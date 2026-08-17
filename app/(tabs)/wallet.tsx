@@ -116,11 +116,14 @@ export default function Wallet() {
               </View>
               <Serif color={colors.white} style={{ fontFamily: fonts.serifBlack, fontSize: 44, letterSpacing: -0.5, ...tabular }}>{rupee(shownBalance)}</Serif>
 
-              {/* Cash vs promo split */}
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                <SplitChip label="Cash" value={cash} />
-                <SplitChip label="Rewards" value={promo} />
-              </View>
+              {/* Cash vs promo split — only when a promo balance exists; with
+                  ₹0 rewards the Cash chip just repeated the headline number. */}
+              {promo > 0 ? (
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <SplitChip label="Cash" value={cash} />
+                  <SplitChip label="Rewards" value={promo} />
+                </View>
+              ) : null}
 
               {days != null ? (
                 <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5, marginTop: 8 }}>

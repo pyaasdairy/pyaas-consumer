@@ -358,7 +358,7 @@ export default function Cart() {
             one-time add-on lines below. */}
         {lane === 'morning' && subRows.length > 0 ? (
           <View style={{ gap: 8 }}>
-            <TextSemi style={{ fontSize: 14.5 }}>Your subscription · arrives tomorrow</TextSemi>
+            <TextSemi style={{ fontSize: 14.5 }}>Your subscription</TextSemi>
             <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.soft }}>
               {subRows.map((r, i) => (
                 <Tap key={r.key} haptic={false} onPress={() => { haptics.select(); router.push('/subscriptions'); }}>
@@ -385,7 +385,7 @@ export default function Cart() {
               Billed day by day from your wallet, not part of this order's bill.
             </TextBody>
             {lines.length > 0 ? (
-              <TextSemi style={{ fontSize: 14.5, marginTop: 4 }}>One-time add-ons · tomorrow morning</TextSemi>
+              <TextSemi style={{ fontSize: 14.5, marginTop: 4 }}>One-time add-ons</TextSemi>
             ) : null}
           </View>
         ) : null}
@@ -496,7 +496,6 @@ export default function Cart() {
             <Row label="Small cart fee" value="FREE" valueColor={colors.blue} strike={rupee(smallCart)} hint={`No charge over ${rupee(SMALL_CART_UNDER)}`} />
           ) : null}
           <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 4 }} />
-          <Row label="To pay" value={rupee(total)} bold />
           {feesSaved > 0 ? (
             <Row label="Saved on fees" value={`− ${rupee(feesSaved)}`} valueColor={colors.blue} />
           ) : null}
@@ -563,12 +562,6 @@ export default function Cart() {
           body="Fresh dairy weights can vary slightly pack to pack; you're only charged for what's delivered. Delivery timings are best-effort and may shift with weather or traffic."
         />
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 2 }}>
-          <Ionicons name="shield-checkmark" size={14} color={colors.inkMute} />
-          <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>
-            Paid securely from your PYAAS Wallet.
-          </TextBody>
-        </View>
       </ScrollView>
 
       {/* Sticky wallet-first CTA (hidden when there's nothing one-time to pay) */}
@@ -649,7 +642,7 @@ function Header({ insetsTop, lane }: { insetsTop: number; lane: 'instant' | 'mor
       <View style={{ flex: 1 }}>
         <Serif style={{ fontSize: 22 }}>Your cart</Serif>
         <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>
-          {lane === 'instant' ? 'Instant · delivered in ~20 min' : 'Morning · delivered tomorrow 5–7:30 AM'}
+          {lane === 'instant' ? 'Delivered in ~20 min' : 'Delivered tomorrow 5–7:30 AM'}
         </TextBody>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: lane === 'instant' ? colors.flameSoft : colors.blueSoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 5 }}>

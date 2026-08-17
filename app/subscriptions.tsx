@@ -363,7 +363,7 @@ export default function Subscriptions() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Serif style={{ fontSize: 20 }}>{p?.name ?? d.product_id}</Serif>
-                    <TextBody style={{ fontSize: 12.5 }} color={colors.inkSoft}>{d.qty} × {p?.variant ?? ''} · {FREQS.find((f) => f.key === d.frequency)?.label} · {rupee(d.unit_price * d.qty)}</TextBody>
+                    <TextBody style={{ fontSize: 12.5 }} color={colors.inkSoft}>{p?.variant ?? ''} · {rupee(d.unit_price * d.qty)}</TextBody>
                   </View>
                 </View>
 

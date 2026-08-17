@@ -328,15 +328,6 @@ export function SubscribeSheet({
                 grant free days, so we never promise them — that would be a false
                 money claim (the buyer would be charged full price for all 4 days). */}
 
-            {/* Estimated first charge */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.wash, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 12 }}>
-              <View>
-                <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>Amount to pay</TextBody>
-                <TextBody style={{ fontSize: 11 }} color={colors.inkMute}>Charged after delivery · pause anytime</TextBody>
-              </View>
-              <TextSemi style={{ fontSize: 18, ...tabular }} color={colors.flameDeep}>{rupee(perDelivery)}</TextSemi>
-            </View>
-
             {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
 
             {/* ONE TAP: gates (address → funds) then create. The fee-inclusive
