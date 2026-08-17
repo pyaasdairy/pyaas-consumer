@@ -531,12 +531,6 @@ export default function Shop() {
               </Animated.View>
             ) : null}
 
-            {/* Brand slides AFTER the shelves: the member sees products
-                first; the creatives play between the shelves and the grid. */}
-            <Animated.View entering={FadeInDown.duration(440)} style={{ marginBottom: spacing.md }}>
-              <HeroSlideshow />
-            </Animated.View>
-
             {cat === 'all' ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: spacing.lg, marginBottom: 10 }}>
                 <Ionicons name="storefront-outline" size={17} color={colors.ink} />
@@ -555,12 +549,19 @@ export default function Shop() {
              the visible grid (all/milk) - under any other filter the caption
              would misattribute the manufacturer's products. Deliberately understated:
              tiny wordmark at low opacity + one muted caption line. */
-          data.some((g) => g.variants.some((v) => v.manufacturer)) ? (
-            <View style={{ alignItems: 'center', paddingTop: spacing.xl, gap: 12 }}>
-              <Image source={require('../../assets/pyaas-logo.png')} style={{ width: 210, height: 63 }} contentFit="contain" />
-              <TextBody color={colors.inkMute} style={{ fontSize: 12, letterSpacing: 0.4 }}>PARAG Range · Marketed by PYAAS</TextBody>
+          <View>
+            {/* Brand creatives live BELOW the full grid (founder's call): every
+                product first, the story last. */}
+            <View style={{ marginTop: spacing.lg }}>
+              <HeroSlideshow />
             </View>
-          ) : null
+            {data.some((g) => g.variants.some((v) => v.manufacturer)) ? (
+              <View style={{ alignItems: 'center', paddingTop: spacing.md, gap: 12 }}>
+                <Image source={require('../../assets/pyaas-logo.png')} style={{ width: 210, height: 63 }} contentFit="contain" />
+                <TextBody color={colors.inkMute} style={{ fontSize: 12, letterSpacing: 0.4 }}>PARAG Range · Marketed by PYAAS</TextBody>
+              </View>
+            ) : null}
+          </View>
         }
       />
 
