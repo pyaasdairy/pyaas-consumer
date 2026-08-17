@@ -63,8 +63,8 @@ export function ComingSoon() {
   const Header = (
     <View style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.sm }}>
       {/* Brand row */}
-      <View style={{ alignItems: 'center', paddingBottom: spacing.lg, paddingTop: spacing.xs }}>
-        <Image source={LOGO} style={{ width: 208, height: 62 }} contentFit="contain" />
+      <View style={{ alignItems: 'center', paddingBottom: spacing.lg, paddingTop: spacing.sm }}>
+        <Image source={LOGO} style={{ width: 288, height: 86 }} contentFit="contain" />
       </View>
 
       {/* The banner — warm, on-brand, and honest about where we deliver today. */}

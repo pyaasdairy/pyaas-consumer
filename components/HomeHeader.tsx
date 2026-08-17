@@ -46,7 +46,7 @@ export function HomeHeader({ firstName }: { firstName: string }) {
       <Animated.View entering={FadeIn.duration(420)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           {/* PYAAS wordmark · big, unmissable brand presence, top left */}
-          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 96, height: 96 * (317 / 1127) }} contentFit="contain" />
+          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 150, height: 150 * (317 / 1127) }} contentFit="contain" />
           <View style={{ flex: 1 }}>
             <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
