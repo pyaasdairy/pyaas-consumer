@@ -149,32 +149,61 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
               </Tap>
             </View>
             <Image source={FREE_PACK_IMG} style={{ width: 130, height: 130 }} contentFit="contain" />
-            <Serif color={colors.ink} style={{ fontSize: 22, textAlign: 'center', marginTop: 4 }}>
+            <Serif color={colors.ink} style={{ fontSize: 23, lineHeight: 29, textAlign: 'center', marginTop: 4 }}>
               {step === 'subscribed'
                 ? 'Already subscribed'
                 : step === 'ineligible'
                   ? 'Trial already completed'
                   : step === 'signin'
                     ? 'Sign in to start'
-                    : `${TRIAL_FREE_DAYS} days worth of free milk`}
+                    : `Pay for ${TRIAL_PAID_DAYS} mornings.\nThe next ${TRIAL_FREE_DAYS} are on us.`}
             </Serif>
             <TextBody color={colors.inkSoft} style={{ fontSize: 12.5, textAlign: 'center', marginTop: 2 }}>
               {step === 'ineligible' || step === 'signin' || step === 'subscribed'
-                ? 'PYAAS Gold Full Cream · 1 L fresh every morning'
-                : 'PYAAS Gold Full Cream · 1 L daily'}
+                ? 'Parag Gold Full Cream · 1 L fresh every morning'
+                : 'Parag Gold Full Cream · 1 L delivered daily, 5-7:30 AM'}
             </TextBody>
           </View>
 
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {step === 'intro' ? (
-              /* Packet + the one line in the header — nothing else to read.
-                 The confirm step still shows the real charge. */
+              /* Founder's final layout (18 Aug): pack shot + the paid-first
+                 pitch + the full scheme card. Every rupee figure is computed
+                 from the live engine (pack price × the 1 L/day floor), so the
+                 card can never promise money the sweep won't honour. */
               <Animated.View entering={FadeIn.duration(240)} style={{ gap: spacing.md }}>
+                <TextBody color={colors.inkSoft} style={{ fontSize: 14, lineHeight: 21, textAlign: 'center' }}>
+                  Parag's trust, now at your door. Set your milk once and it arrives every morning while you're still getting up.
+                </TextBody>
+                <TextBody color={colors.inkSoft} style={{ fontSize: 14, lineHeight: 21, textAlign: 'center' }}>
+                  Recharge your wallet once. No daily payments, no chasing change.
+                </TextBody>
+
+                <View style={{ backgroundColor: colors.flameSoft, borderRadius: radius.lg, padding: spacing.md, gap: 12 }}>
+                  {[
+                    { icon: 'cash-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>Days 1 & {TRIAL_PAID_DAYS}: {rupee(FREE_PACK_DAILY_PRICE * OFFER_DAY_QTY)}/day</TextBody> },
+                    { icon: 'sparkles-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>Days {TRIAL_PAID_DAYS + 1} & {TRIAL_PAID_DAYS + TRIAL_FREE_DAYS}: <TextSemi color={colors.flameDeep} style={{ fontSize: 13.5 }}>free</TextSemi></TextBody> },
+                    { icon: 'sync-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>From day {TRIAL_PAID_DAYS + TRIAL_FREE_DAYS + 1}: {rupee(FREE_PACK_DAILY_PRICE * OFFER_DAY_QTY)}/day, paid from your wallet</TextBody> },
+                    { icon: 'pause-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>Pause anytime, travelling or just a day off</TextBody> },
+                    { icon: 'card-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>Offer applies on a wallet recharge of {rupee(OFFER_QUALIFY_RECHARGE)} or more</TextBody> },
+                  ].map((row, i) => (
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name={row.icon} size={16} color={colors.flameDeep} />
+                      </View>
+                      {row.body}
+                    </View>
+                  ))}
+                </View>
+
                 {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5, textAlign: 'center' }}>{err}</TextBody> : null}
                 <PrimaryButton title={busy ? 'Checking…' : 'Start my subscription'} loading={busy} onPress={() => { void startFromIntro(); }} />
                 <Tap haptic={false} onPress={onClose} style={{ alignItems: 'center', paddingVertical: 4 }}>
                   <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Maybe later</TextMed>
                 </Tap>
+                <TextBody color={colors.inkMute} style={{ fontSize: 11, textAlign: 'center' }}>
+                  New eligible subscribers. T&C apply.
+                </TextBody>
               </Animated.View>
             ) : null}
 
