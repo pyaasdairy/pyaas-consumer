@@ -1,20 +1,21 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getUserId, getProfile } from './session';
-import { claimFreePack } from './freePack';
+import { getUserId } from './session';
 
 /**
- * ₹100 WALLET GATE + THE 7-DAY STARTER PLAN
- * -----------------------------------------
+ * ₹100 WALLET GATE
+ * ----------------
  * Purchasing is LOCKED until the member funds their PYAAS wallet to the ₹100
- * minimum. The moment the balance first reaches the target, the account unlocks
- * PERMANENTLY (spending back below it never re-locks it) and the member is set
- * up with their 7-day starter subscription: PYAAS Gold 500 ml daily from tomorrow,
- * with the FIRST 2 DAYS ON US (a promo credit covers them; the remaining days
- * bill from the wallet as normal).
+ * minimum. The moment the balance first reaches the target, the account
+ * unlocks PERMANENTLY (spending back below it never re-locks it).
  *
- * The unlock check runs inside the wallet store's refresh, so ANY top-up path
- * (recharge screen, autopay, promo) trips it the moment the balance lands —
- * no screen has to remember to call it.
+ * THE UNLOCK CREATES NOTHING. It used to auto-start the 7-day starter
+ * subscription (claimFreePack) as a side effect of the wallet refresh — so a
+ * member who merely topped up was silently enrolled in a recurring daily milk
+ * charge they never agreed to on any screen. That is the auto-subscription
+ * dark pattern Play's Deceptive Behavior policy exists for, and it is the
+ * category the app was removed under once already. Enrollment now happens in
+ * exactly two places, both explicit taps that display the real per-delivery
+ * charge: ClaimPackFlow's confirm and SubscribeSheet's Subscribe. Never here.
  */
 
 export const WALLET_UNLOCK_TARGET = 100;
@@ -43,9 +44,8 @@ let syncInFlight: Promise<void> | null = null;
 
 /**
  * Called from the wallet store on every balance refresh. First time the balance
- * reaches the target: persist the unlock and auto-start the starter plan.
- * Idempotent and serialized; every step is error-soft so a partial failure never
- * blocks the unlock itself.
+ * reaches the target: persist the unlock flag and notify listeners. Idempotent
+ * and serialized. Creates NO subscription and moves NO money (see header).
  */
 export function syncWalletUnlock(balance: number): Promise<void> {
   if (balance < WALLET_UNLOCK_TARGET) return Promise.resolve();
@@ -62,22 +62,5 @@ async function doSync(_balance: number): Promise<void> {
     if ((await AsyncStorage.getItem(key)) === '1') return; // already unlocked
     await AsyncStorage.setItem(key, '1');
   } catch { return; }
-  await startStarterPlan(uid);
   for (const cb of listeners) { try { cb(); } catch { /* listener errors never break the unlock */ } }
-}
-
-/**
- * The 7-day starter plan IS the free-pack claim: the same 2-free-days credit,
- * the same daily Gold subscription from tomorrow, the same trial anchor and
- * nag retirement. Delegating to claimFreePack means ONE in-flight mutex, ONE
- * eligibility gate (per-phone claim marker) and ONE credit ref — so the unlock
- * path and the ClaimPackFlow popup can never double-grant, whichever order
- * they fire in (already-claimed simply resolves { ok: false } with no credit).
- */
-async function startStarterPlan(_uid: string): Promise<void> {
-  try {
-    const phone = (await getProfile())?.phone;
-    if (!phone) return;
-    await claimFreePack(phone);
-  } catch { /* error-soft — the unlock itself must never be blocked */ }
 }

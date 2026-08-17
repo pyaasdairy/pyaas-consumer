@@ -31,6 +31,7 @@ import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../li
 import { TextBody, TextMed, TextSemi, Tap } from '../../components/ui';
 import { enterUp } from '../../lib/motion';
 import { haptics } from '../../lib/haptics';
+import { isBackendConfigured } from '../../lib/apiClient';
 import { getProfile } from '../../lib/session';
 import { FloatingParticles, ShineSweep, GlowPulse } from '../../components/Fx';
 import { VipTrialModal } from '../../components/VipTrialModal';
@@ -303,6 +304,15 @@ export default function Vip() {
   // Paid join: a Confirm dialog, then a wallet deduct (same path as an order).
   function openBuy() {
     haptics.press();
+    // REAL MONEY GUARD: in backend mode the ₹99 debit is a real server-side
+    // charge, but the membership record itself is still device-local — a paid
+    // member would lose Plus on reinstall or a second phone. Until the backend
+    // persists memberships, the paid join stays closed (same reasoning that
+    // hides AutoPay); the free trial remains available.
+    if (isBackendConfigured() && !__DEV__) {
+      setMsg('PYAAS Plus paid memberships open soon. Your free trial still works.');
+      return;
+    }
     setBuyErr('');
     setShowBuy(true);
   }

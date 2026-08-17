@@ -23,7 +23,7 @@ import { refreshCatalog, getMergedProducts } from '../lib/catalog';
 import { useServiceability, joinWaitlist } from '../lib/serviceability';
 import { useDeliveryMode } from '../lib/deliveryMode';
 import { useAuth } from '../lib/auth';
-import { purchasesUnlocked, onWalletUnlocked, WALLET_UNLOCK_TARGET, STARTER_FREE_DAYS } from '../lib/walletGate';
+import { purchasesUnlocked, onWalletUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 
 // Fees we SHOW (for transparency, like a quick-commerce bill) but WAIVE — so the
 // amount payable stays item-total + delivery. Handling + small-cart are on us.
@@ -218,7 +218,7 @@ export default function Cart() {
       min: String(Math.ceil(unlockShort)),
       amount: String(Math.max(100, Math.ceil(unlockShort / 50) * 50)),
       returnTo: '/cart',
-      reason: `to unlock ordering, your first ${STARTER_FREE_DAYS} days of milk are on us`,
+      reason: 'to unlock ordering',
     }).toString();
     router.push(`/recharge?${qs}`);
   }
@@ -578,7 +578,7 @@ export default function Cart() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
             <Ionicons name="gift" size={16} color={colors.flameDeep} />
             <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>
-              Fund your wallet to {rupee(WALLET_UNLOCK_TARGET)} to unlock ordering. Your 7-day starter plan begins right away, first {STARTER_FREE_DAYS} days on us.
+              Fund your wallet to {rupee(WALLET_UNLOCK_TARGET)} to unlock ordering. Nothing starts on its own; you choose what to order.
             </TextMed>
           </View>
         ) : !locked && short > 0 && !blocked ? (

@@ -77,7 +77,7 @@ export default function Recharge() {
   const params = useLocalSearchParams<{ amount?: string; min?: string; returnTo?: string; reason?: string }>();
   // Global floor: ₹100 is the smallest recharge anywhere in the app. A caller's
   // shortfall (`min` param) can only RAISE the floor, never lower it.
-  const MIN_RECHARGE = 100;
+  const MIN_RECHARGE = 99; // aligned with the advertised 2+2 offer minimum
   const min = Math.max(MIN_RECHARGE, Math.round(Number(params.min) || 0));
   const returnTo = typeof params.returnTo === 'string' ? params.returnTo : '';
   const reason = typeof params.reason === 'string' ? params.reason : '';

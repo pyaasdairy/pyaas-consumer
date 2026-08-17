@@ -13,6 +13,9 @@ import {
   BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold,
 } from '@expo-google-fonts/bricolage-grotesque';
 import { AuthProvider, useAuth } from '../lib/auth';
+import { ConsentWelcome } from '../components/ConsentWelcome';
+import { hasAcceptedDataDisclosure, recordDataDisclosureAccepted, linkDisclosureToAccount } from '../lib/dataConsent';
+import { getUserId } from '../lib/session';
 import { setOnAuthExpired } from '../lib/apiClient';
 import { runOneTimeLocalReset } from '../lib/localReset';
 import { colors } from '../lib/theme';
@@ -117,6 +120,32 @@ function RootNavigator() {
   // actually know where to land (so there's no flash of the wrong screen, and
   // no abrupt swap). For signed-in users we wait for the profile too.
   const appReady = maxWaited || (fontsLoaded && !loading && minSplash && (!session || profileLoaded));
+
+  // SIGNED-IN CONSENT PARITY: the prominent disclosure used to exist only on
+  // the sign-in screen, so a member with a persisted session (or one signed in
+  // before a disclosure-version bump) could use the app — and have data
+  // collected — without ever seeing the current disclosure. Any signed-in
+  // session without the CURRENT version accepted gets the same full-screen
+  // ConsentWelcome, once, before the app. Hidden while a public legal doc is
+  // open so the Privacy Policy / Terms links inside it remain readable.
+  const [needsConsent, setNeedsConsent] = useState(false);
+  useEffect(() => {
+    if (!session) { setNeedsConsent(false); return; }
+    let on = true;
+    hasAcceptedDataDisclosure()
+      .then((ok) => { if (on) setNeedsConsent(!ok); })
+      .catch(() => { if (on) setNeedsConsent(true); });
+    return () => { on = false; };
+  }, [session]);
+  const onPublicDocNow = PUBLIC_DOC_ROUTES.has(segments[0] as string);
+  const acceptSignedInConsent = useCallback(async () => {
+    await recordDataDisclosureAccepted();
+    try {
+      const uid = await getUserId();
+      if (uid) await linkDisclosureToAccount(uid);
+    } catch { /* attribution is best-effort */ }
+    setNeedsConsent(false);
+  }, []);
   const onSplashDone = useCallback(() => setSplashDone(true), []);
 
   return (
@@ -134,6 +163,11 @@ function RootNavigator() {
         <Stack.Screen name="address" options={{ presentation: 'modal' }} />
         <Stack.Screen name="order/[id]" options={{ presentation: 'card' }} />
       </Stack>
+      {session && needsConsent && !onPublicDocNow && splashDone ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+          <ConsentWelcome onAgree={() => { void acceptSignedInConsent(); }} />
+        </View>
+      ) : null}
       {!splashDone ? <Splash ready={appReady} onDone={onSplashDone} /> : null}
     </View>
   );

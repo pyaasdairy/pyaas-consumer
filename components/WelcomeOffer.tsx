@@ -58,7 +58,7 @@ export function WelcomeOffer({ visible, onClaim, onClose }: { visible: boolean; 
 
           <Animated.View entering={FadeIn.duration(420).delay(480)} style={{ borderWidth: 1.5, borderColor: colors.flameSoft, borderStyle: 'dashed', borderRadius: radius.lg, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, backgroundColor: colors.white }}>
             <TextSemi style={{ fontSize: 16.5, textAlign: 'center', lineHeight: 24 }} color={colors.ink}>
-              Order milk for {TRIAL_PAID_DAYS} days,{'\n'}get the next {TRIAL_FREE_DAYS} days FREE
+              Your first {TRIAL_FREE_DAYS} days are FREE,{'\n'}then just {TRIAL_PAID_DAYS} paid days to finish
             </TextSemi>
           </Animated.View>
 

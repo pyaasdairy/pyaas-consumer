@@ -294,7 +294,7 @@ export default function OrderTracking() {
               <View style={{ flex: 1 }}>
                 <TextBody color={colors.inkMute} style={{ fontSize: 13.5 }}>Arriving in</TextBody>
                 <Serif color={colors.flameDeep} style={{ fontSize: 38, lineHeight: 44, letterSpacing: -0.5 }}>
-                  {heroMins != null ? `${heroMins} min${heroMins === 1 ? '' : 's'}` : 'a few mins'}
+                  {heroMins == null ? 'a few mins' : heroEta && heroEta.getTime() < Date.now() ? 'any moment' : `${heroMins} min${heroMins === 1 ? '' : 's'}`}
                 </Serif>
               </View>
               {heroMins != null && heroMins <= 25 ? (
@@ -329,6 +329,20 @@ export default function OrderTracking() {
           </Tap>
         ) : null}
 
+
+        {/* Terminal states: the status hero card was removed, so delivered and
+            cancelled orders still need their state said plainly, once. */}
+        {delivered || cancelled ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, ...shadow.soft }}>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: cancelled ? colors.cream : colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name={cancelled ? 'close-circle-outline' : 'checkmark-circle'} size={22} color={cancelled ? colors.inkMute : colors.flameDeep} />
+            </View>
+            <View style={{ flex: 1, gap: 1 }}>
+              <TextSemi style={{ fontSize: 16 }}>{STATUS_LABEL[order.status]}</TextSemi>
+              <TextBody color={colors.inkMute} style={{ fontSize: 12.5 }}>{STATUS_SUB[order.status]}</TextBody>
+            </View>
+          </View>
+        ) : null}
 
         {/* Morning ETA strip. (The live-instant state is owned entirely by the
             arrival card over the map hero above — nothing renders here.) */}

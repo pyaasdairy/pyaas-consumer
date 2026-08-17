@@ -48,7 +48,7 @@ export default function Refer() {
             Gift {rupee(REFERRAL_REWARD)},{'\n'}get {rupee(REFERRAL_REWARD)}.
           </Serif>
           <TextBody color="rgba(255,255,255,0.95)" style={{ fontSize: 13.5 }}>
-            For every family that joins the cooperative with your code, {rupee(REFERRAL_REWARD)} lands in your PYAAS Wallet.
+            Share your code with families you know; referral rewards are coming soon and early sharers get them first.
           </TextBody>
         </View>
 
@@ -96,7 +96,7 @@ export default function Refer() {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.blueSoft, borderRadius: radius.md, padding: 12 }}>
           <Ionicons name="information-circle" size={18} color={colors.blue} />
-          <TextBody style={{ flex: 1, fontSize: 12.5 }} color={colors.blue}>The reward is credited automatically once your friend completes signup.</TextBody>
+          <TextBody style={{ flex: 1, fontSize: 12.5 }} color={colors.blue}>Rewards activate once the referral programme goes live; your shares are counted from today.</TextBody>
         </View>
       </ScrollView>
     </View>

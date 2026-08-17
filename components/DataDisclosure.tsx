@@ -88,6 +88,11 @@ export const FLOWS: { icon: React.ComponentProps<typeof Ionicons>['name']; what:
     why: 'A random id stored on this phone, so a one-time offer cannot be claimed over and over on the same device. It is not your advertising id and we do not track you with it.',
   },
   {
+    icon: 'card-outline',
+    what: 'When you pay',
+    why: 'Your name, mobile number and email are sent to Razorpay, our payment processor, to open the payment screen and process the charge. Card and UPI details go to Razorpay directly and never touch PYAAS servers.',
+  },
+  {
     icon: 'receipt-outline',
     what: 'Your orders and wallet activity',
     why: 'Stored on PYAAS servers to run deliveries, subscriptions and refunds, and to issue your bills.',

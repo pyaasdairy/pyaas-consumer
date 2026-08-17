@@ -210,7 +210,11 @@ export function SubscribeSheet({
       // Auto-renew mandate seam (UPI AutoPay): backend only, best-effort. Never
       // blocks the subscription — a failed/absent mandate just means manual
       // top-ups, exactly as before.
-      if (isBackendConfigured()) {
+      // AutoPay mandate seam is DEV-ONLY: in release the whole AutoPay feature
+      // is hidden, so silently registering a gateway mandate the member can
+      // never see or cancel would be exactly the invisible-recurring pattern
+      // the audit flagged. Re-enable together with the real UPI checkout.
+      if (__DEV__ && isBackendConfigured()) {
         try {
           const live = await currentMandate();
           if (!live) await createMandate({ maxAmount: Math.max(500, Math.ceil(perDelivery) * 31) });

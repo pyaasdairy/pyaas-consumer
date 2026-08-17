@@ -86,9 +86,6 @@ export default function Coupons() {
             </View>
           ))
         )}
-        {!loading && coupons.length > 0 ? (
-          <TextBody style={{ fontSize: 12, textAlign: 'center' }} color={colors.inkMute}>Apply any code at checkout.</TextBody>
-        ) : null}
       </ScrollView>
     </View>
   );

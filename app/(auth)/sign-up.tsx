@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
@@ -11,11 +11,17 @@ import { ShineSweep } from '../../components/Fx';
 import { enterUp } from '../../lib/motion';
 import { signUpWithEmail } from '../../lib/session';
 import { recordConsents, defaultChoices } from '../../components/ConsentSheet';
+import { hasAcceptedDataDisclosure } from '../../lib/dataConsent';
 
 const BADGE = 96;
 
 export default function SignUp() {
   const router = useRouter();
+  // CONSENT GATE PARITY: this email route is reachable by deep link, and it
+  // must never collect a thing before the same disclosure the OTP screen
+  // enforces. Unconsented → the consent-first sign-in flow.
+  const [consented, setConsented] = useState<boolean | null>(null);
+  useEffect(() => { hasAcceptedDataDisclosure().then(setConsented).catch(() => setConsented(false)); }, []);
   const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -45,6 +51,9 @@ export default function SignUp() {
       setError(e?.message ?? 'Could not create your account.');
     } finally { setLoading(false); }
   }
+
+  if (consented === null) return null;
+  if (consented === false) return <Redirect href="/(auth)/otp" />;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.flameDeep }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>

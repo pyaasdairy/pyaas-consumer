@@ -28,7 +28,7 @@ import Constants from 'expo-constants';
 // Bumped 2026-08-18: the disclosure moved from a modal to the full-screen
 // ConsentWelcome. Same flows, stronger presentation; everyone re-consents once
 // under the new screen so every stored acceptance refers to what was shown.
-export const DATA_DISCLOSURE_VERSION = '2026-08-18.1';
+export const DATA_DISCLOSURE_VERSION = '2026-08-18.2';
 
 const ACCEPT_KEY = 'pyaas_data_disclosure_accepted';
 

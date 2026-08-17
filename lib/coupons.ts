@@ -28,6 +28,11 @@ const DEMO_COUPONS: Coupon[] = [
 ];
 
 export async function listCoupons(): Promise<Coupon[]> {
+  // No invented offers in a real build: the demo list renders only in the
+  // offline demo. Backend mode returns [] (the screen has a clean empty state)
+  // until real server-issued coupons exist and a checkout field can apply them.
+  const { isBackendConfigured } = require('./apiClient');
+  if (isBackendConfigured()) return [];
   return DEMO_COUPONS;
 }
 
