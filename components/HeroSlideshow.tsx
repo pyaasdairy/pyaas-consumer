@@ -37,14 +37,27 @@ export function HeroSlideshow() {
 
   // Auto-advance. A manual swipe just resets the timer via the momentum handler
   // updating idx (next tick continues from there).
+  // HOLD TO READ: a finger on the creative pauses the auto-advance; it
+  // resumes a beat after the touch lifts, so nobody loses their place mid-read.
+  const heldRef = useRef(false);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onHold = () => {
+    heldRef.current = true;
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+  };
+  const onRelease = () => {
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    resumeTimer.current = setTimeout(() => { heldRef.current = false; }, 2500);
+  };
   useEffect(() => {
     if (cardW <= 0) return;
     const t = setInterval(() => {
+      if (heldRef.current) return; // reading — hold the slide
       const next = (idxRef.current + 1) % SLIDES.length;
       ref.current?.scrollToOffset({ offset: next * cardW, animated: true });
       setIdx(next);
     }, INTERVAL);
-    return () => clearInterval(t);
+    return () => { clearInterval(t); if (resumeTimer.current) clearTimeout(resumeTimer.current); };
   }, [cardW]);
 
   const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {

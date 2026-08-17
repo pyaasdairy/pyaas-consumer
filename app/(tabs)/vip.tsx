@@ -34,19 +34,16 @@ import { haptics } from '../../lib/haptics';
 import { isBackendConfigured } from '../../lib/apiClient';
 import { getProfile } from '../../lib/session';
 import { FloatingParticles, ShineSweep, GlowPulse } from '../../components/Fx';
-import { VipTrialModal } from '../../components/VipTrialModal';
 import { ClaimPackFlow } from '../../components/ClaimPackFlow';
 import { VIP_MILK_DISCOUNT_PCT,
   getVip,
-  startTrial,
-  purchaseMembership,
+    purchaseMembership,
   cancelVip,
   InsufficientWalletError,
   vipActive,
   vipDaysLeft,
   vipOnTrial,
   vipPriceFor,
-  PLUS_TRIAL_DAYS,
   PLUS_PRICE_MONTH,
   PLUS_PERIOD_DAYS,
   type VipMembership,
@@ -237,7 +234,6 @@ export default function Vip() {
   const COMPARE = useMemo(() => catalog.filter((p) => p.category === 'milk' && !p.outOfStock).slice(0, 4), [catalog]);
   const [m, setM] = useState<VipMembership | null>(null);
   const [name, setName] = useState<string | null>(null);
-  const [showModal, setShowModal] = useState(false);
   const [showClaim, setShowClaim] = useState(false);
   const [msg, setMsg] = useState('');
   const [focused, setFocused] = useState(true);
@@ -279,40 +275,15 @@ export default function Vip() {
   const days = vipDaysLeft(m);
   const onTrial = vipOnTrial(m);
 
-  function openTrial() {
-    haptics.press();
-    setShowModal(true);
-  }
-  async function acceptTrial() {
-    setShowModal(false);
-    // Create a real membership row: the card flips to member state and Plus
-    // perks apply immediately across the app.
-    try {
-      const next = await startTrial();
-      setM(next);
-      haptics.success();
-      setMsg(`Your ${PLUS_TRIAL_DAYS}-day Plus trial is live. Priority slots and free delivery are on.`);
-      // Members who just launched their trial get the Taaza claim-pack flow.
-      // Delay presenting so VipTrialModal's native Modal has fully dismissed
-      // first (presenting a second RN Modal mid-dismiss is swallowed on iOS).
-      setTimeout(() => setShowClaim(true), 350);
-    } catch {
-      setMsg('Could not start your trial just now. Please try again.');
-    }
-  }
+
 
   // Paid join: a Confirm dialog, then a wallet deduct (same path as an order).
   function openBuy() {
     haptics.press();
-    // REAL MONEY GUARD: in backend mode the ₹99 debit is a real server-side
-    // charge, but the membership record itself is still device-local — a paid
-    // member would lose Plus on reinstall or a second phone. Until the backend
-    // persists memberships, the paid join stays closed (same reasoning that
-    // hides AutoPay); the free trial remains available.
-    if (isBackendConfigured() && !__DEV__) {
-      setMsg('PYAAS Plus paid memberships open soon. Your free trial still works.');
-      return;
-    }
+    // FOUNDER'S CALL (18 Aug): paid joins are LIVE. The ₹99 moves through the
+    // wallet (Razorpay-funded, server-side ledger). KNOWN GAP owned by the
+    // backend: the membership FLAG is still device-local until Daaku persists
+    // memberships server-side — flagged in the handoff, accepted for launch.
     setBuyErr('');
     setShowBuy(true);
   }
@@ -354,7 +325,7 @@ export default function Vip() {
     haptics.press();
     Alert.alert(
       'Cancel PYAAS Plus?',
-      `Your Plus perks stay active for the ${days} day${days === 1 ? '' : 's'} left in this period, then it won't renew. You can rejoin anytime.`,
+      'Cancelling ends your Plus perks immediately. Unused days are not refunded. You can rejoin anytime.',
       [
         { text: 'Keep Plus', style: 'cancel' },
         {
@@ -365,7 +336,7 @@ export default function Vip() {
               const next = await cancelVip();
               setM(next);
               haptics.success();
-              setMsg(`Plus cancelled, you keep your perks for ${days} more day${days === 1 ? '' : 's'}.`);
+              setMsg('Plus cancelled. Your perks have ended.');
             } catch {
               setMsg('Could not cancel just now. Please try again.');
             }
@@ -376,8 +347,8 @@ export default function Vip() {
   }
 
   // What the card shows adapts to membership state.
-  const cardNum = active ? days : PLUS_TRIAL_DAYS;
-  const cardL2 = active ? 'LEFT' : 'FREE';
+  const cardNum = active ? days : PLUS_PERIOD_DAYS;
+  const cardL2 = active ? 'LEFT' : 'DAYS';
   const upperName = (name ?? 'PYAAS FAMILY').toUpperCase();
   const memberLine = active ? (onTrial ? 'TRIAL ACTIVE' : upperName) : upperName;
 
@@ -400,33 +371,26 @@ export default function Vip() {
           <Animated.View entering={enterUp(140)} style={{ marginTop: 22, alignItems: 'center' }}>
             <TextSemi style={{ fontSize: 15, textAlign: 'center' }} color={INK}>
               {active
-                ? (onTrial
-                    ? `Your free trial is live, ${days} day${days === 1 ? '' : 's'} of Plus left.`
-                    : m?.status === 'cancelled'
-                      ? `Plus cancelled, ${days} day${days === 1 ? '' : 's'} of perks left.`
-                      : `You're a Plus member, ${days} day${days === 1 ? '' : 's'} left this period.`)
+                ? (m?.status === 'cancelled'
+                    ? `Plus cancelled, ${days} day${days === 1 ? '' : 's'} of perks left.`
+                    : `You're a Plus member, ${days} day${days === 1 ? '' : 's'} left this period.`)
                 : 'Join PYAAS Plus'}
             </TextSemi>
             {!active ? (
               <TextBody style={{ fontSize: 13, textAlign: 'center', marginTop: 2 }}>
-                {PLUS_TRIAL_DAYS} days on us, no card needed, cancel anytime
+                {rupee(PLUS_PRICE_MONTH)}/month · member prices, free delivery, priority slots · cancel anytime
               </TextBody>
             ) : null}
           </Animated.View>
         </Animated.View>
 
-        {/* TOP CTA - start the free trial, above the fold (non-members only) */}
+        {/* TOP CTA — the ONE way in: pay ₹99/month. A short wallet routes
+            through the Razorpay recharge and completes on return. */}
         {!active ? (
           <Animated.View entering={enterUp(50)} style={{ gap: 10, marginTop: -8 }}>
-            <ShineButton title={`Start my ${PLUS_TRIAL_DAYS}-day free trial`} onPress={openTrial} />
-            {/* Paid join — deducts ₹99 straight from the wallet (skip the trial). */}
-            <Tap onPress={openBuy} weight="medium">
-              <View style={{ height: 50, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flameDeep }}>
-                <Text style={{ color: colors.flameDeep, fontSize: 15, fontFamily: fonts.sansBold }}>Join now · {rupee(PLUS_PRICE_MONTH)}/mo from wallet</Text>
-              </View>
-            </Tap>
+            <ShineButton title={`Become a Plus member · ${rupee(PLUS_PRICE_MONTH)}/mo`} onPress={openBuy} />
             <TextBody style={{ fontSize: 12, textAlign: 'center' }}>
-              No card needed. Cancel anytime.
+              Paid securely via Razorpay through your PYAAS Wallet. Cancel anytime, no lock-in.
             </TextBody>
           </Animated.View>
         ) : null}
@@ -466,7 +430,7 @@ export default function Vip() {
               <TextBody style={{ fontSize: 12.5, marginTop: 1 }}>
                 {active
                   ? (onTrial ? `Free for ${days} more day${days === 1 ? '' : 's'}, then ${rupee(PLUS_PRICE_MONTH)}/mo.` : 'Priority slots and free delivery are active.')
-                  : `First ${PLUS_TRIAL_DAYS} days free, then ${rupee(PLUS_PRICE_MONTH)}/mo.`}
+                  : `${rupee(PLUS_PRICE_MONTH)} per month. Cancel anytime, no lock-in.`}
               </TextBody>
             </View>
           </View>
@@ -560,9 +524,9 @@ export default function Vip() {
           <TextSemi style={{ fontSize: 18 }} color={INK}>How Plus works</TextSemi>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.card }}>
             {[
-              { n: '1', icon: 'gift' as const, title: 'Start free', body: `Your first ${PLUS_TRIAL_DAYS} days of Plus are on us. No card needed to begin.` },
+              { n: '1', icon: 'card' as const, title: 'Join for ' + rupee(PLUS_PRICE_MONTH) + '/mo', body: 'Pay securely via Razorpay through your PYAAS Wallet. That is the only way in — nothing is free.' },
               { n: '2', icon: 'flash' as const, title: 'Enjoy the perks', body: 'Priority morning slots, free delivery and member price on milk, from day one.' },
-              { n: '3', icon: 'card' as const, title: 'Then just ' + rupee(PLUS_PRICE_MONTH) + '/mo', body: 'Billed monthly after the trial. Cancel anytime, no lock-in.' },
+              { n: '3', icon: 'refresh' as const, title: 'Renew or cancel', body: 'Your month runs its full period either way. Cancel anytime, no lock-in.' },
             ].map((row, i) => (
               <View key={row.n} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: spacing.md, paddingVertical: 14, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line }}>
                 <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line }}>
@@ -583,7 +547,7 @@ export default function Vip() {
           <TextBody style={{ fontSize: 13.5, lineHeight: 21 }}>
             Plus is about getting looked after first. Your milk arrives in the earliest slot each morning,
             delivery is always free, and you get offers and new launches before anyone else, with a faster
-            line to the team when you need it. No card to start, and you can cancel anytime.
+            line to the team when you need it. Cancel anytime, no lock-in.
           </TextBody>
         </Animated.View>
 
@@ -594,13 +558,13 @@ export default function Vip() {
               <Text style={{ color: INK, fontSize: 16, fontFamily: fonts.sansBold, ...tabular }}>You're a Plus member, {days} day{days === 1 ? '' : 's'} left</Text>
             </View>
           ) : (
-            <ShineButton title={`Start my ${PLUS_TRIAL_DAYS}-day free trial`} onPress={openTrial} />
+            <ShineButton title={`Become a Plus member · ${rupee(PLUS_PRICE_MONTH)}/mo`} onPress={openBuy} />
           )}
           {msg ? (
             <TextSemi style={{ fontSize: 12.5, textAlign: 'center' }} color={GOLD_DEEP}>{msg}</TextSemi>
           ) : (
             <TextBody style={{ fontSize: 12, textAlign: 'center' }}>
-              Free for {PLUS_TRIAL_DAYS} days, then {rupee(PLUS_PRICE_MONTH)}/mo. Cancel anytime.
+              {rupee(PLUS_PRICE_MONTH)}/month via Razorpay. Cancel anytime.
             </TextBody>
           )}
         </Animated.View>
@@ -658,7 +622,6 @@ export default function Vip() {
         </View>
       </Modal>
 
-      <VipTrialModal visible={showModal} onAccept={acceptTrial} onDeny={() => setShowModal(false)} />
       <ClaimPackFlow
         visible={showClaim}
         onClose={() => setShowClaim(false)}

@@ -168,7 +168,10 @@ export async function cancelVip(): Promise<VipMembership | null> {
   const uid = await requireUserId();
   const existing = await getSingle<VipMembership>('vip', uid);
   if (!existing) return null;
-  const m: VipMembership = { ...existing, status: 'cancelled' };
+  // CANCEL MEANS CANCEL (founder's call, 18 Aug): perks end immediately, not
+  // at period end — a member who cancels must never still read as a member.
+  // The confirm dialog states plainly that unused days are not refunded.
+  const m: VipMembership = { ...existing, status: 'cancelled', current_period_end: new Date().toISOString() };
   // TODO(api): POST /membership/cancel when the backend is live.
   await putSingle<VipMembership>('vip', uid, m);
   return m;

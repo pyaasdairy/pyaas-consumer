@@ -291,7 +291,14 @@ export default function Shop() {
       return 0;
     });
   }, [cat, groups]);
-  const popular = useMemo(() => products.filter((p) => p.mostOrdered), [products]);
+  // The shelf leads with what can actually be BOUGHT (Taaza + Gold today):
+  // out-of-stock bestsellers never headline the shop. Falls back to the full
+  // most-ordered list only if literally everything is out.
+  const popular = useMemo(() => {
+    const most = products.filter((p) => p.mostOrdered);
+    const inStock = most.filter((p) => !p.outOfStock);
+    return inStock.length > 0 ? inStock : most;
+  }, [products]);
   const favorites = useMemo(() => favIds.map((id) => products.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds, products]);
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
 
