@@ -291,7 +291,7 @@ export function AddressCaptureSheet({
               <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="location" size={38} color={colors.flameDeep} />
               </View>
-              <Serif style={{ fontSize: 21, textAlign: 'center' }}>Coming soon to this area! 🐄</Serif>
+              <Serif style={{ fontSize: 21, textAlign: 'center' }}>Coming soon to this area</Serif>
               <TextBody style={{ fontSize: 13.5, lineHeight: 20, textAlign: 'center' }} color={colors.inkSoft}>
                 {svcBlocked.reason ?? "We can't deliver to this location yet. We're expanding fast. Move the pin to a serviceable area, or leave your number and we'll tell you the moment we launch here."}
               </TextBody>

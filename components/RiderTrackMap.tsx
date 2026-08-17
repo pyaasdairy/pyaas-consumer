@@ -32,10 +32,15 @@ function mapHtml(home: Coords | null, rider: Coords, origin: Coords | null, orig
 <style>
   html,body,#map{height:100%;margin:0;padding:0;background:#f6eef4}
   #map{width:100%}
-  .pin{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:#F36CB5;box-shadow:0 2px 8px rgba(0,0,0,.28);font-size:17px}
+  /* Geometric markers, no emoji: a ringed brand disc with a simple inner
+     glyph shape per role. Reads clean at any zoom. */
+  .pin{position:relative;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#F36CB5;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3)}
   .pin.home{background:#2E2329}
+  .pin.home::after{content:'';width:9px;height:9px;border-radius:50%;background:#fff}
   .pin.store{background:#F49F1C}
-  .tag{transform:translateY(-4px);font:600 10px/1 -apple-system,sans-serif;color:#2E2329;background:rgba(255,255,255,.92);padding:2px 6px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.18);white-space:nowrap}
+  .pin.store::after{content:'';width:9px;height:9px;border-radius:2px;background:#fff}
+  .pin.rider::after{content:'';width:12px;height:12px;border-radius:50%;border:3px solid #fff}
+  .tag{transform:translateY(-2px);font:600 10px/1 -apple-system,sans-serif;color:#2E2329;background:rgba(255,255,255,.92);padding:2px 6px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.18);white-space:nowrap}
   .pulse{position:absolute;left:-8px;top:-8px;width:50px;height:50px;border-radius:50%;background:rgba(243,108,181,.28);animation:pp 1.6s ease-out infinite}
   @keyframes pp{0%{transform:scale(.5);opacity:.9}100%{transform:scale(1.25);opacity:0}}
   .leaflet-control-attribution{font-size:9px}
@@ -60,9 +65,9 @@ function mapHtml(home: Coords | null, rider: Coords, origin: Coords | null, orig
   var tilesOk=false,tileErrs=0;
   tiles.on('tileload',function(){ if(!tilesOk){ tilesOk=true; __rnpost({tiles:true}); } });
   tiles.on('tileerror',function(){ if(!tilesOk && ++tileErrs>=4) __rnpost({tiles:false}); });
-  var homeIcon=L.divIcon({html:'<div class="pin home">🏠</div>',className:'',iconSize:[34,34],iconAnchor:[17,17]});
-  var storeIcon=L.divIcon({html:'<div class="pin store">🏪</div><div class="tag">'+${originLabelJs}+'</div>',className:'',iconSize:[34,34],iconAnchor:[17,17]});
-  var riderIcon=L.divIcon({html:'<div style="position:relative"><div class="pulse"></div><div class="pin">🛵</div></div>',className:'',iconSize:[34,34],iconAnchor:[17,17]});
+  var homeIcon=L.divIcon({html:'<div class="pin home"></div>',className:'',iconSize:[30,30],iconAnchor:[15,15]});
+  var storeIcon=L.divIcon({html:'<div class="pin store"></div><div class="tag">'+${originLabelJs}+'</div>',className:'',iconSize:[30,30],iconAnchor:[15,15]});
+  var riderIcon=L.divIcon({html:'<div style="position:relative"><div class="pulse"></div><div class="pin rider"></div></div>',className:'',iconSize:[30,30],iconAnchor:[15,15]});
   var rider=L.marker(start,{icon:riderIcon}).addTo(map);
   var route=null;   // the LIVE remaining leg: rider → home, redrawn as the rider moves
   var plan=null;    // the FULL planned trip: store → home, static and faint
@@ -108,6 +113,7 @@ export function RiderTrackMap({
   originLng,
   originLabel = 'Store',
   height = 230,
+  hero = false,
 }: {
   /** The rider's last reported position. Null until the rider app reports one —
    *  there is no map to draw until then. */
@@ -124,6 +130,10 @@ export function RiderTrackMap({
   originLng?: number | null;
   originLabel?: string;
   height?: number;
+  /** Full-bleed hero mode (the quick-commerce tracking layout): square
+   *  corners, and the no-fix placeholder fills the same height so the layout
+   *  never jumps when the first rider position arrives. */
+  hero?: boolean;
 }) {
   const webRef = useRef<WebView>(null);
   const hasFix = riderLat != null && riderLng != null;
@@ -165,7 +175,7 @@ export function RiderTrackMap({
   // rider we invented.
   if (!hasFix) {
     return (
-      <View style={{ backgroundColor: colors.cream, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, alignItems: 'center', gap: 6 }}>
+      <View style={{ backgroundColor: colors.cream, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, alignItems: 'center', justifyContent: 'center', gap: 6, height: hero ? height : undefined }}>
         <Ionicons name="navigate-circle-outline" size={26} color={colors.inkMute} />
         <TextSemi style={{ fontSize: 14 }}>Live location not shared yet</TextSemi>
         <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkSoft}>
@@ -187,7 +197,7 @@ export function RiderTrackMap({
   }
 
   return (
-    <View style={{ height, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.wash, ...shadow.soft }}>
+    <View style={{ height, borderRadius: hero ? 0 : radius.lg, overflow: 'hidden', backgroundColor: colors.wash, ...shadow.soft }}>
       {html ? (
         <WebView
           ref={webRef}

@@ -106,7 +106,7 @@ export default function Orders() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <TextBody style={{ fontSize: 12.5, textDecorationLine: 'line-through', ...tabular }} color={colors.inkMute}>{rupee(item.total)}</TextBody>
                         <View style={{ backgroundColor: FREE_GREEN, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
-                          <TextMed color={colors.white} style={{ fontSize: 11 }}>FREE 🎉</TextMed>
+                          <TextMed color={colors.white} style={{ fontSize: 11 }}>FREE</TextMed>
                         </View>
                       </View>
                     ) : (

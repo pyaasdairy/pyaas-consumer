@@ -339,7 +339,7 @@ export default function Cart() {
           <Serif style={{ fontSize: 22 }}>{lane === 'instant' ? 'Your instant cart is empty' : 'Your morning cart is empty'}</Serif>
           <TextBody style={{ textAlign: 'center' }}>
             {lane === 'instant'
-              ? 'Add fresh milk and more from the ⚡ Instant shop, delivered in ~20 minutes.'
+              ? 'Add fresh milk and more from the Instant shop, delivered in ~20 minutes.'
               : 'Add one-time items from the Morning shop, delivered tomorrow with the 5–7:30 AM run.'}
           </TextBody>
           <Button title="Start shopping" onPress={() => router.replace('/(tabs)')} style={{ alignSelf: 'stretch', marginTop: 8 }} />
@@ -394,7 +394,7 @@ export default function Cart() {
             subscription row above is unchanged. Hidden on paid days / after trial. */}
         {lane === 'morning' && freeMilk ? (
           <Animated.View entering={FadeIn.duration(240)} style={{ gap: 8 }}>
-            <TextSemi style={{ fontSize: 14.5 }}>Your free milk today 🎉</TextSemi>
+            <TextSemi style={{ fontSize: 14.5 }}>Your free milk today</TextSemi>
             <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: LIVE_GREEN, overflow: 'hidden', ...shadow.soft }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.md }}>
                 <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -649,7 +649,7 @@ function Header({ insetsTop, lane }: { insetsTop: number; lane: 'instant' | 'mor
       <View style={{ flex: 1 }}>
         <Serif style={{ fontSize: 22 }}>Your cart</Serif>
         <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>
-          {lane === 'instant' ? '⚡ Instant · delivered in ~20 min' : 'Morning · delivered tomorrow 5–7:30 AM'}
+          {lane === 'instant' ? 'Instant · delivered in ~20 min' : 'Morning · delivered tomorrow 5–7:30 AM'}
         </TextBody>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: lane === 'instant' ? colors.flameSoft : colors.blueSoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 5 }}>

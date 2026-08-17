@@ -20,7 +20,6 @@ import { HeroSlideshow } from '../../components/HeroSlideshow';
 import { CATEGORIES, type Category } from '../../constants/products';
 import { useCatalog, getMergedProducts, refreshCatalog, groupProducts, type GroupedProduct } from '../../lib/catalog';
 import { PromoGate } from '../../components/PromoGate';
-import { ComingSoon } from '../../components/ComingSoon';
 import { useServiceability } from '../../lib/serviceability';
 import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
@@ -281,10 +280,13 @@ export default function Shop() {
   const favorites = useMemo(() => favIds.map((id) => products.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds, products]);
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
 
-  // Out-of-zone gate — a resolved `serviceable === false` swaps the whole shop for
-  // the friendly Coming Soon screen. `null` (still resolving) falls through to the
-  // normal skeleton below, so a slow check never flashes the gate.
-  if (svcServiceable === false) return <ComingSoon />;
+  // Out of zone — the shop renders EXACTLY as it does in a serviceable area,
+  // but browse-only: every product greys out with a COMING SOON marker, the
+  // strip below the header says why, and ordering is impossible at three
+  // layers (no add controls, the product page's waitlist CTA, and placeOrder's
+  // serviceable gate). `null` (still resolving) falls through to the skeleton,
+  // so a slow check never flashes the browse-only state.
+  const comingSoon = svcServiceable === false;
 
   if (!ready) return <ShopSkeleton />;
 
@@ -342,24 +344,31 @@ export default function Shop() {
                 'by HH:MM' shape (legacy rows carried lane defaults). */}
             {stripOrders.length > 0 ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+                {/* Premium tracking card: white surface, icon disc, real type
+                    hierarchy, chevron in its own disc — not a flat pink strip. */}
                 <Tap
+                  scaleTo={0.97}
                   onPress={() =>
                     stripOrders.length === 1
                       ? router.push(`/order/${stripOrders[0].id}`)
                       : router.push('/(tabs)/orders')
                   }
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.flameDeep, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12, ...shadow.soft }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, paddingHorizontal: spacing.md, paddingVertical: 12, ...shadow.card }}
                 >
-                  <Ionicons name="bicycle" size={20} color={colors.white} />
-                  <View style={{ flex: 1 }}>
-                    <TextMed style={{ fontSize: 13.5 }} color={colors.white}>
-                      {stripOrders.length === 1 ? 'Track your order' : `Track your ${stripOrders.length} orders`}
-                    </TextMed>
-                    <TextBody style={{ fontSize: 11.5 }} color="rgba(255,255,255,0.85)">
-                      {stripOrders.length === 1 ? STATUS_LABEL[stripOrders[0].status] : 'Tap to see all active orders'}
+                  <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="bicycle" size={21} color={colors.flameDeep} />
+                  </View>
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <TextSemi style={{ fontSize: 15 }} color={colors.ink}>
+                      {stripOrders.length === 1 ? 'Track your order' : `${stripOrders.length} orders on the way`}
+                    </TextSemi>
+                    <TextBody style={{ fontSize: 12.5 }} color={colors.inkMute} numberOfLines={1}>
+                      {stripOrders.length === 1 ? STATUS_LABEL[stripOrders[0].status] : 'Tap to follow them live'}
                     </TextBody>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.85)" />
+                  <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="chevron-forward" size={16} color={colors.white} />
+                  </View>
                 </Tap>
               </Animated.View>
             ) : null}
@@ -378,7 +387,7 @@ export default function Shop() {
                       Order now · at your door by {hhmmTo12(instantEtaHHMM()) ?? 'the next slot'}
                     </TextBody>
                   </View>
-                  <Pill label="⚡ INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
+                  <Pill label="INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
                 </View>
               </Animated.View>
             ) : (
@@ -401,7 +410,7 @@ export default function Shop() {
                       </View>
                       <TextSemi color={colors.white} style={{ fontSize: 15 }} numberOfLines={1}>Start your subscription</TextSemi>
                       <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
-                        Pay {TRIAL_PAID_DAYS} days, get {TRIAL_FREE_DAYS} FREE 🎉 · 500 ml every morning · pause anytime
+                        Pay {TRIAL_PAID_DAYS} days, get {TRIAL_FREE_DAYS} FREE · 500 ml every morning · pause anytime
                       </TextBody>
                     </View>
                     <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
@@ -418,10 +427,6 @@ export default function Shop() {
               <SubscriptionStatusCard showEmpty={!claimEligible} onClaim={() => setClaimOpen(true)} style={{ marginBottom: spacing.md }} />
             </Animated.View>
 
-            {/* Hero · auto-advancing slideshow of the brand creatives */}
-            <Animated.View entering={FadeInDown.duration(440).delay(80)}>
-              <HeroSlideshow />
-            </Animated.View>
 
             {/* Category rail · horizontally scrollable (PYAAS has many ranges) */}
             <Animated.View entering={FadeInDown.duration(440).delay(160)} style={{ marginBottom: spacing.md }}>
@@ -456,7 +461,7 @@ export default function Shop() {
                   {/* Static pack-shot cards: the shelf scrolls, the cards never flip. */}
                   {popular.map((p, i) => (
                     <View key={p.id} style={{ width: 168 }}>
-                      <ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />
+                      <ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} browseOnly={comingSoon} />
                     </View>
                   ))}
                 </ScrollView>
@@ -473,12 +478,18 @@ export default function Shop() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: 4 }}>
                   {favorites.map((p, i) => (
                     <View key={p.id} style={{ width: 168 }}>
-                      <ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />
+                      <ProductCard product={p} index={i} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} browseOnly={comingSoon} />
                     </View>
                   ))}
                 </ScrollView>
               </Animated.View>
             ) : null}
+
+            {/* Brand slides AFTER the shelves: the member sees products
+                first; the creatives play between the shelves and the grid. */}
+            <Animated.View entering={FadeInDown.duration(440)} style={{ marginBottom: spacing.md }}>
+              <HeroSlideshow />
+            </Animated.View>
 
             {cat === 'all' ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: spacing.lg, marginBottom: 10 }}>
@@ -490,7 +501,7 @@ export default function Shop() {
         }
         renderItem={({ item, index }) => (
           <View style={{ flex: 1, maxWidth: '50%' }}>
-            <ProductCard product={item.base} variants={item.variants} index={index} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} />
+            <ProductCard product={item.base} variants={item.variants} index={index} ctaLabel={instant ? 'ORDER NOW' : 'ADD'} browseOnly={comingSoon} />
           </View>
         )}
         ListFooterComponent={
@@ -499,9 +510,9 @@ export default function Shop() {
              would misattribute the manufacturer's products. Deliberately understated:
              tiny wordmark at low opacity + one muted caption line. */
           data.some((g) => g.variants.some((v) => v.manufacturer)) ? (
-            <View style={{ alignItems: 'center', paddingTop: spacing.lg, gap: 7 }}>
-              <Image source={require('../../assets/pyaas-logo.png')} style={{ width: 62, height: 17, opacity: 0.35 }} contentFit="contain" />
-              <TextBody color={colors.inkMute} style={{ fontSize: 10.5, letterSpacing: 0.4 }}>PYAAS range · marketed by PYAAS</TextBody>
+            <View style={{ alignItems: 'center', paddingTop: spacing.xl, gap: 12 }}>
+              <Image source={require('../../assets/pyaas-logo.png')} style={{ width: 210, height: 63 }} contentFit="contain" />
+              <TextBody color={colors.inkMute} style={{ fontSize: 12, letterSpacing: 0.4 }}>PARAG Range · Marketed by PYAAS</TextBody>
             </View>
           ) : null
         }
@@ -565,7 +576,7 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
           onPress={() => setDeliveryMode('instant')}
           icon="flash"
           label="Instant"
-          badge="⚡ 20 min"
+          badge="20 min"
           a11yLabel={instantServed ? 'Instant delivery, 20 minutes' : closedForNight ? `Instant closed, resumes ${resumesLabel ?? 'soon'}` : 'Instant delivery not available at your address yet'}
         />
       </View>
@@ -573,7 +584,7 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 }}>
           <Ionicons name={closedForNight ? 'moon-outline' : 'information-circle-outline'} size={13} color={closedForNight ? colors.flameDeep : colors.inkMute} />
           <TextMed style={{ fontSize: 11, flex: 1 }} color={closedForNight ? colors.flameDeep : colors.inkMute}>
-            {closedForNight ? `⚡ Instant resumes ${resumesLabel ?? 'soon'}` : 'Instant not available at your address yet'}
+            {closedForNight ? `Instant resumes ${resumesLabel ?? 'soon'}` : 'Instant not available at your address yet'}
           </TextMed>
         </View>
       ) : null}
@@ -626,7 +637,7 @@ function ViewCartBar({ bottomClearance }: { bottomClearance: number }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameDeep, borderRadius: radius.pill, paddingHorizontal: 18, height: 52, ...shadow.card }}>
           <Ionicons name="bag-handle" size={18} color={colors.white} />
           <TextSemi color={colors.white} style={{ fontSize: 14.5, flex: 1 }}>
-            {count} {count === 1 ? 'item' : 'items'} · {mode === 'instant' ? '⚡ Instant cart' : 'Morning cart'}
+            {count} {count === 1 ? 'item' : 'items'} · {mode === 'instant' ? 'Instant cart' : 'Morning cart'}
           </TextSemi>
           <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>View cart</TextSemi>
           <Ionicons name="chevron-forward" size={16} color={colors.white} />

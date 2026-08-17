@@ -11,6 +11,7 @@ import { Serif, TextMed, TextSemi, Tap } from './ui';
 import { navHidden } from '../lib/navVisibility';
 import { useWallet } from '../store/wallet';
 import { useUserLocation } from '../lib/userLocation';
+import { useServiceability } from '../lib/serviceability';
 
 /** Time-of-day greeting (incl. a playful late-night line). */
 function greetingFor(name: string): string {
@@ -35,6 +36,10 @@ export function HomeHeader({ firstName }: { firstName: string }) {
   const insets = useSafeAreaInsets();
   const city = useUserLocation((s) => s.loc?.city ?? null);
   const openPicker = useUserLocation((s) => s.setPickerOpen);
+  // Out of zone → the location line itself says so, in the exact same row
+  // (same size, same icons, same alignment) and stays the tap target to
+  // change location — which is the one action that can open the shop.
+  const outOfZone = useServiceability((s) => s.serviceable) === false;
   const hideStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -navHidden.value * (insets.top + 96) }],
     opacity: 1 - navHidden.value,
@@ -45,13 +50,17 @@ export function HomeHeader({ firstName }: { firstName: string }) {
       <BlurView tint="light" intensity={28} experimentalBlurMethod="dimezisBlurView" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.72)' }} />
       <Animated.View entering={FadeIn.duration(420)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-          {/* PYAAS wordmark · big, unmissable brand presence, top left */}
-          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 150, height: 150 * (317 / 1127) }} contentFit="contain" />
+          {/* PYAAS wordmark · prominent but balanced: 118 wide leaves the
+              location line + greeting real room on small screens (150 crushed
+              them into "Deliver t..."), keeping the row symmetric. */}
+          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 118, height: 118 * (317 / 1127) }} contentFit="contain" />
           <View style={{ flex: 1 }}>
             <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Ionicons name="location" size={13} color={colors.flameDeep} />
-                <TextMed style={{ fontSize: 12.5, letterSpacing: 0.1 }} numberOfLines={1} color={colors.ink}>{city ? `Deliver to ${city}` : 'Set your location'}</TextMed>
+                <TextMed style={{ fontSize: 12.5, letterSpacing: 0.1 }} numberOfLines={1} color={outOfZone ? colors.flameDeep : colors.ink}>
+                  {outOfZone ? 'Unserviceable · change location' : city ? `Deliver to ${city}` : 'Set your location'}
+                </TextMed>
                 <Ionicons name="chevron-down" size={13} color={colors.flameDeep} />
               </View>
             </Tap>

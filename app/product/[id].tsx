@@ -593,7 +593,7 @@ export default function ProductDetail() {
               <TextSemi style={{ fontSize: 16 }}>Delivery</TextSemi>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {([
-                  { key: 'instant', label: 'Instant', sub: '~20 min ⚡' },
+                  { key: 'instant', label: 'Instant', sub: '~20 min' },
                   { key: 'morning', label: 'Morning slot', sub: '5–7:30 AM' },
                   { key: 'scheduled', label: 'Pick a date', sub: formatShort(pickedDate) },
                 ] as const).map((opt) => {
@@ -655,7 +655,7 @@ export default function ProductDetail() {
                 <Ionicons name={deliverBy === 'instant' ? 'flash' : 'sunny-outline'} size={18} color={deliverBy === 'instant' ? colors.flameDeep : colors.blue} />
                 <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.ink}>
                   {deliverBy === 'instant'
-                    ? `Arriving by ${instantEta} · ⚡ Instant express from your nearest PYAAS store.${monsoonFee > 0 ? ` A ₹${monsoonFee} monsoon fee applies.` : ''}`
+                    ? `Arriving by ${instantEta} · Instant express from your nearest PYAAS store.${monsoonFee > 0 ? ` A ₹${monsoonFee} monsoon fee applies.` : ''}`
                     : deliverBy === 'scheduled'
                       ? `Delivered ${formatShort(pickedDate)}, in the 5–7:30 AM morning slot.`
                       : 'Delivered tomorrow morning, 5–7:30 AM. Fresh off the dawn route.'}
@@ -811,6 +811,12 @@ export default function ProductDetail() {
       <View
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.white, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, borderTopWidth: 1, borderTopColor: colors.line, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: spacing.md, ...shadow.card }}
       >
+        {/* SUBSCRIBE mode: the bar is ONLY the button. The qty-multiplied total
+            confused the recurring price ("₹60?!" for 2 pouches of a ₹30 daily
+            milk), so no price renders here; the sheet's Subscribe button carries
+            the true fee-inclusive per-delivery amount at the moment of
+            commitment. One-time purchases keep the running total (cart maths). */}
+        {product.subscribable && freq !== 'one_time' && !outOfZone && !product.outOfStock && shortfall <= 0 ? null : (
         <View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
             <Serif style={{ fontFamily: fonts.serifBlack, fontSize: 24, letterSpacing: -0.5, ...tabular }} color={headlineColor}>{rupee(total)}</Serif>
@@ -818,6 +824,7 @@ export default function ProductDetail() {
           </View>
           <TextBody style={{ fontSize: 11 }}>{outOfZone ? (launchNotified ? "We'll text you at launch" : 'Not in your area yet') : product.outOfStock ? (notified ? "You're on the restock list" : 'Out of stock · we can notify you') : 'Charged after delivery'}</TextBody>
         </View>
+        )}
         <View style={{ flex: 1 }}>
           {outOfZone ? (
             launchNotified ? (

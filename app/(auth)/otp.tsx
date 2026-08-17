@@ -382,15 +382,6 @@ export default function OtpLogin() {
                 Sent to +91 {digits()}. It fills in on its own the moment the SMS arrives. <TextMed color={colors.flameDeep} onPress={() => setStep('phone')}>Change</TextMed>
               </TextBody>
               <OtpBoxes value={code} error={!!error} onChange={setCode} onComplete={(c) => { if (!loading) verify(c); }} />
-              {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 12 }}>{error}</TextBody> : null}
-              {/* The pilot flask box shows the backend-echoed test OTP only in a
-                  WALLET_TEST_TOPUP build; a live build shows nothing here. */}
-              {devOtp && WALLET_TEST_TOPUP ? (
-                <View style={{ marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.flameSoft, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="flask-outline" size={16} color={colors.flameDeep} />
-                  <TextBody style={{ fontSize: 13, flex: 1 }}>Test OTP: <TextSemi color={colors.flameDeep} style={{ fontSize: 15, letterSpacing: 2 }}>{devOtp}</TextSemi>  ·  shown for testing (SMS later)</TextBody>
-                </View>
-              ) : null}
               <Tap onPress={loading ? undefined : () => verify()} style={{ marginTop: spacing.lg }}>
                 <View style={{ height: 54, borderRadius: radius.md, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
                   {loading ? <ActivityIndicator color={colors.white} /> : (

@@ -286,7 +286,7 @@ export default function Subscriptions() {
               ))}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <TextMed style={{ fontSize: 14 }}>Quantity per delivery</TextMed>
+              <TextMed style={{ fontSize: 14 }}>Quantity</TextMed>
               <Stepper qty={qty} onChange={(n) => setQty(Math.max(1, n))} min={1} />
             </View>
             <Button title="Start subscription" loading={busy} onPress={create} />
@@ -388,7 +388,7 @@ export default function Subscriptions() {
                 {/* Change plan — quantity + frequency (edit a live subscription) */}
                 <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <TextSemi style={{ fontSize: 14 }}>Quantity per delivery</TextSemi>
+                    <TextSemi style={{ fontSize: 14 }}>Quantity</TextSemi>
                     <Stepper qty={d.qty} onChange={editQty} min={1} max={10} />
                   </View>
                   <View style={{ gap: 8 }}>

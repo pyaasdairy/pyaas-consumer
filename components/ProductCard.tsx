@@ -64,8 +64,9 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
         style={{ flex: 1, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.sm, ...shadow.soft }}
       >
         <View style={{ backgroundColor: colors.wash, borderRadius: radius.md, height: 140, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          {/* Only the pack-shot greys out of stock; the badge + heart stay crisp. */}
-          <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', opacity: selected.outOfStock ? 0.45 : 1 }}>
+          {/* The pack-shot greys when it can't be bought here yet (out of stock,
+              or the whole area is pre-launch); the badge + heart stay crisp. */}
+          <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', opacity: selected.outOfStock || browseOnly ? 0.45 : 1 }}>
             {selected.image ? (
               selected.packCount && selected.packCount >= 2 ? (
                 <StackedProductImage source={selected.image} count={selected.packCount} />
@@ -81,7 +82,9 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
           {/* Top-left badge · boxed to stop short of the heart button (right: 44 =
               32px heart + 6px inset + 6px gap) so a long label can never overlap it. */}
           <View pointerEvents="none" style={{ position: 'absolute', top: 8, left: 8, right: 44, flexDirection: 'row' }}>
-            {selected.outOfStock ? (
+            {browseOnly ? (
+              <Pill small label="COMING SOON" bg={colors.ink} color={colors.white} />
+            ) : selected.outOfStock ? (
               <Pill small label="OUT OF STOCK" bg={colors.ink} color={colors.white} />
             ) : selected.mostOrdered ? (
               <Pill small label="MOST ORDERED" bg={colors.flameDeep} color={colors.white} />
@@ -154,7 +157,7 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
           {browseOnly ? (
             <View style={{ marginTop: 'auto', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: radius.pill, backgroundColor: colors.flameSoft }}>
               <Ionicons name="time-outline" size={14} color={colors.flameDeep} />
-              <TextSemi color={colors.flameDeep} style={{ fontSize: 12.5, letterSpacing: 0.3 }}>AT LAUNCH</TextSemi>
+              <TextSemi color={colors.flameDeep} style={{ fontSize: 12.5, letterSpacing: 0.3 }}>COMING SOON</TextSemi>
             </View>
           ) : selected.outOfStock ? (
             <View style={{ marginTop: 'auto', alignItems: 'center', justifyContent: 'center', height: 38, borderRadius: radius.pill, backgroundColor: colors.wash, borderWidth: 1.5, borderColor: colors.line }}>

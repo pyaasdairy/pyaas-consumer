@@ -4,9 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
-import { TextBody, TextMed, TextSemi, Serif, Tap, Stepper } from './ui';
+import { TextBody, TextSemi, Serif, Tap, Stepper } from './ui';
 import { haptics } from '../lib/haptics';
-import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
+import { createSubscription, minWalletToStart, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
 import { attachTrialAfterSubscribe, offerCompleted, offerQualified, OFFER_QUALIFY_RECHARGE, OFFER_SUGGESTED_RECHARGE, FREE_PACK_PRODUCT_ID } from '../lib/freePack';
 import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 import { deliveryFeeFor } from '../lib/api';
@@ -16,7 +16,7 @@ import { AddressCaptureSheet } from './AddressCapture';
 import { listAddresses, type Address } from '../lib/api';
 import { isBackendConfigured } from '../lib/apiClient';
 import { currentMandate, createMandate } from '../lib/autopay';
-import { tomorrowISO, addDaysISO, parseISO, formatShort } from '../lib/dates';
+import { tomorrowISO, addDaysISO, parseISO } from '../lib/dates';
 import { useWallet } from '../store/wallet';
 import type { Product } from '../constants/products';
 
@@ -71,11 +71,12 @@ export function SubscribeSheet({
   const [busy, setBusy] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [err, setErr] = useState('');
-  // REVIEW-BEFORE-CREATE: every subscription (any milk, not just the 2+2 offer)
-  // goes edit → review → confirm. Nothing is created until the review's
-  // "Confirm subscription" — so the sub appears in Subscriptions only after it.
-  const [stage, setStage] = useState<'edit' | 'review'>('edit');
-  const [reviewAddr, setReviewAddr] = useState<Address | null>(null);
+  // ONE-TAP SUBSCRIBE: the single "Subscribe · ₹X" button runs the gate chain
+  // (address → funds) and creates immediately when everything passes; a short
+  // wallet bounces to recharge instead. The price beside the button is the
+  // fee-INCLUSIVE per-delivery charge, so the amount shown at the moment of
+  // commitment is the amount actually debited — that transparency is what
+  // replaced the old review step, and it must stay on the button.
   // Synchronous double-tap guard (setBusy only disables after a re-render).
   const busyRef = useRef(false);
 
@@ -88,8 +89,6 @@ export function SubscribeSheet({
       // silently resetting it to tomorrow; fall back to tomorrow when none/invalid.
       setStartDate(initialStartDate && initialStartDate >= tomorrowISO() ? initialStartDate : tomorrowISO());
       setErr('');
-      setStage('edit');
-      setReviewAddr(null);
     }
   }, [visible, initialFreq, initialQty, initialStartDate]);
 
@@ -118,12 +117,10 @@ export function SubscribeSheet({
 
   // THE GATE CHAIN (strict order): 1) ADDRESS — a SAVED address with its map
   // pin (saved rows only; a loose local GPS pin never counts) → 2) FUNDS —
-  // the ₹500 qualifying recharge for a still-open 2+2 gold candidate, else
-  // the unlock/2-day-cover top-up, ONLY when actually short → 3) the REVIEW
-  // card, where "Confirm subscription" is the LAST action and the only one
-  // that creates anything. A member with address + funds sails straight to
-  // review with no asks.
-  async function goReview() {
+  // the qualifying recharge for a still-open 2+2 gold candidate, else the
+  // unlock/2-day-cover top-up, ONLY when actually short → 3) CREATE. A member
+  // with address + funds subscribes in this one tap, no interstitials.
+  async function startSubscribe() {
     haptics.press();
     setErr('');
     // 1) ADDRESS FIRST.
@@ -133,7 +130,6 @@ export function SubscribeSheet({
       setMapOpen(true); // capture → onAddressSaved resumes this chain
       return;
     }
-    setReviewAddr(pick);
     // 2) FUNDS SECOND.
     await refreshWallet();
     const bal = useWallet.getState().balance;
@@ -153,8 +149,9 @@ export function SubscribeSheet({
       goRecharge(short, Math.max(100, Math.ceil(short / 50) * 50), 'to start this subscription');
       return;
     }
-    // 3) Everything resolved → review; Confirm creates.
-    setStage('review');
+    // 3) Everything resolved → create right now (confirm re-guards internally
+    // against races, then plays the confirm haptic + success hand-off).
+    await confirm();
   }
 
   async function confirm() {
@@ -173,7 +170,7 @@ export function SubscribeSheet({
         return;
       }
       // PREPAID START GATE (BOTH modes): a subscription can NEVER begin unless the
-      // wallet already covers at least MIN_SUB_DAYS_COVER days of the per-delivery
+      // wallet already covers at least the minimum days of the per-delivery
       // charge. If it is short we create NOTHING and force the member to the wallet
       // recharge screen first, returning here once funded.
       await refreshWallet();
@@ -233,10 +230,10 @@ export function SubscribeSheet({
   }
 
   // Complete address saved (pin + form + preferences) → resume the GATE CHAIN
-  // (funds next if short, else land on the review card — Confirm stays last).
+  // (funds next if short, else the subscription is created).
   function onAddressSaved() {
     setMapOpen(false);
-    void goReview();
+    void startSubscribe();
   }
 
   return (
@@ -266,7 +263,6 @@ export function SubscribeSheet({
               </Tap>
             </View>
 
-            {stage === 'edit' ? (<>
             {/* Frequency */}
             <View style={{ gap: 8 }}>
               <TextSemi style={{ fontSize: 14.5 }}>How often?</TextSemi>
@@ -287,7 +283,7 @@ export function SubscribeSheet({
 
             {/* Quantity */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <TextSemi style={{ fontSize: 14.5 }}>Quantity per delivery</TextSemi>
+              <TextSemi style={{ fontSize: 14.5 }}>Quantity</TextSemi>
               <Stepper qty={qty} onChange={(n) => setQty(Math.max(1, n))} min={1} max={10} />
             </View>
 
@@ -343,73 +339,22 @@ export function SubscribeSheet({
 
             {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
 
-            {/* Edit → the review page (nothing is created yet) */}
-            <Tap onPress={() => { void goReview(); }} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
-              <Ionicons name="receipt-outline" size={19} color={colors.white} />
-              <TextSemi color={colors.white} style={{ fontSize: 16 }}>Review subscription</TextSemi>
-            </Tap>
-            <TextBody style={{ fontSize: 11, textAlign: 'center' }} color={colors.inkMute}>Paid from your PYAAS Wallet · keep at least {MIN_SUB_DAYS_COVER} days funded · pause, skip or cancel anytime.</TextBody>
-            </>) : null}
-
-            {stage === 'review' ? (<>
-            {/* REVIEW ORDER — the last look before anything exists. Confirm below
-                runs the address + wallet gates and only then creates the sub. */}
-            <View style={{ backgroundColor: colors.wash, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
-              <ReviewRow icon="cube" label={product.name} value={`${qty} × ${product.variant} · ${FREQS.find((f) => f.key === freq)?.label ?? freq}`} />
-              <ReviewRow icon="calendar" label="First delivery" value={`${formatShort(startDate)} · 5–7:30 AM`} highlight />
-              <ReviewRow icon="location" label="Delivering to" value={reviewAddr ? `${reviewAddr.line1}${reviewAddr.line2 ? ', ' + reviewAddr.line2 : ''}, ${reviewAddr.city} - ${reviewAddr.pincode}` : 'Not set'} />
-              <ReviewRow icon="pricetag" label="Items per delivery" value={rupee(itemsSubtotal)} />
-              {perDeliveryFee > 0 ? (
-                <ReviewRow icon="bicycle" label="Delivery fee" value={rupee(perDeliveryFee)} />
-              ) : null}
-              <ReviewRow icon="cash" label="To pay" value={`${rupee(perDelivery)} · from your wallet`} highlight />
-            </View>
-            {/* Policy — the exact terms, no surprises. */}
-            <View style={{ gap: 6 }}>
-              <PolicyLine icon="pause-circle" text="Pause, skip or cancel anytime. No lock-in" />
-              <PolicyLine icon="wallet-outline" text={`Keep at least ${MIN_SUB_DAYS_COVER} days funded in your PYAAS Wallet`} />
-              {/* The sweep places each delivery's order in the morning and
-                  placeOrder debits the wallet there and then, so "bills only
-                  after it arrives" was not what the code does. */}
-              <PolicyLine icon="shield-checkmark-outline" text="Nothing is charged now. Each delivery is billed from your wallet on the morning it goes out" />
-            </View>
-            {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
-            <Tap onPress={busy ? undefined : confirm} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
+            {/* ONE TAP: gates (address → funds) then create. The fee-inclusive
+                amount lives ON the button — the price at the moment of
+                commitment is the price actually debited. A short wallet routes
+                to recharge; nothing is created until everything passes. */}
+            <Tap onPress={busy ? undefined : () => { void startSubscribe(); }} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
               {busy ? <ActivityIndicator color={colors.white} /> : <Ionicons name="checkmark-circle" size={19} color={colors.white} />}
-              <TextSemi color={colors.white} style={{ fontSize: 16 }}>{busy ? 'Starting…' : `Confirm subscription · ${rupee(perDelivery)}`}</TextSemi>
+              <TextSemi color={colors.white} style={{ fontSize: 16 }}>{busy ? 'Starting…' : `Subscribe · ${rupee(perDelivery)}`}</TextSemi>
             </Tap>
-            <Tap haptic={false} onPress={() => setStage('edit')} style={{ alignItems: 'center', paddingVertical: 4 }}>
-              <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Edit details</TextMed>
-            </Tap>
-            </>) : null}
+            <TextBody style={{ fontSize: 11, textAlign: 'center', lineHeight: 16 }} color={colors.inkMute}>
+              Nothing is charged now. Each delivery is billed from your PYAAS Wallet on the morning it goes out. Pause, skip or cancel anytime.
+            </TextBody>
           </ScrollView>
         </Animated.View>
       </View>
     </Modal>
     <AddressCaptureSheet visible={mapOpen} onClose={() => setMapOpen(false)} onSaved={onAddressSaved} />
     </>
-  );
-}
-
-function ReviewRow({ icon, label, value, highlight }: { icon: any; label: string; value: string; highlight?: boolean }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-      <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: highlight ? colors.flameSoft : colors.white, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={icon} size={15} color={colors.flameDeep} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>{label}</TextBody>
-        <TextMed style={{ fontSize: 13.5 }} color={highlight ? colors.flameDeep : colors.ink}>{value}</TextMed>
-      </View>
-    </View>
-  );
-}
-
-function PolicyLine({ icon, text }: { icon: any; text: string }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Ionicons name={icon} size={16} color={colors.flameDeep} />
-      <TextMed style={{ flex: 1, fontSize: 13, lineHeight: 18 }} color={colors.ink}>{text}</TextMed>
-    </View>
   );
 }

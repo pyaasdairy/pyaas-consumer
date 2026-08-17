@@ -166,7 +166,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                 </TextBody>
                 {/* The honest funnel explainer — exactly what starting does. */}
                 <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 8 }}>
-                  <IntroLine icon="sparkles" text={`First ${TRIAL_FREE_DAYS} days FREE 🎉`} />
+                  <IntroLine icon="sparkles" text={`First ${TRIAL_FREE_DAYS} days FREE`} />
                   <IntroLine icon="cash-outline" text={`Then ${rupee(FREE_PACK_DAILY_PRICE)}/day from day ${TRIAL_FREE_DAYS + 1}`} />
                   <IntroLine icon="infinite" text={`Continues at ${rupee(FREE_PACK_DAILY_PRICE)}/day from your wallet`} />
                   <IntroLine icon="pause-circle" text="Pause anytime" />

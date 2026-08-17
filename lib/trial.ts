@@ -227,7 +227,7 @@ export function trialLabel(t: Trial): string | null {
   if (!t.active) return null;
   // The day number runs across the whole trial (free days first), so both
   // labels use the 4-day denominator: "Day 1 of 4 · FREE" → "Day 3 of 4 · paid".
-  if (t.phase === 'free') return `Day ${t.overallDay} of ${t.totalDays} · FREE 🎉`;
+  if (t.phase === 'free') return `Day ${t.overallDay} of ${t.totalDays} · FREE`;
   if (t.phase === 'paid') return `Day ${t.overallDay} of ${t.totalDays} · paid`;
   return null;
 }

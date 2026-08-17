@@ -238,16 +238,76 @@ export default function OrderTracking() {
   }
 
 
+  // LIVE INSTANT = the quick-commerce tracking layout: the map is the hero,
+  // the arrival card overlaps it, and the countdown leads. Everything else
+  // (morning orders, delivered, cancelled) keeps the classic header layout.
+  const liveInstant = isInstant && !delivered && !cancelled;
+  const heroEta = liveInstant ? instantEtaOf(order) : null;
+  const heroMins = heroEta ? Math.max(1, Math.ceil((heroEta.getTime() - Date.now()) / 60000)) : null;
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
-      <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Tap onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/orders'))} style={iconBtn}>
-          <Ionicons name="chevron-back" size={22} color={colors.ink} />
-        </Tap>
-        <Serif style={{ fontSize: 24 }}>Track order</Serif>
-      </View>
+      {liveInstant ? (
+        <View>
+          {/* Full-bleed live map hero (store pin → home, rider in between). */}
+          <RiderTrackMap
+            riderLat={order.riders?.current_lat}
+            riderLng={order.riders?.current_lng}
+            active={order.status === 'out_for_delivery'}
+            originLat={storeOrigin?.lat}
+            originLng={storeOrigin?.lng}
+            height={340}
+            hero
+          />
+          <Tap
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/orders'))}
+            style={[iconBtn, { position: 'absolute', top: insets.top + 8, left: spacing.lg, backgroundColor: colors.white, ...shadow.card }]}
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.ink} />
+          </Tap>
+        </View>
+      ) : (
+        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Tap onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/orders'))} style={iconBtn}>
+            <Ionicons name="chevron-back" size={22} color={colors.ink} />
+          </Tap>
+          <Serif style={{ fontSize: 24 }}>Track order</Serif>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+        {/* THE ARRIVAL CARD — overlaps the map hero; the countdown leads. */}
+        {liveInstant ? (
+          <Animated.View entering={FadeIn.duration(420)} style={{ marginTop: -30, backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 6, ...shadow.card }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <TextBody color={colors.inkMute} style={{ fontSize: 13.5 }}>Arriving in</TextBody>
+                <Serif color={colors.flameDeep} style={{ fontSize: 38, lineHeight: 44, letterSpacing: -0.5 }}>
+                  {heroMins != null ? `${heroMins} min${heroMins === 1 ? '' : 's'}` : 'a few mins'}
+                </Serif>
+              </View>
+              {heroMins != null && heroMins <= 25 ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#E8F3EC', borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 6 }}>
+                  <Ionicons name="flash" size={13} color="#2E7D4F" />
+                  <TextSemi color="#2E7D4F" style={{ fontSize: 12.5 }}>On time</TextSemi>
+                </View>
+              ) : null}
+            </View>
+            <TextSemi style={{ fontSize: 16.5 }}>{STATUS_LABEL[order.status]}</TextSemi>
+            <TextBody color={colors.inkMute} style={{ fontSize: 13 }}>{STATUS_SUB[order.status]}</TextBody>
+            <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 6 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="home-outline" size={15} color={colors.flameDeep} />
+              <TextBody color={colors.inkSoft} style={{ fontSize: 12.5, flex: 1 }} numberOfLines={2}>
+                {order.paid
+                  ? 'Paid online · nothing to pay at the door'
+                  : order.payment_method === 'cod'
+                    ? 'Pay on delivery · UPI or cash at the door'
+                    : 'Paid from your PYAAS Wallet · nothing to pay at the door'}
+              </TextBody>
+            </View>
+          </Animated.View>
+        ) : null}
         {/* Unpaid-delivery notice — this order was delivered but the wallet couldn't
             cover it. Surface it (never silently lose the charge) + offer to settle. */}
         {owed > 0 ? (
@@ -297,7 +357,7 @@ export default function OrderTracking() {
                 <View style={{ flex: 1, gap: 3 }}>
                   <Serif style={{ fontSize: 22, lineHeight: 26 }} color={colors.flameDeep}>Arriving by {formatClock(eta)}</Serif>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Pill label="⚡ INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
+                    <Pill label="INSTANT" bg={colors.flameSoft} color={colors.flameDeep} />
                     {/* flex:1 so the caption wraps INSIDE the card instead of leaking off the edge */}
                     <TextBody style={{ fontSize: 12, flex: 1 }} color={colors.inkSoft}>
                       {(order.status === 'assigned' || order.status === 'out_for_delivery'

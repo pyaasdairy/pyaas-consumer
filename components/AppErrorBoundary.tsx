@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../lib/theme';
 import { logDiag } from '../lib/diag';
 
@@ -46,7 +47,7 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
           gap: 16,
         }}
       >
-        <Text style={{ fontSize: 44 }}>🥛</Text>
+        <Ionicons name="alert-circle-outline" size={44} color="#F36CB5" />
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, textAlign: 'center' }}>
           Something went wrong
         </Text>
