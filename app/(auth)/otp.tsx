@@ -74,6 +74,13 @@ export default function OtpLogin() {
     return () => { show.remove(); hide.remove(); };
   }, []);
 
+  /** Devanagari (०-९), Arabic-Indic (٠-٩) and extended (۰-۹) numerals map to
+   *  ASCII so a Hindi keyboard types a normal number — they are NOT \d, so
+   *  without this they rendered as-is and then failed the 10-digit check. */
+  const normalizeDigits = (raw: string) =>
+    raw.replace(/[०-९]/g, (c) => String(c.charCodeAt(0) - 0x0966))
+       .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+       .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
   const digits = () => phone.replace(/\D/g, '').slice(-10);
 
   /**
@@ -112,10 +119,11 @@ export default function OtpLogin() {
    *    disclosure is the only consent moment that exists. Post-acceptance,
    *    focus-launch returns (the zero-typing feel), because the read it
    *    performs is exactly what the accepted disclosure describes.
-   * 2. It NEVER AUTO-SENDS. It used to call sendCodeFor(hinted) the instant a
-   *    number was picked, so the number reached our servers (and MSG91) before
-   *    the member pressed anything. THAT was the violation, and it stays dead:
-   *    picking fills the field; the send button transmits.
+   * 2. NOTHING here transmits pre-consent. The removed violation read AND sent
+   *    the number with zero user action and zero disclosure. Post-consent, a
+   *    COMPLETE number the member actively produced (typed, or picked in the
+   *    chooser) auto-advances to the code step — see the auto-advance effect
+   *    below, which is gated on `consented` exactly like sendCodeFor itself.
    */
   const [hintOpen, setHintOpen] = useState(false);
   const hintDone = useRef(false); // resolved once (picked or dismissed) — don't relaunch
@@ -189,6 +197,24 @@ export default function OtpLogin() {
   }
 
   function sendCode() { void sendCodeFor(phone); }
+
+  // AUTO-ADVANCE: the moment the field holds a complete 10-digit number, send
+  // the code — no second tap. COMPLIANCE NOTE: this runs only AFTER the
+  // full-screen disclosure was affirmatively accepted (consented gates both
+  // this effect and sendCodeFor itself), and the number present is one the
+  // member actively produced (typed it, or picked it in the SIM chooser). That
+  // is materially different from the removed behaviour, which read AND sent
+  // the number with zero user action and zero disclosure.
+  const autoSent = useRef('');
+  useEffect(() => {
+    if (!consented || step !== 'phone' || loading) return;
+    const ds = digits();
+    if (ds.length === 10 && autoSent.current !== ds) {
+      autoSent.current = ds; // once per number — edits that shorten it re-arm
+      void sendCodeFor(ds);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, consented, step, loading]);
 
   // Resend the OTP without leaving the code step. Gated by a 30s cooldown.
   async function resend() {
@@ -304,7 +330,7 @@ export default function OtpLogin() {
                 <View style={{ width: 1, height: 24, backgroundColor: colors.line }} />
                 <TextInput
                   value={phone}
-                  onChangeText={setPhone}
+                  onChangeText={(t) => setPhone(normalizeDigits(t))}
                   // BEFORE consent: focusing opens the disclosure, never the SIM.
                   // AFTER consent: the one-tap chooser returns on focus — the
                   // zero-typing feel — because the disclosure covering the SIM
