@@ -123,11 +123,16 @@ export async function freePackEligible(_phone: string): Promise<{ eligible: bool
   return { eligible: true };
 }
 
-// ── The ₹500 qualifying recharge ─────────────────────────────────────────────
-/** The 2+2 offer REDEEMS only via a single recharge of at least this (one
- *  time). Smaller recharges (the ₹100 general floor) keep the offer alive and
- *  visible, but never redeem it. */
-export const OFFER_QUALIFY_RECHARGE = 500;
+// ── The qualifying recharge ──────────────────────────────────────────────────
+/** The 2+2 offer REDEEMS via a single recharge of at least this (one time).
+ *  ₹99 is the floor to avail the offer; smaller recharges keep it alive and
+ *  visible but never redeem it. Note this is the MINIMUM, not what we suggest —
+ *  the recharge screen still defaults to {@link OFFER_SUGGESTED_RECHARGE}. */
+export const OFFER_QUALIFY_RECHARGE = 99;
+/** The amount the recharge screen preselects for the 2+2 unlock — a healthy
+ *  starting balance, well above the ₹99 floor, so most members fund a few days
+ *  of milk in one go. Members are free to type any amount ≥ the floor. */
+export const OFFER_SUGGESTED_RECHARGE = 500;
 const QUALIFIED_KEY_PREFIX = 'pyaas_offer_qualified:';
 
 /** True once this account has made its one-time qualifying recharge (≥₹500 in

@@ -7,7 +7,7 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap, Stepper } from './ui';
 import { haptics } from '../lib/haptics';
 import { createSubscription, minWalletToStart, MIN_SUB_DAYS_COVER, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
-import { attachTrialAfterSubscribe, offerCompleted, offerQualified, OFFER_QUALIFY_RECHARGE, FREE_PACK_PRODUCT_ID } from '../lib/freePack';
+import { attachTrialAfterSubscribe, offerCompleted, offerQualified, OFFER_QUALIFY_RECHARGE, OFFER_SUGGESTED_RECHARGE, FREE_PACK_PRODUCT_ID } from '../lib/freePack';
 import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 import { deliveryFeeFor } from '../lib/api';
 import { hasExactLocation } from '../lib/location';
@@ -137,11 +137,13 @@ export function SubscribeSheet({
     // 2) FUNDS SECOND.
     await refreshWallet();
     const bal = useWallet.getState().balance;
-    // 2+2 candidate on the offer SKU who hasn't done the one-time ≥₹500
-    // qualifying recharge → that recharge IS the requirement (at a time —
-    // balance level is irrelevant to qualification).
+    // 2+2 candidate on the offer SKU who hasn't done the one-time qualifying
+    // recharge → that recharge IS the requirement (at a time — balance level is
+    // irrelevant to qualification). The floor to avail is ₹99, but we PRESELECT
+    // ₹500 (min=floor, amount=suggested), so ₹99 unlocks yet most fund a few
+    // days of milk at once.
     if (product.id === FREE_PACK_PRODUCT_ID && freq === 'daily' && !(await offerCompleted()) && !(await offerQualified())) {
-      goRecharge(OFFER_QUALIFY_RECHARGE, OFFER_QUALIFY_RECHARGE, 'to unlock your 2+2 offer');
+      goRecharge(OFFER_QUALIFY_RECHARGE, OFFER_SUGGESTED_RECHARGE, 'to unlock your 2+2 offer');
       return;
     }
     const unlocked = await purchasesUnlocked(bal);

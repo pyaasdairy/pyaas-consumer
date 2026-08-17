@@ -9,21 +9,12 @@ import { colors, radius, spacing, shadow, rupee, fonts } from '../../lib/theme';
 import { SkeletonBlock } from '../../components/Skeleton';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Divider } from '../../components/ui';
 import { RiderTrackMap } from '../../components/RiderTrackMap';
-import { getOrder, cancelOrder, markOrderPaid, simulateRiderAssignment, simulateDelivered, reviewOrder, type Order } from '../../lib/api';
+import { getOrder, cancelOrder, markOrderPaid, reviewOrder, type Order } from '../../lib/api';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { checkoutHtml, isRazorpayConfigured, RAZORPAY_KEY_ID } from '../../lib/razorpay';
 import { STATUS_FLOW, STATUS_LABEL, STATUS_SUB, statusIndex } from '../../lib/orderStatus';
 import { isBackendConfigured } from '../../lib/apiClient';
-import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
 import { debitWallet } from '../../lib/walletApi';
-
-// Demo E2E tools (order → rider → delivered), backed by the dev endpoint
-// /orders/:id/advance. NEVER gate these on the ABSENCE of a backend: a release
-// build with no EXPO_PUBLIC_API_URL would then show "Simulate delivered (demo)"
-// to real customers and to App Review, which rejects test/demo functionality
-// outright (Guideline 2.1/2.2). __DEV__ is compiled out of any release bundle,
-// so these cannot survive into a store build regardless of env.
-const DEMO_TOOLS = __DEV__ && WALLET_TEST_TOPUP;
 import { useWallet } from '../../store/wallet';
 import { haptics } from '../../lib/haptics';
 
@@ -197,13 +188,6 @@ export default function OrderTracking() {
     } finally { setReviewBusy(false); }
   }
 
-  async function onSimulateDelivered() {
-    setBusy(true);
-    try { await simulateDelivered(order!.id); await load(); }
-    catch (e: any) { setError(e?.message ?? 'Could not simulate delivery.'); }
-    finally { setBusy(false); }
-  }
-
   if (loading) {
     // Tracking skeleton (not a blocking spinner) so the frame appears instantly
     // and the live status/rider/timeline swap in without a layout jump.
@@ -240,7 +224,6 @@ export default function OrderTracking() {
   const isInstant =
     order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
   const canCancel = order.status === 'placed' || order.status === 'confirmed';
-  const canSimulate = order.status === 'placed' || order.status === 'confirmed' || order.status === 'preparing';
 
   async function onCancel() {
     setBusy(true);
@@ -254,17 +237,6 @@ export default function OrderTracking() {
     }
   }
 
-  async function onSimulate() {
-    setBusy(true);
-    try {
-      await simulateRiderAssignment(order!.id);
-      await load();
-    } catch (e: any) {
-      setError(e?.message ?? 'Could not simulate rider.');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
@@ -530,20 +502,6 @@ export default function OrderTracking() {
         <Button title="View bill" variant="outline" onPress={() => router.push(`/invoice/${order.id}`)} />
         {canCancel ? <Button title="Cancel order" variant="outline" onPress={onCancel} loading={busy} /> : null}
 
-        {/* RIDER BACKDOOR (demo): drives the full order → delivery-partner-assigned
-            → delivered loop for testing. The real operator/rider app owns these
-            transitions in production; hidden in a non-pilot prod build. */}
-        {canSimulate && DEMO_TOOLS ? (
-          <View style={{ gap: 8 }}>
-            <Button title="Simulate rider pickup (demo)" variant="sage" onPress={onSimulate} loading={busy} />
-            <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>
-              Demo only. Assigns a delivery partner so you can test tracking. The rider app does this for real; hidden once a real rider claims the order.
-            </TextBody>
-          </View>
-        ) : null}
-        {order.status === 'out_for_delivery' && DEMO_TOOLS ? (
-          <Button title="Simulate delivered (demo)" variant="sage" onPress={onSimulateDelivered} loading={busy} />
-        ) : null}
       </ScrollView>
 
       {/* PAY WHILE WE DELIVER — instant COD orders only, and only where an

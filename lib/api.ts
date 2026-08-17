@@ -513,35 +513,3 @@ export async function reviewOrder(id: string, rating: number, comment: string): 
   return getOrder(id);
 }
 
-/**
- * RIDER BACKDOOR (demo): moves the order OUT FOR DELIVERY and attaches a rider, so
- * you can see the full "order placed → delivery partner assigned" loop end to end.
- * In backend mode this hits the live dev endpoint POST /orders/:id/advance (gated
- * server-side by OTP dev mode) which assigns a demo rider; in local mode it writes
- * the mock order. Either way the tracking screen then shows the assigned rider.
- */
-export async function simulateRiderAssignment(orderId: string): Promise<void> {
-  if (isBackendConfigured()) { await api.post(`/orders/${orderId}/advance`, { status: 'out_for_delivery' }); return; }
-  const uid = await requireUserId();
-  const rows = await getRows<Order>('orders', uid);
-  // Advance the status only. We deliberately do NOT attach a fabricated rider:
-  // the old DEMO_RIDER ("Ram Kumar", a real-format mobile we do not own, rating
-  // 4.8) rendered as the genuine assigned rider with a working Call button, and
-  // the tracking map animated him toward the customer's door. Presenting an
-  // invented person as the courier is Guideline 2.3.1, and the Call button dialled
-  // a stranger. The tracking screen already handles "no rider assigned yet".
-  const next = rows.map((o) =>
-    o.id === orderId ? { ...o, status: 'out_for_delivery' as OrderStatus } : o,
-  );
-  await setRows<Order>('orders', uid, next);
-}
-
-/** DEMO: mark an order delivered so the review-after-delivery flow is testable
- *  without the operator/rider app. Backend mode uses the same dev /advance
- *  endpoint; local mode writes the mock order. (In real production the rider's
- *  own /deliver call owns this transition.) */
-export async function simulateDelivered(orderId: string): Promise<void> {
-  if (isBackendConfigured()) { await api.post(`/orders/${orderId}/advance`, { status: 'delivered' }); return; }
-  const uid = await requireUserId();
-  await updateRows<Order>('orders', uid, (o) => o.id === orderId, { status: 'delivered', can_review: true });
-}

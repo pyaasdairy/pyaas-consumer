@@ -77,13 +77,64 @@ function normalize(raw: RawServiceability | null | undefined): Serviceability {
 
 export type CheckPoint = { lat?: number | null; lng?: number | null; pincode?: string | null };
 
+// ── Launch geofence: Sushant Golf City, Lucknow ──────────────────────────────
+// PYAAS is live in ONE township to begin with. Anyone whose delivery point is
+// outside it sees "Coming Soon", never the shop — a deliberate, deterministic
+// gate that sits IN FRONT of the fail-open network logic below. It keys on
+// geometry (a known coordinate), not the network, so it can't lock out a real
+// in-zone customer on a blip the way a fail-closed network call would.
+//
+// Centre + radius are overridable per build (no code change to move/resize the
+// zone). Radius is generous enough to cover Golf City / Sushant Golf City and
+// its immediate approach roads.
+const SERVICE_AREA = {
+  lat: Number(process.env.EXPO_PUBLIC_SERVICE_AREA_LAT) || 26.7715,
+  lng: Number(process.env.EXPO_PUBLIC_SERVICE_AREA_LNG) || 81.0176,
+  radiusKm: Number(process.env.EXPO_PUBLIC_SERVICE_RADIUS_KM) || 6,
+  label: process.env.EXPO_PUBLIC_SERVICE_AREA_LABEL || 'Sushant Golf City, Lucknow',
+};
+
+/** Great-circle distance (km) between two coordinates. */
+function distanceKmBetween(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+/** The out-of-zone Serviceability result for a point beyond the launch area. */
+function outOfZone(distanceKm: number): Serviceability {
+  return {
+    serviceable: false,
+    standard: false,
+    instant: false,
+    storeName: `PYAAS ${SERVICE_AREA.label}`,
+    monsoonRupees: 0,
+    instantClosed: false,
+    instantResumesLabel: null,
+    reason: `PYAAS is delivering in ${SERVICE_AREA.label} to begin with. You're just outside our zone for now, but we're expanding fast.`,
+    distanceKm: Math.round(distanceKm * 10) / 10,
+  };
+}
+
 /**
  * Ask the backend whether we deliver to a point. Fail-open on no-backend
- * (offline / local demo) so the shop always renders.
+ * (offline / local demo) so the shop always renders — EXCEPT the launch
+ * geofence, which is enforced in every mode: outside the zone is never
+ * serviceable, backend or not.
  */
 export async function getServiceability(point: CheckPoint): Promise<Serviceability> {
+  // Launch geofence FIRST. A resolved point outside the service area is out of
+  // zone, full stop — before any backend call or fail-open default.
+  if (point.lat != null && point.lng != null) {
+    const d = distanceKmBetween(SERVICE_AREA.lat, SERVICE_AREA.lng, point.lat, point.lng);
+    if (d > SERVICE_AREA.radiusKm) return outOfZone(d);
+  }
   if (!isBackendConfigured()) {
-    return { serviceable: true, standard: true, instant: true, storeName: null, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null };
+    return { serviceable: true, standard: true, instant: true, storeName: `PYAAS ${SERVICE_AREA.label}`, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null };
   }
   const q = new URLSearchParams();
   if (point.lat != null) q.set('lat', String(point.lat));
