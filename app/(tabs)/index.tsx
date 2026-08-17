@@ -21,6 +21,8 @@ import { useCatalog, getMergedProducts, refreshCatalog, groupProducts, type Grou
 import { PromoGate } from '../../components/PromoGate';
 import { OutOfZoneSheet } from '../../components/OutOfZoneSheet';
 import { usePopupSlot, anyPopupOpen } from '../../lib/popupGate';
+import { useUserLocation } from '../../lib/userLocation';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useServiceability } from '../../lib/serviceability';
 import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
@@ -100,25 +102,37 @@ export default function Shop() {
   const instantClosed = useServiceability((s) => s.instantClosed);
   const instantResumesLabel = useServiceability((s) => s.instantResumesLabel);
   const svcCheck = useServiceability((s) => s.check);
-  // Out-of-zone popout: slides up the moment a picked location resolves
-  // unserviceable — once per location, never re-nagging on every focus. The
-  // sheet offers the one action that opens the shop (switch to the launch
-  // zone); declining leaves the browse-only shop usable behind it.
-  const svcLat = useServiceability((s) => s.lat);
-  const svcLng = useServiceability((s) => s.lng);
+  // Out-of-zone popout — THE RULES (founder, 18 Aug):
+  //   1. NEVER before the member has explicitly set a location. The app's
+  //      fallback point (city default / saved address resolution) must not
+  //      trigger it — a brand-new user who hasn't touched location sees the
+  //      browse-only shop quietly, popup-free.
+  //   2. Once the member taps it away (either button), it stays away FOR THAT
+  //      LOCATION permanently (persisted on disk, not per-session), and only a
+  //      DIFFERENT unserviceable location may show it again.
+  //   3. Never over another popup.
+  const userLoc = useUserLocation((s) => s.loc);
   const [oozOpen, setOozOpen] = useState(false);
-  // ONE POPUP AT A TIME (founder's rule): every self-presenting surface
-  // registers a slot; auto-open triggers stand down while any slot is taken.
   usePopupSlot(oozOpen);
-  const oozShownFor = useRef<string | null>(null);
+  const oozSig = useRef<string | null>(null);
   useEffect(() => {
-    if (svcServiceable !== false) return;
-    const sig = `${svcLat},${svcLng}`;
-    if (oozShownFor.current === sig) return;
-    if (anyPopupOpen()) return; // never stack popups — retry on the next resolve
-    oozShownFor.current = sig;
-    setOozOpen(true);
-  }, [svcServiceable, svcLat, svcLng]);
+    if (!userLoc) return;                    // rule 1: no explicit location yet
+    if (svcServiceable !== false) return;    // serviceable — nothing to say
+    const sig = `pyaas_ooz_ack:${userLoc.coords.lat.toFixed(3)},${userLoc.coords.lng.toFixed(3)}`;
+    let on = true;
+    AsyncStorage.getItem(sig).then((ack) => {
+      if (!on || ack === '1') return;        // rule 2: already acknowledged
+      if (anyPopupOpen()) return;            // rule 3: one popup at a time
+      oozSig.current = sig;
+      setOozOpen(true);
+    }).catch(() => { /* storage unreadable — stay quiet */ });
+    return () => { on = false; };
+  }, [svcServiceable, userLoc]);
+  const dismissOoz = useCallback(() => {
+    setOozOpen(false);
+    // The member clicked it — acknowledged for this location, permanently.
+    if (oozSig.current) void AsyncStorage.setItem(oozSig.current, '1').catch(() => {});
+  }, []);
   // If the serving store doesn't run the ⚡ instant lane here, never leave the
   // member stranded on the (now disabled) Instant tab — fall back to Morning.
   useEffect(() => {
@@ -563,7 +577,7 @@ export default function Shop() {
       {/* Persistent promo loop · re-evaluates low-wallet / Become-VIP on every
           Home focus (dismissals reset so a banner re-shows next Home visit). */}
       <PromoGate />
-      <OutOfZoneSheet visible={oozOpen} onClose={() => setOozOpen(false)} />
+      <OutOfZoneSheet visible={oozOpen} onClose={dismissOoz} />
 
       {/* Animated welcome offer: first signed-in landing only. Claiming hands
           straight into the subscription claim flow below. */}
