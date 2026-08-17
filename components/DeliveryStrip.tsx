@@ -39,14 +39,17 @@ export function DeliveryStrip() {
     }, [])
   );
 
+  // Keyed on the CURRENT date so an app left open across midnight relabels —
+  // memoised on [] it froze "Today" at mount and offered a start date in the past.
+  const today = todayISO();
   const days = useMemo(
     () =>
       Array.from({ length: 7 }, (_, i) => {
-        const iso = addDaysISO(todayISO(), i);
+        const iso = addDaysISO(today, i);
         const d = parseISO(iso);
         return { i, iso, dow: WD[d.getDay()], date: d.getDate(), rel: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : WD_FULL[d.getDay()] };
       }),
-    []
+    [today]
   );
 
   const selDay = days[sel];
@@ -120,7 +123,7 @@ export function DeliveryStrip() {
             ) : (
               <>
                 <TextSemi style={{ fontSize: 14 }}>{isToday ? 'Add more subscription' : `No delivery · ${selDay.rel}`}</TextSemi>
-                <TextBody style={{ fontSize: 12 }}>{isToday ? 'Fresh milk at your door by 7 AM' : 'Tap add to schedule it'}</TextBody>
+                <TextBody style={{ fontSize: 12 }}>{isToday ? 'Fresh milk every morning, 5-7:30 AM' : 'Tap add to schedule it'}</TextBody>
               </>
             )}
           </View>

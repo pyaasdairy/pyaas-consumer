@@ -90,6 +90,9 @@ export function SubscribeSheet({
   // replaced the old review step, and it must stay on the button.
   // Synchronous double-tap guard (setBusy only disables after a re-render).
   const busyRef = useRef(false);
+  // Whether the address-capture sheet was opened BY the subscribe gate chain
+  // (resume on save) vs. by the member managing addresses (no auto-subscribe).
+  const resumeOnSave = useRef(false);
 
   // Reset to the caller's seed each time it opens.
   useEffect(() => {
@@ -142,12 +145,17 @@ export function SubscribeSheet({
   // unlock/2-day-cover top-up, ONLY when actually short → 3) CREATE. A member
   // with address + funds subscribes in this one tap, no interstitials.
   async function startSubscribe() {
+    // Synchronous re-entrancy guard AT THE TOP: two fast taps on the Subscribe
+    // button otherwise run two full gate chains (confirm's own guard only
+    // engages after two awaits) — a double daily plan and a double debit.
+    if (busyRef.current) return;
     haptics.press();
     setErr('');
     // 1) ADDRESS FIRST.
     const addrs = await listAddresses().catch(() => [] as Address[]);
     const pick = addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin);
     if (!pick) {
+      resumeOnSave.current = true; // THIS capture is part of the subscribe chain
       setMapOpen(true); // capture → onAddressSaved resumes this chain
       return;
     }
@@ -187,6 +195,7 @@ export function SubscribeSheet({
       const addrs = await listAddresses().catch(() => [] as Address[]);
       if (!addrs.some(hasPin)) {
         haptics.press();
+        resumeOnSave.current = true;
         setMapOpen(true);
         return;
       }
@@ -196,7 +205,7 @@ export function SubscribeSheet({
       // recharge screen first, returning here once funded.
       await refreshWallet();
       const bal = useWallet.getState().balance;
-      // ₹500 GATE: a still-locked account must fund the wallet to the unlock
+      // UNLOCK GATE (WALLET_UNLOCK_TARGET): a still-locked account must fund the wallet to the unlock
       // target before ANY purchase, subscriptions included.
       const unlocked = await purchasesUnlocked(bal);
       const need = Math.max(minWalletToStart(perDelivery), unlocked ? 0 : WALLET_UNLOCK_TARGET);
@@ -246,7 +255,7 @@ export function SubscribeSheet({
     } catch (e: any) {
       // Defensive: if the backstop still fires (e.g. a race), open the map instead
       // of showing a raw error.
-      if (e?.code === NEEDS_EXACT_LOCATION || e?.message === NEEDS_EXACT_LOCATION) { setMapOpen(true); return; }
+      if (e?.code === NEEDS_EXACT_LOCATION || e?.message === NEEDS_EXACT_LOCATION) { resumeOnSave.current = true; setMapOpen(true); return; }
       setErr(e?.message ?? 'Could not start your subscription. Please try again.');
     } finally {
       busyRef.current = false;
@@ -254,11 +263,22 @@ export function SubscribeSheet({
     }
   }
 
-  // Complete address saved (pin + form + preferences) → resume the GATE CHAIN
-  // (funds next if short, else the subscription is created).
+  // Complete address saved (pin + form + preferences). Resume the GATE CHAIN
+  // ONLY when the capture was opened BY the subscribe chain — a member who
+  // opened it via Change → "Add a new address" is just managing addresses, and
+  // auto-running the chain from there enrolled them in a recurring charge with
+  // no Subscribe tap (the unintended-enrollment pattern that got the app taken
+  // down). For that path we adopt the new address and hand control back.
   function onAddressSaved() {
     setMapOpen(false);
-    void startSubscribe();
+    if (resumeOnSave.current) {
+      resumeOnSave.current = false;
+      void startSubscribe();
+      return;
+    }
+    void listAddresses()
+      .then((rows) => setDeliverTo(rows.find((a) => a.is_default && hasPin(a)) ?? rows.find(hasPin) ?? null))
+      .catch(() => { /* keep the previous deliverTo */ });
   }
 
   return (

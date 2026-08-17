@@ -76,7 +76,15 @@ function normalize(raw: RawServiceability | null | undefined): Serviceability {
   };
 }
 
-export type CheckPoint = { lat?: number | null; lng?: number | null; pincode?: string | null };
+export type CheckPoint = {
+  lat?: number | null;
+  lng?: number | null;
+  pincode?: string | null;
+  /** True ONLY when the coords are the member's EXPLICITLY chosen location
+   *  (set by resolvePoint from the location gate) — never for the saved-address
+   *  or DEFAULT_REGION fallbacks. Gates the home-city centroid exemption. */
+  cityPick?: boolean;
+};
 
 // ── Launch geofence: Sushant Golf City, Lucknow ──────────────────────────────
 // PYAAS is live in ONE township to begin with. Anyone whose delivery point is
@@ -138,32 +146,36 @@ function outOfZone(distanceKm: number): Serviceability {
  * serviceable, backend or not.
  */
 export async function getServiceability(point: CheckPoint): Promise<Serviceability> {
+  const fullyServiceable = (): Serviceability => ({ serviceable: true, standard: true, instant: true, storeName: `PYAAS ${SERVICE_AREA.label}`, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null });
   // GOOGLE PLAY REVIEWER (hardcoded test account): fully serviceable from
   // anywhere, before any fence or backend gate — the reviewer must reach every
   // feature with no location blocker. Everyone else takes the normal path.
-  if (await isPlayTesterSession()) {
-    return { serviceable: true, standard: true, instant: true, storeName: `PYAAS ${SERVICE_AREA.label}`, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null };
+  if (await isPlayTesterSession()) return fullyServiceable();
+  // A coarse CITY pick of the city the service area itself sits in is
+  // serviceable outright, LOCAL VERDICT, no backend consult. "Lucknow" from
+  // the city list resolves to the metro centroid (~11 km from the fence
+  // center) — street-level truth the member never gave; failing any fence
+  // (ours or the backend's) on that centroid told members in the pilot city
+  // "we're unserviceable here". The exemption applies ONLY to an EXPLICIT
+  // pick (point.cityPick, set by resolvePoint solely for the member's chosen
+  // location) — never to the DEFAULT_REGION fallback, which shares Lucknow's
+  // coordinates; the know-nothing default must keep the fence. The exact
+  // address still decides at order time. Farther centroids (Barabanki ~24 km,
+  // Kanpur ~70 km) fail the fence as before.
+  if (point.cityPick) {
+    const HOME_CITY_KM = 15;
+    const cityPick = CITIES.find(
+      (c) => Math.abs(c.coords.lat - (point.lat ?? NaN)) < 1e-4 && Math.abs(c.coords.lng - (point.lng ?? NaN)) < 1e-4,
+    );
+    if (cityPick && distanceKmBetween(SERVICE_AREA.lat, SERVICE_AREA.lng, cityPick.coords.lat, cityPick.coords.lng) <= HOME_CITY_KM) {
+      return fullyServiceable();
+    }
   }
   // Launch geofence FIRST. A resolved point outside the service area is out of
   // zone, full stop — before any backend call or fail-open default.
-  //
-  // EXCEPT a coarse CITY pick of the city the service area itself sits in.
-  // "Lucknow" from the city list resolves to the metro centroid (~11 km from
-  // the fence center) — street-level truth the member never gave. Failing the
-  // 6 km fence on that centroid told members in the pilot city "we're
-  // unserviceable here". A centroid within HOME_CITY_KM of the fence center is
-  // the home city: serviceable for browsing; the exact address decides at
-  // order time. Any farther centroid (Barabanki ~24 km, Kanpur ~70 km) still
-  // fails the fence as before.
   if (point.lat != null && point.lng != null) {
-    const HOME_CITY_KM = 15;
-    const cityPick = CITIES.find(
-      (c) => Math.abs(c.coords.lat - point.lat!) < 1e-4 && Math.abs(c.coords.lng - point.lng!) < 1e-4,
-    );
-    const isHomeCityPick =
-      !!cityPick && distanceKmBetween(SERVICE_AREA.lat, SERVICE_AREA.lng, cityPick.coords.lat, cityPick.coords.lng) <= HOME_CITY_KM;
     const d = distanceKmBetween(SERVICE_AREA.lat, SERVICE_AREA.lng, point.lat, point.lng);
-    if (d > SERVICE_AREA.radiusKm && !isHomeCityPick) return outOfZone(d);
+    if (d > SERVICE_AREA.radiusKm) return outOfZone(d);
   }
   if (!isBackendConfigured()) {
     return { serviceable: true, standard: true, instant: true, storeName: `PYAAS ${SERVICE_AREA.label}`, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null };
@@ -197,11 +209,17 @@ async function resolvePoint(): Promise<Required<CheckPoint> & { signature: strin
   let lat: number | null = null;
   let lng: number | null = null;
   let pincode: string | null = null;
+  let cityPick = false;
 
   // 1) The member's explicitly chosen delivery location (a GPS fix or a city
-  //    picked in the location gate on Home) is the source of truth.
+  //    picked in the location gate on Home) is the source of truth. Only THIS
+  //    source can flag a city-centroid pick — the fallbacks below reuse the
+  //    same coordinates without the member ever having chosen them.
   const ul = currentUserLoc();
-  if (ul) { lat = ul.coords.lat; lng = ul.coords.lng; }
+  if (ul) {
+    lat = ul.coords.lat; lng = ul.coords.lng;
+    cityPick = CITIES.some((c) => Math.abs(c.coords.lat - ul.coords.lat) < 1e-4 && Math.abs(c.coords.lng - ul.coords.lng) < 1e-4);
+  }
 
   const uid = await getUserId();
   if (uid) {
@@ -222,7 +240,7 @@ async function resolvePoint(): Promise<Required<CheckPoint> & { signature: strin
   //    nags for permission on every Home focus.
   if (lat == null || lng == null) { lat = DEFAULT_REGION.lat; lng = DEFAULT_REGION.lng; }
 
-  return { lat, lng, pincode: pincode ?? '', signature: `${lat},${lng},${pincode ?? ''}` };
+  return { lat, lng, pincode: pincode ?? '', cityPick, signature: `${lat},${lng},${pincode ?? ''},${cityPick ? 'c' : ''}` };
 }
 
 // ── Module snapshot ──────────────────────────────────────────────────────────
@@ -261,6 +279,40 @@ type ServiceabilityState = {
 
 let lastSignature: string | null = null;
 let inFlight: Promise<void> | null = null;
+// LATEST-WINS: every run takes a ticket; only the newest run may write state.
+// Without this, a forced check (new pin) racing a slow unforced one (old
+// point's backend round-trip) could interleave — coords from one run, verdict
+// from the other — which is exactly the stale-pair the home popup guards on.
+let runSeq = 0;
+
+/**
+ * Sign-out reset: the module cache, snapshot and store all outlive the session
+ * object, so without this the FIRST check after a different account signs in
+ * short-circuits on the previous account's signature and inherits its verdict
+ * (a tester's lifted fence leaking to a real member, or vice versa).
+ */
+export function resetServiceability(): void {
+  lastSignature = null;
+  inFlight = null;
+  runSeq += 1; // orphan any in-flight run so it can't write post-reset
+  snapshot = { serviceable: null, instant: true, monsoonRupees: 0, instantClosed: false };
+  useServiceability.setState({
+    loading: false,
+    serviceable: null,
+    standard: true,
+    instant: true,
+    storeName: null,
+    monsoonRupees: 0,
+    instantClosed: false,
+    instantResumesLabel: null,
+    reason: null,
+    distanceKm: null,
+    checkedAt: null,
+    lat: null,
+    lng: null,
+    pincode: null,
+  });
+}
 
 export const useServiceability = create<ServiceabilityState>((set, get) => ({
   loading: false,
@@ -282,14 +334,21 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
     // Single-flight: overlapping checks (boot + focus) share one request.
     if (inFlight && !force) return inFlight;
 
+    const myRun = ++runSeq;
+    // Only the newest ticket may touch state — a superseded run's writes are
+    // dropped wholesale, so coords and verdict always describe the SAME point.
+    const fresh = () => myRun === runSeq;
+
     const run = (async () => {
       const point = await resolvePoint();
+      if (!fresh()) return;
       // Cache: same point + already resolved → skip the round-trip unless forced.
       if (!force && lastSignature === point.signature && get().serviceable !== null) return;
 
       set({ loading: true, lat: point.lat, lng: point.lng, pincode: point.pincode || null });
       try {
         const s = await getServiceability(point);
+        if (!fresh()) return;
         lastSignature = point.signature;
         snapshot = { serviceable: s.serviceable, instant: s.instant, monsoonRupees: s.monsoonRupees, instantClosed: s.instantClosed };
         set({
@@ -306,6 +365,7 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
           checkedAt: new Date().toISOString(),
         });
       } catch {
+        if (!fresh()) return;
         // FAIL-OPEN: a blip must never gate a paying user out. Treat as fully
         // serviceable, and DON'T cache the signature so the next check retries.
         lastSignature = null;
@@ -325,7 +385,8 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
       }
     })();
 
-    inFlight = run.finally(() => { inFlight = null; });
-    return inFlight;
+    const tracked = run.finally(() => { if (inFlight === tracked) inFlight = null; });
+    inFlight = tracked;
+    return tracked;
   },
 }));

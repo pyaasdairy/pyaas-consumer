@@ -7,6 +7,7 @@ import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-
 import { colors, radius, spacing, shadow, rupee, tabular } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../components/ui';
 import { listOrders, type Order } from '../../lib/api';
+import { isInstantOrder } from '../../lib/lanes';
 import { useDeliveryMode } from '../../lib/deliveryMode';
 import { STATUS_LABEL, statusColor } from '../../lib/orderStatus';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
@@ -38,10 +39,9 @@ export default function Orders() {
   // window has the 'by HH:MM' shape (legacy rows carried lane defaults).
   const mode = useDeliveryMode();
   const instant = mode === 'instant';
-  const isInstantOrder = useCallback(
-    (o: Order) => o.lane === 'instant' && (o.delivery_window ?? '').toLowerCase().startsWith('by '),
-    [],
-  );
+  // Shared definition (lib/lanes): OR of the two signals, same as the
+  // tracking screen — the old AND here mis-filed lane-instant legacy rows.
+  const instantOf = isInstantOrder;
   const load = useCallback(async () => {
     try {
       const data = await listOrders();
@@ -78,7 +78,7 @@ export default function Orders() {
         <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 40 }} />
       ) : (
         <Animated.FlatList
-          data={orders.filter((o) => (instant ? isInstantOrder(o) : !isInstantOrder(o)))}
+          data={orders.filter((o) => (instant ? instantOf(o) : !instantOf(o)))}
           keyExtractor={(o) => o.id}
           itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(200)}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: tabClearance, gap: spacing.sm }}

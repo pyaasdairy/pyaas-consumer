@@ -334,7 +334,12 @@ export async function placeOrder(params: {
   // was then debited X + 15. Consenting to one number and being charged another
   // is the same defect class as the subscription quote bug, and in backend mode
   // the inflated total is POSTed to /orders too.
-  const delivery_fee = deliveryFeeFor(subtotal, isPlusMember);
+  // SUBSCRIPTIONS SELL AT MRP: no delivery fee, ever — the Subscribe button
+  // quotes bare subtotal and the sweep affordability-checks bare subtotal, so
+  // charging subtotal+15 here debited ₹15/day more than the member agreed to.
+  // The fee remains a one-time-order concept only.
+  const isSubscription = (params.orderType ?? '') === 'subscription';
+  const delivery_fee = isSubscription ? 0 : deliveryFeeFor(subtotal, isPlusMember);
   // Monsoon surcharge: INSTANT orders only, read from the serving store's zone
   // (via serviceability). The backend re-applies it authoritatively on create.
   const monsoon_fee = isInstant ? (svc.monsoonRupees || 0) : 0;

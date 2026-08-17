@@ -9,10 +9,10 @@
  * the flame/blue identity. Motion comes from the shared, gradient-free
  * components/Fx primitives.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Image, Text, Modal, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
@@ -34,7 +34,6 @@ import { haptics } from '../../lib/haptics';
 import { isBackendConfigured } from '../../lib/apiClient';
 import { getProfile } from '../../lib/session';
 import { FloatingParticles, ShineSweep, GlowPulse } from '../../components/Fx';
-import { ClaimPackFlow } from '../../components/ClaimPackFlow';
 import { VIP_MILK_DISCOUNT_PCT,
   getVip,
     purchaseMembership,
@@ -234,7 +233,6 @@ export default function Vip() {
   const COMPARE = useMemo(() => catalog.filter((p) => p.category === 'milk' && !p.outOfStock).slice(0, 4), [catalog]);
   const [m, setM] = useState<VipMembership | null>(null);
   const [name, setName] = useState<string | null>(null);
-  const [showClaim, setShowClaim] = useState(false);
   const [msg, setMsg] = useState('');
   const [focused, setFocused] = useState(true);
   // Plus value section: compare member vs regular price, or the monthly saving.
@@ -245,6 +243,19 @@ export default function Vip() {
   const [buyErr, setBuyErr] = useState('');
   const walletBalance = useWallet((s) => s.balance);
   const refreshWallet = useWallet((s) => s.refresh);
+  // RESUME AFTER RECHARGE: the shortfall path sends the member to /recharge
+  // with returnTo=/(tabs)/vip?resume=plus. Landing back, re-open the join
+  // sheet ONCE (never auto-charge — the confirm tap stays theirs), so "top up
+  // to join Plus" actually finishes in a join instead of a dead tab.
+  const { resume } = useLocalSearchParams<{ resume?: string }>();
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resume !== 'plus' || resumedRef.current) return;
+    resumedRef.current = true;
+    router.setParams({ resume: undefined });
+    if (!vipActive(m)) setShowBuy(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resume, m]);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => {
@@ -307,7 +318,7 @@ export default function Vip() {
         const qs = new URLSearchParams({
           min: String(Math.ceil(e.shortfall)),
           amount: String(snap),
-          returnTo: '/(tabs)/vip',
+          returnTo: '/(tabs)/vip?resume=plus',
           reason: 'to join Plus',
         }).toString();
         router.push(`/recharge?${qs}`);
@@ -319,8 +330,8 @@ export default function Vip() {
     }
   }
 
-  // Cancel — honours the "cancel anytime" promise. Perks run to the end of the
-  // paid/trial period (vipActive respects current_period_end), so it's a soft stop.
+  // Cancel — honours the "cancel anytime" promise. Cancel is IMMEDIATE
+  // (founder's call): perks end the moment it's confirmed, no run-out period.
   function confirmCancel() {
     haptics.press();
     Alert.alert(
@@ -371,9 +382,7 @@ export default function Vip() {
           <Animated.View entering={enterUp(140)} style={{ marginTop: 22, alignItems: 'center' }}>
             <TextSemi style={{ fontSize: 15, textAlign: 'center' }} color={INK}>
               {active
-                ? (m?.status === 'cancelled'
-                    ? `Plus cancelled, ${days} day${days === 1 ? '' : 's'} of perks left.`
-                    : `You're a Plus member, ${days} day${days === 1 ? '' : 's'} left this period.`)
+                ? `You're a Plus member, ${days} day${days === 1 ? '' : 's'} left this period.`
                 : 'Join PYAAS Plus'}
             </TextSemi>
             {!active ? (
@@ -622,11 +631,6 @@ export default function Vip() {
         </View>
       </Modal>
 
-      <ClaimPackFlow
-        visible={showClaim}
-        onClose={() => setShowClaim(false)}
-        onStartShopping={() => { setShowClaim(false); router.replace('/(tabs)'); }}
-      />
     </View>
   );
 }

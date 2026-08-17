@@ -78,7 +78,7 @@ export default function Cart() {
   const [placing, setPlacing] = useState(false);
   const [err, setErr] = useState('');
   const [waitlisted, setWaitlisted] = useState(false);
-  // ₹500 GATE: ordering stays locked until the wallet has been funded to the
+  // UNLOCK GATE (WALLET_UNLOCK_TARGET): ordering stays locked until the wallet has been funded to the
   // target once. `null` = still resolving (treat as unlocked so the CTA never
   // flashes the lock for an already-unlocked member).
   const [unlocked, setUnlocked] = useState<boolean | null>(null);
@@ -184,7 +184,11 @@ export default function Cart() {
   const priceOf = (l: { id: string; price: number }) => memberLinePrice(getProduct(l.id)?.category, l.price, isPlus);
   const subtotal = orderable.reduce((sum, l) => sum + priceOf(l) * l.qty, 0);
   const delivery = deliveryFeeFor(subtotal, isPlus);
-  const total = subtotal + delivery;
+  // Monsoon surcharge (instant lane only) — placeOrder adds it, so the bill
+  // and the wallet-cover check must carry it too or the member consents to one
+  // number and is charged another.
+  const monsoonFee = isInstant ? (useServiceability.getState().monsoonRupees || 0) : 0;
+  const total = subtotal + delivery + monsoonFee;
   const short = isInstant ? 0 : Math.max(0, total - balance);
   const blocked = serviceable === false;
   // Handling + small-cart fees are SHOWN then waived (on us), so the payable total
@@ -499,6 +503,9 @@ export default function Cart() {
             valueColor={delivery === 0 ? colors.blue : colors.ink}
             hint={delivery > 0 ? `No charge over ${rupee(FREE_DELIVERY_OVER)}` : undefined}
           />
+          {monsoonFee > 0 ? (
+            <Row label="Monsoon surcharge" value={rupee(monsoonFee)} hint="Rainy-day instant delivery" />
+          ) : null}
           <Row label="Handling charge" value="FREE" valueColor={colors.blue} strike={rupee(HANDLING_FEE)} />
           {smallCart > 0 ? (
             <Row label="Small cart fee" value="FREE" valueColor={colors.blue} strike={rupee(smallCart)} hint={`No charge over ${rupee(SMALL_CART_UNDER)}`} />

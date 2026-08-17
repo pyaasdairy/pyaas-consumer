@@ -24,7 +24,7 @@ export const STARTER_FREE_DAYS = 2;
 
 const UNLOCK_KEY_PREFIX = 'pyaas_wallet_unlocked:';
 
-/** Whether this account has ever crossed the ₹500 target (purchases unlocked). */
+/** Whether this account has ever crossed the unlock target (purchases unlocked). */
 export async function purchasesUnlocked(currentBalance?: number): Promise<boolean> {
   const uid = await getUserId();
   if (!uid) return false;

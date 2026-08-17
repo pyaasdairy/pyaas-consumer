@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -87,6 +87,10 @@ export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
   const settleStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 - settle.value * 0.04 }],
   }));
+  // Cleared on unmount so navigating away inside the 220ms beat can't fire
+  // onAgree against an unmounted screen.
+  const agreeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (agreeTimer.current) clearTimeout(agreeTimer.current); }, []);
   const agree = () => {
     if (agreed) return;
     setAgreed(true);
@@ -95,7 +99,7 @@ export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
     settle.value = withSequence(withSpring(1, { damping: 18, stiffness: 380 }), withSpring(0));
     haptics.confirm();
     // Small beat so the press lands visually before the cross-fade to login.
-    setTimeout(onAgree, 220);
+    agreeTimer.current = setTimeout(onAgree, 220);
   };
 
   return (

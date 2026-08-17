@@ -58,8 +58,11 @@ export function HeroSlideshow() {
       ref.current?.scrollToOffset({ offset: next * cardW, animated: true });
       setIdx(next);
     }, INTERVAL);
-    return () => { clearInterval(t); if (resumeTimer.current) clearTimeout(resumeTimer.current); };
+    return () => clearInterval(t);
   }, [cardW]);
+  // Resume-timer cleanup runs REGARDLESS of slide count — the interval effect
+  // above early-returns for a single slide, so parking it there leaked it.
+  useEffect(() => () => { if (resumeTimer.current) clearTimeout(resumeTimer.current); }, []);
 
   const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (cardW > 0) setIdx(Math.round(e.nativeEvent.contentOffset.x / cardW));
@@ -67,7 +70,15 @@ export function HeroSlideshow() {
 
   return (
     <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md, gap: 10 }}>
-      <View style={{ borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.cream, ...shadow.card }}>
+      {/* HOLD TO READ: a finger resting on the creative pauses the
+          auto-advance (onHold), and it resumes a beat after lift (onRelease).
+          These were defined but never attached — the feature didn't exist. */}
+      <View
+        style={{ borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.cream, ...shadow.card }}
+        onTouchStart={onHold}
+        onTouchEnd={onRelease}
+        onTouchCancel={onRelease}
+      >
         <FlatList
           ref={ref}
           data={SLIDES}

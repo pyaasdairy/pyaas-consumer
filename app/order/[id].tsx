@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, Linking, TextInput, Modal, ActivityIndicator } from 'react-native';
+import { View, Linking, TextInput, Modal, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { getOrder, markOrderPaid, reviewOrder, type Order } from '../../lib/api'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { checkoutHtml, isRazorpayConfigured, RAZORPAY_KEY_ID } from '../../lib/razorpay';
 import { STATUS_LABEL, STATUS_SUB } from '../../lib/orderStatus';
+import { isInstantOrder } from '../../lib/lanes';
 import { isBackendConfigured } from '../../lib/apiClient';
 import { STORE_POINT } from '../../lib/serviceability';
 import { debitWallet } from '../../lib/walletApi';
@@ -60,7 +61,6 @@ export default function OrderTracking() {
   const insets = useSafeAreaInsets();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // >0 when this delivered order couldn't be charged (wallet too low) — surfaced so
   // the member can settle it instead of the charge being silently lost.
@@ -72,7 +72,6 @@ export default function OrderTracking() {
   const [reviewStars, setReviewStars] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [reviewed, setReviewed] = useState(false);
   const debitedRef = useRef(false);
   // Pay-while-we-deliver checkout sheet (instant COD orders, local mode only).
   const [payOpen, setPayOpen] = useState(false);
@@ -97,16 +96,25 @@ export default function OrderTracking() {
     }
   }, [order, storeOrigin]);
 
-  // COLLAPSING MAP: the first phase of scroll is absorbed ENTIRELY by the map
-  // (340 → 120 over exactly 220px of scroll, 1:1), so the arrival card holds
-  // its place on screen while the map shrinks and its headline is never cut
-  // mid-collapse; only after the map hits its floor does content scroll off
-  // normally. Driven on the UI thread from the scroll offset, so it tracks the
-  // finger with no lag and reverses symmetrically.
+  // COLLAPSING MAP: the hero is ABSOLUTE at the top and the scroll content
+  // starts below it via contentContainer paddingTop 340. As the member scrolls
+  // s, the content top sits at 340-s while the map height is clamp(340-s, 120)
+  // — the two edges coincide exactly through the whole collapse, so the
+  // arrival card is never clipped and no gap can open; past the 120 floor,
+  // content scrolls under the map edge like any collapsed header. (The old
+  // flow-sibling layout shrank the ScrollView's frame while the content also
+  // scrolled — double speed, headline sliced from ~22px of scroll.)
+  const MAP_MAX = 340;
+  const MAP_MIN = 120;
   const trackScrollY = useSharedValue(0);
   const onTrackScroll = useAnimatedScrollHandler((e) => { trackScrollY.value = e.contentOffset.y; });
   const mapCollapseStyle = useAnimatedStyle(() => ({
-    height: interpolate(trackScrollY.value, [0, 220], [340, 120], Extrapolation.CLAMP),
+    height: interpolate(trackScrollY.value, [0, MAP_MAX - MAP_MIN], [MAP_MAX, MAP_MIN], Extrapolation.CLAMP),
+  }));
+  // Center-crop the fixed-height map inside the shrinking container: without
+  // this the collapse shows only the route's top third (bare tiles, no pins).
+  const mapCenterCropStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: interpolate(trackScrollY.value, [0, MAP_MAX - MAP_MIN], [0, -(MAP_MAX - MAP_MIN) / 2], Extrapolation.CLAMP) }],
   }));
 
   const load = useCallback(async () => {
@@ -194,7 +202,6 @@ export default function OrderTracking() {
     try {
       await reviewOrder(order.id, reviewStars, reviewText.trim());
       haptics.success();
-      setReviewed(true);
       await load();
     } catch (e: any) {
       setError(e?.message ?? 'Could not submit your review.');
@@ -233,8 +240,7 @@ export default function OrderTracking() {
   const hasRider = !!order.riders && (order.status === 'assigned' || order.status === 'out_for_delivery' || delivered);
   // Instant lane → the tracking map draws the store→you route (a store pin plus
   // the live rider). Standard orders keep the rider-only map.
-  const isInstant =
-    order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
+  const isInstant = isInstantOrder(order);
 
   // LIVE INSTANT = the quick-commerce tracking layout: the map is the hero,
   // the arrival card overlaps it, and the countdown leads. Everything else
@@ -246,18 +252,31 @@ export default function OrderTracking() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       {liveInstant ? (
-        <Animated.View style={[{ overflow: 'hidden', borderBottomLeftRadius: 24, borderBottomRightRadius: 24, zIndex: 2, backgroundColor: colors.milk, ...shadow.soft }, mapCollapseStyle]}>
-          {/* Full-bleed live map hero (store pin → home, rider in between). */}
-          <RiderTrackMap
-            riderLat={order.riders?.current_lat}
-            riderLng={order.riders?.current_lng}
-            active={order.status === 'out_for_delivery'}
-            originLat={storeOrigin?.lat ?? STORE_POINT.lat}
-            originLng={storeOrigin?.lng ?? STORE_POINT.lng}
-            originLabel={STORE_POINT.label}
-            height={340}
-            hero
-          />
+        <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden', borderBottomLeftRadius: 24, borderBottomRightRadius: 24, zIndex: 2, backgroundColor: colors.milk, ...shadow.soft }, mapCollapseStyle]}>
+          {/* Full-bleed live map hero (store pin → home, rider in between),
+              center-cropped as the container collapses so the route stays in
+              view instead of bare top tiles. */}
+          <Animated.View style={mapCenterCropStyle}>
+            <RiderTrackMap
+              riderLat={order.riders?.current_lat}
+              riderLng={order.riders?.current_lng}
+              active={order.status === 'out_for_delivery'}
+              originLat={storeOrigin?.lat ?? STORE_POINT.lat}
+              originLng={storeOrigin?.lng ?? STORE_POINT.lng}
+              originLabel={STORE_POINT.label}
+              height={340}
+              hero
+            />
+          </Animated.View>
+          {/* Status ribbon pinned to the CONTAINER's bottom edge (not the
+              map's), so it rides the collapse and stays fully visible at the
+              120px floor instead of being clipped away. */}
+          <View pointerEvents="none" style={{ position: 'absolute', left: 14, bottom: 14, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 9, ...shadow.soft }}>
+            <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: order.status === 'out_for_delivery' ? '#31B057' : colors.gold }} />
+            <TextSemi style={{ fontSize: 13.5 }}>
+              {order.riders?.current_lat != null ? (order.status === 'out_for_delivery' ? 'Rider on the way' : 'Rider assigned') : 'From your PYAAS store'}
+            </TextSemi>
+          </View>
           <Tap
             onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/orders'))}
             style={[iconBtn, { position: 'absolute', top: insets.top + 8, left: spacing.lg, backgroundColor: colors.white, ...shadow.card }]}
@@ -274,8 +293,8 @@ export default function OrderTracking() {
         </View>
       )}
 
-      <Animated.ScrollView onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingBottom: liveInstant ? 420 : spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
-        {/* THE ARRIVAL CARD — overlaps the map hero; the countdown leads. */}
+      <Animated.ScrollView onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingTop: liveInstant ? MAP_MAX + spacing.md : spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+        {/* THE ARRIVAL CARD — first card under the map hero; the countdown leads. */}
         {liveInstant ? (
           <Animated.View entering={FadeIn.duration(420)} style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 6, ...shadow.card }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
@@ -335,8 +354,7 @@ export default function OrderTracking() {
         {/* Morning ETA strip. (The live-instant state is owned entirely by the
             arrival card over the map hero above — nothing renders here.) */}
         {(() => {
-          const isInstantLane =
-            order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
+          const isInstantLane = isInstantOrder(order);
           if (isInstantLane && !delivered && !cancelled) return null;
           const eta =
             !delivered && !cancelled && order.delivery_window
@@ -491,7 +509,7 @@ export default function OrderTracking() {
           with a configured gateway key. Cash at delivery always works. */}
       {(() => {
         if (!order) return null;
-        const instantLane = order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
+        const instantLane = isInstantOrder(order);
         const canPayOnline =
           instantLane && order.payment_method === 'cod' && !order.paid &&
           order.status !== 'delivered' && order.status !== 'cancelled' &&

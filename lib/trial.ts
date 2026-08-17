@@ -169,10 +169,15 @@ function normalizeRemote(r: RawTrial): Trial {
   const paidDays = r.paid_days ?? TRIAL_PAID_DAYS;
   const freeDays = r.free_days ?? TRIAL_FREE_DAYS;
   const totalDays = paidDays + freeDays;
-  const overallDay = r.current_day ?? r.day ?? 0;
+  let overallDay = r.current_day ?? r.day ?? 0;
   const phase = (['paid', 'free', 'completed', 'none'].includes(String(r.phase))
     ? (r.phase as TrialPhase)
     : phaseFor(overallDay, paidDays, totalDays));
+  // A phase with NO day info (the backend's bare `{phase:'paid'}` first-read
+  // shape) would render "Day 0 of 4" forever — clamp to the first day of that
+  // phase's window instead.
+  if (overallDay < 1 && phase === 'paid') overallDay = 1;
+  if (overallDay < 1 && phase === 'free') overallDay = paidDays + 1;
   return {
     active: r.active ?? (phase === 'paid' || phase === 'free'),
     phase,
@@ -223,6 +228,7 @@ export async function beginTrial(startDate: string): Promise<void> {
 /** The chip copy for the current phase, or null when there is nothing to show. */
 export function trialLabel(t: Trial): string | null {
   if (!t.active) return null;
+  if (t.overallDay < 1) return null; // never render "Day 0 of N"
   // The day number runs across the whole trial (paid days first), so both
   // labels use the 4-day denominator: "Day 1 of 4 · paid" → "Day 3 of 4 · FREE".
   if (t.phase === 'free') return `Day ${t.overallDay} of ${t.totalDays} · FREE`;

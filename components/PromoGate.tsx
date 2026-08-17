@@ -8,13 +8,13 @@ import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { ShineSweep } from './Fx';
 import { useWallet } from '../store/wallet';
 import { useAuth } from '../lib/auth';
-import { getVip, vipActive, vipDaysLeft, vipOnTrial, vipUpsellSnoozed, snoozeVipUpsell, PLUS_TRIAL_DAYS, VIP_EXPIRY_WARN_DAYS, type VipMembership } from '../lib/vip';
+import { getVip, vipActive, vipDaysLeft, vipOnTrial, vipUpsellSnoozed, snoozeVipUpsell, PLUS_PRICE_MONTH, VIP_EXPIRY_WARN_DAYS, type VipMembership } from '../lib/vip';
 import { LOW_BALANCE_THRESHOLD } from '../lib/pricing';
 import { PREPAID_TARGET, prepaidTier, shouldShowPrepaidFunnel } from '../lib/prepaid';
 import { freePackShowEligible } from '../lib/freePack';
 import { getLedger } from '../lib/walletApi';
 import { listSubscriptions } from '../lib/subscriptions';
-import { usePopupSlot, useOtherPopupsOpen } from '../lib/popupGate';
+import { useAutoPopup } from '../lib/popupGate';
 
 /**
  * PERSISTENT MONEY FUNNEL (Country-Delight discipline)
@@ -114,27 +114,31 @@ export function PromoGate() {
   // not-yet-claimed member) and once ANY money sheet is dismissed this visit.
   // ONE POPUP AT A TIME: the money nudges are the lowest-priority popups —
   // they stand down whenever anything else (out-of-zone, welcome, claim) is up.
-  const othersOpen = useOtherPopupsOpen(false);
-  const showPrepaid = !othersOpen && ready && !trialShowable && !dismissedMoney && shouldShowPrepaidFunnel({ balance, hasActiveSub, everFunded });
+  // Claim-based (useAutoPopup): the old read-then-register pattern saw its OWN
+  // slot as "another popup" and cancelled itself in an open/close loop.
+  const wantPrepaid = ready && !trialShowable && !dismissedMoney && shouldShowPrepaidFunnel({ balance, hasActiveSub, everFunded });
   const tier = prepaidTier();
   const critical = lowEligible; // balance so low tomorrow's delivery could pause
   const daysLeft = vipDaysLeft(vip);
   // PLUS EXPIRING — an ACTIVE Plus member whose period ends within the warning
   // window. Push a recharge so it renews (keeps free delivery + member prices)
   // instead of silently lapsing.
-  const showVipExpiring =
-    !othersOpen && ready && !trialShowable && !dismissedMoney && !showPrepaid && vipActive(vip) && daysLeft <= VIP_EXPIRY_WARN_DAYS;
+  const wantVipExpiring =
+    ready && !trialShowable && !dismissedMoney && !wantPrepaid && vipActive(vip) && daysLeft <= VIP_EXPIRY_WARN_DAYS;
   // Become-VIP is a soft UPSELL for a WELL-FUNDED active subscriber who isn't a
   // member — NOT a low-balance case (that gets the prepaid recharge modal, which
   // would always out-prioritise it and left this permanently unreachable before).
-  const showVip =
-    !othersOpen && ready && !trialShowable && !dismissedMoney && !showPrepaid && !showVipExpiring && !vipUpsellOff &&
+  const wantVip =
+    ready && !trialShowable && !dismissedMoney && !wantPrepaid && !wantVipExpiring && !vipUpsellOff &&
     !vipActive(vip) && hasActiveSub && balance >= PREPAID_TARGET;
   // A LAPSED member (Plus record exists but expired/cancelled) is asked to RENEW,
-  // not to "start a free trial" — that copy is only right for a never-joined user.
+  // not re-sold membership copy meant for a never-joined user.
   const lapsedVip = !!vip && !vipActive(vip);
 
-  usePopupSlot(showPrepaid || showVipExpiring || showVip);
+  const showAny = useAutoPopup(wantPrepaid || wantVipExpiring || wantVip);
+  const showPrepaid = showAny && wantPrepaid;
+  const showVipExpiring = showAny && wantVipExpiring;
+  const showVip = showAny && wantVip;
 
   return (
     <>
@@ -171,12 +175,12 @@ export function PromoGate() {
         onClose={() => { setDismissedMoney(true); void snoozeVipUpsell(); }}
         accent={colors.blue}
         icon="star"
-        badge={lapsedVip ? 'MEMBER PERKS' : `${PLUS_TRIAL_DAYS} DAYS FREE`}
+        badge={lapsedVip ? 'MEMBER PERKS' : 'PYAAS PLUS'}
         title={lapsedVip ? 'Renew PYAAS Plus' : 'Become a PYAAS VIP'}
         body={
           lapsedVip
             ? 'Priority morning slots, free delivery and member price on milk. Renew your PYAAS Plus and keep the perks.'
-            : 'Priority morning slots, free delivery and member price on milk. Start your free trial. No card needed.'
+            : `Priority morning slots, free delivery and member price on milk. ${rupee(PLUS_PRICE_MONTH)}/month from your wallet.`
         }
         cta={lapsedVip ? 'Renew Plus' : 'Become VIP'}
         onAccept={() => { setDismissedMoney(true); void snoozeVipUpsell(); router.push('/(tabs)/vip'); }}

@@ -20,7 +20,7 @@ import { todayISO, formatWeekday } from '../lib/dates';
  *   - none → "Start your subscription, 2 days of milk on us", linking to the
  *     claim flow (onClaim) — unless the host screen already shows its own claim
  *     card (showEmpty=false), to avoid saying it twice.
- *   - during the 3+3 trial the LIVE card shows the phase chip ("Day 2 of 3 ·
+ *   - during the 2+2 trial the LIVE card shows the phase chip ("Day 2 of 4 ·
  *     paid" / "Day 5 of 6 · FREE 🎉") driven by lib/trial.
  * Self-loading on focus; renders nothing until the first load resolves so it
  * never flashes the empty state at a subscribed member.

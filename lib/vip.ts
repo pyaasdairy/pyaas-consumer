@@ -100,27 +100,9 @@ export async function isPlusActive(): Promise<boolean> {
   }
 }
 
-/**
- * Start (or restart) the user's free Plus trial. Writes a real membership row so
- * the card activates immediately and Plus perks apply across the app. Restarting
- * after an expired/cancelled membership keeps the original join date.
- */
-export async function startTrial(): Promise<VipMembership> {
-  const uid = await requireUserId();
-  const now = new Date();
-  const end = new Date(now.getTime() + PLUS_TRIAL_DAYS * 86400000);
-  const existing = await getSingle<VipMembership>('vip', uid);
-  const m: VipMembership = {
-    status: 'trial',
-    trial_started_at: now.toISOString(),
-    current_period_end: end.toISOString(),
-    plan: 'monthly',
-    started_at: existing?.started_at ?? now.toISOString(),
-  };
-  // TODO(api): POST /membership/trial when the backend is live.
-  await putSingle<VipMembership>('vip', uid, m);
-  return m;
-}
+// NOTE: the free Plus trial was REMOVED (paid-only, founder's call 18 Aug).
+// startTrial / the trial modal are gone; `vipOnTrial` remains only to render
+// legacy rows that still carry status 'trial' until they lapse.
 
 /**
  * Buy a paid month of PYAAS Plus by deducting ₹99 from the wallet (WALLET-FIRST,
@@ -141,9 +123,17 @@ export async function purchaseMembership(): Promise<VipMembership & { charged: b
   await debitWallet(PLUS_PRICE_MONTH, 'payment', `PYAAS Plus ${now.toISOString().slice(0, 10)}`);
   const after = (await getBalances()).available;
   const charged = before - after >= PLUS_PRICE_MONTH - 0.5;
-  // Idempotent replay (already purchased today, no charge) → do NOT extend again or
-  // the member would get free months by re-tapping; return the current membership.
-  if (!charged && existing) {
+  // Idempotent replay: a debit for TODAY already exists, so no new money moved.
+  // Two very different cases share this branch:
+  //   • the membership that debit bought is STILL RUNNING → do NOT extend
+  //     again (a re-tap must not grant free months); hand back the live row.
+  //   • the member cancelled it (period already over — cancel is immediate)
+  //     and is REJOINING the same day → they paid today and hold nothing.
+  //     Returning the dead row here showed "already a member" while perks
+  //     stayed off, and the day's ₹99 bought nothing. Fall through and write
+  //     a fresh active month against today's existing debit.
+  const stillRunning = !!existing?.current_period_end && Date.parse(existing.current_period_end) > now.getTime() && existing.status !== 'expired' && existing.status !== 'cancelled';
+  if (!charged && existing && stillRunning) {
     return { ...existing, charged: false };
   }
   // EXTEND from the later of now / the current period end (an early renew ADDS a
@@ -182,7 +172,9 @@ export function vipActive(m: VipMembership | null): boolean {
   if (!m) return false;
   if (m.status === 'expired') return false;
   if (!m.current_period_end) return m.status === 'active';
-  // A cancelled membership still runs to the end of its paid/trial period.
+  // Cancel is IMMEDIATE (cancelVip stamps period_end = now), so a cancelled
+  // row reads inactive the moment it's written; the time check remains for
+  // active/legacy-trial rows.
   return new Date(m.current_period_end).getTime() > Date.now();
 }
 

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
 import { Tap, TextBody, TextMed, TextSemi, Serif } from './ui';
 import { useUserLocation, CITIES, sameCity } from '../lib/userLocation';
+import { usePopupSlot } from '../lib/popupGate';
 import { DEFAULT_REGION, type Coords } from '../lib/location';
 import MapPicker from './MapPicker';
 import { useServiceability } from '../lib/serviceability';
@@ -149,6 +150,12 @@ export default function LocationGate() {
 
   const cityShift =
     !showPicker && !!loc && loc.source === 'gps' && !!subCity && !sameCity(loc.city, subCity) && !shiftHandled;
+
+  // Register both self-presenting surfaces (the location sheet and the
+  // city-shift dialog) with the popup arbiter, so the out-of-zone sheet /
+  // claim flow / money nudges never stack on top of them.
+  usePopupSlot(showPicker && !mapOpen);
+  usePopupSlot(cityShift);
 
   if (showPicker) {
     // Map open → show the full-screen draggable-pin picker instead of the sheet

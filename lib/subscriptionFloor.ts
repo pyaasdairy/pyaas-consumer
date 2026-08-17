@@ -34,7 +34,10 @@ function volumeMlOf(p: ProductLike): number | null {
 }
 
 function isMilk(p: ProductLike): boolean {
-  if ((p.category ?? '').toLowerCase() === 'milk') return true;
+  // super_tea is chai-special MILK (gstFor already taxes it as milk) — its id
+  // and name never say "milk", so without the category it dodged the floor.
+  const cat = (p.category ?? '').toLowerCase();
+  if (cat === 'milk' || cat === 'super_tea') return true;
   return `${p.id ?? ''} ${p.name ?? ''}`.toLowerCase().includes('milk');
 }
 

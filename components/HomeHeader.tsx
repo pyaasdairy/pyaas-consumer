@@ -39,7 +39,21 @@ export function HomeHeader({ firstName }: { firstName: string }) {
   // Out of zone → the location line itself says so, in the exact same row
   // (same size, same icons, same alignment) and stays the tap target to
   // change location — which is the one action that can open the shop.
-  const outOfZone = useServiceability((s) => s.serviceable) === false;
+  // FRESH-VERDICT GATED: while a check is in flight, or the stored verdict
+  // belongs to different coords than the chosen location, the previous
+  // location's `false` must not print "Unserviceable" over a serviceable spot.
+  const svcFalse = useServiceability((s) => s.serviceable) === false;
+  const svcLoading = useServiceability((s) => s.loading);
+  const svcLat = useServiceability((s) => s.lat);
+  const svcLng = useServiceability((s) => s.lng);
+  const locCoords = useUserLocation((s) => s.loc?.coords ?? null);
+  const verdictFresh =
+    !svcLoading &&
+    (!locCoords ||
+      (svcLat != null && svcLng != null &&
+        Math.abs(svcLat - locCoords.lat) <= 0.001 &&
+        Math.abs(svcLng - locCoords.lng) <= 0.001));
+  const outOfZone = svcFalse && verdictFresh;
   const hideStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -navHidden.value * (insets.top + 96) }],
     opacity: 1 - navHidden.value,

@@ -41,7 +41,16 @@ export function AddressPicker({
   useEffect(() => {
     if (!visible) return;
     let on = true;
-    listAddresses().then((r) => { if (on) setRows(r); }).catch(() => { if (on) setRows([]); });
+    // ONLY rows with a real map pin: the delivery flows (sheet gate, sweep)
+    // all require coordinates, so offering a pin-less row here would show
+    // "Delivering to X" while the morning order silently ships elsewhere.
+    const hasPin = (a: Address) => {
+      const g = a as unknown as { lat?: number | null; lng?: number | null };
+      return g.lat != null && g.lng != null;
+    };
+    listAddresses()
+      .then((r) => { if (on) setRows(r.filter(hasPin)); })
+      .catch(() => { if (on) setRows([]); });
     return () => { on = false; };
   }, [visible]);
 
@@ -52,6 +61,8 @@ export function AddressPicker({
     try {
       await setDefaultAddress(a.id);
       onPicked(a);
+    } catch {
+      // Setting the default failed (offline blip) — stay open, let them retry.
     } finally {
       setBusyId(null);
     }
@@ -101,8 +112,11 @@ export function AddressPicker({
 
   if (embedded) {
     if (!visible) return null;
+    // zIndex for iOS stacking, elevation for Android paint order — the sheet
+    // body behind carries elevation 6 (shadow.card) and would otherwise draw
+    // OVER this overlay on Android, leaving the picker invisible.
     return (
-      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'flex-end' }]} onPress={onClose}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'flex-end', zIndex: 20, elevation: 20 }]} onPress={onClose}>
         {card}
       </Pressable>
     );

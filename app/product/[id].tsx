@@ -17,6 +17,7 @@ import { useCatalog, groupProducts, physicalAttributes } from '../../lib/catalog
 import { VariantSelector } from '../../components/VariantSelector';
 import { SubscribeSheet, type SubscribeResult } from '../../components/SubscribeSheet';
 import { createSubscription, NEEDS_EXACT_LOCATION, type Frequency } from '../../lib/subscriptions';
+import { minSubscriptionQty } from '../../lib/subscriptionFloor';
 import { useServiceability, joinWaitlist } from '../../lib/serviceability';
 import { useAuth } from '../../lib/auth';
 import { placeOrder, listAddresses, deliveryFeeFor } from '../../lib/api';
@@ -372,7 +373,7 @@ export default function ProductDetail() {
         // buy must NOT become a subscription: it would show a false "Subscription LIVE"
         // card and (being active) permanently hide the 2+2 starter funnel.
         if (!isInstant) {
-          await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: startDate }).catch(() => { /* order already placed */ });
+          await createSubscription({ productId: product.id, variant: product.variant, qty: Math.max(minSubscriptionQty(product), qty), unitPrice: unit, frequency: freq, startDate: startDate }).catch(() => { /* order already placed */ });
         }
         router.replace(`/order/${orderId}`);
         return;
@@ -381,7 +382,7 @@ export default function ProductDetail() {
       // Local mode (no backend): a RECURRING order is recorded as a subscription; a
       // one-time buy is not (see above).
       if (!isInstant) {
-        await createSubscription({ productId: product.id, variant: product.variant, qty, unitPrice: unit, frequency: freq, startDate: startDate });
+        await createSubscription({ productId: product.id, variant: product.variant, qty: Math.max(minSubscriptionQty(product), qty), unitPrice: unit, frequency: freq, startDate: startDate });
       }
 
       // A one-time buy used to jump STRAIGHT to /order-confirmed without calling

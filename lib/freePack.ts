@@ -54,7 +54,10 @@ export const FREE_PACK_PRODUCT_ID = 'gold-500ml';
 /** ₹/day of the funnel SKU (falls back to the launch price if the SKU moves). */
 export const FREE_PACK_DAILY_PRICE = getProduct(FREE_PACK_PRODUCT_ID)?.price ?? 35;
 /** Value of the TWO FREE days (2 × the daily price) — shown as the pack's worth. */
-export const FREE_PACK_VALUE = FREE_PACK_DAILY_PRICE * TRIAL_FREE_DAYS;
+// Value of the giveaway = free days × the DAILY amount, which is the pack
+// price times the 1 L/day floor quantity (2 × 500 ml) — not one lone pack.
+export const FREE_PACK_VALUE =
+  FREE_PACK_DAILY_PRICE * TRIAL_FREE_DAYS * minSubscriptionQty(getProduct(FREE_PACK_PRODUCT_ID) ?? { id: FREE_PACK_PRODUCT_ID, category: 'milk', variant: '500ml' });
 /** Test-mode wallet top-up so the paid-day subscription charges demonstrably succeed. */
 const TEST_TOPUP_AMOUNT = 200;
 const DEVICE_ID_KEY = 'parag_device_id';

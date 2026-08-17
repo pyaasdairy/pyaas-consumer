@@ -31,8 +31,8 @@ import { isBackendConfigured } from './apiClient';
  *
  * The DEBIT then rides the existing delivered-order settle path
  * (settleDeliveredOrders → debitWallet, rewards-first on the server). Under the
- * trial the FREE days (1-2) are placed with trialFree, so the milk goes out and
- * nothing is debited, and the paid days (3-4) charge the wallet as normal;
+ * trial the PAID days (1-2) charge the wallet as normal, and the FREE days (3-4) are placed with trialFree, so the milk goes out and
+ * nothing is debited, ;
  * after that it continues daily. In local (no-backend) mode placeOrder debits
  * immediately, so the free-day check has to happen HERE as well as server-side.
  *
@@ -123,7 +123,7 @@ async function runSweep(): Promise<number> {
   // The trial's FREE days must actually be free. This loop is the only thing
   // that moves money for a subscription, and it never read the trial phase — so
   // every "free" day was still debited in full locally, and only a live backend
-  // was ever going to zero it. The home banner promises the first two days, so
+  // was ever going to zero it. The offer is paid-first: 2 paid days, then 2 free.
   // the promise has to hold in both modes.
   const trial = await getTrial().catch(() => NO_TRIAL);
   const trialFreeToday = trial.phase === 'free';

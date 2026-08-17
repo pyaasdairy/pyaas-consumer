@@ -10,9 +10,9 @@ import { colors, radius, spacing, shadow, rupee, tabular } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, Stepper, BackButton } from '../components/ui';
 import { SkeletonBlock } from '../components/Skeleton';
 import { ConfirmSheet, type ConfirmConfig } from '../components/ConfirmSheet';
-import { resolveProduct, getMergedProducts } from '../lib/catalog';
+import { resolveProduct } from '../lib/catalog';
 import { minSubscriptionQty } from '../lib/subscriptionFloor';
-import { listSubscriptions, createSubscription, setSubscriptionStatus, updateSubscription, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, NEEDS_EXACT_LOCATION, type Subscription, type Frequency } from '../lib/subscriptions';
+import { listSubscriptions, setSubscriptionStatus, updateSubscription, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
 
@@ -29,25 +29,12 @@ export default function Subscriptions() {
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [upcoming, setUpcoming] = useState<{ date: string; count: number; items: Subscription[] }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [lowBalance, setLowBalance] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmConfig | null>(null);
   const [detailSub, setDetailSub] = useState<Subscription | null>(null);
   const refreshWallet = useWallet((s) => s.refresh);
-
-  // new-subscription form
-  // DB-driven: only products the backend says are subscribable AND in stock
-  // (store-manager-controlled) — no bundled/hardcoded list.
-  const subscribable = getMergedProducts().filter((p) => p.subscribable && !p.outOfStock);
-  const [pid, setPid] = useState(subscribable[0]?.id ?? '');
-  // ABSOLUTE FLOOR (founder): milk subscribes at 1 L a day minimum — qty
-  // follows the picked product and can never be stepped below its floor.
-  const formMinQty = minSubscriptionQty(subscribable.find((p) => p.id === pid));
-  const [qty, setQty] = useState(formMinQty);
-  useEffect(() => { setQty((q) => Math.max(formMinQty, q)); }, [formMinQty]);
-  const [freq, setFreq] = useState<Frequency>('daily');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,45 +54,6 @@ export default function Subscriptions() {
     finally { setLoading(false); }
   }, [refreshWallet]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  async function create() {
-    const p = resolveProduct(pid);
-    if (!p) return;
-    setBusy(true); setErr('');
-    try {
-      // Same prepaid floor as the product/claim flows: the wallet must cover at
-      // least 2 days before a subscription can start; otherwise route to recharge.
-      await refreshWallet();
-      const need = minWalletToStart(p.price * qty);
-      const bal = useWallet.getState().balance;
-      if (bal < need) {
-        setAdding(false);
-        setBusy(false);
-        const qs = new URLSearchParams({
-          min: String(Math.ceil(need - bal)),
-          amount: String(Math.max(100, Math.ceil((need - bal) / 50) * 50)),
-          returnTo: '/subscriptions',
-          reason: 'to start your subscription',
-        }).toString();
-        router.push(`/recharge?${qs}`);
-        return;
-      }
-      await createSubscription({ productId: p.id, variant: p.variant, qty, unitPrice: p.price, frequency: freq });
-      haptics.confirm();
-      setAdding(false); setQty(1); setFreq('daily');
-      await load();
-    } catch (e: any) {
-      // No exact delivery point yet → send them to add one on the map (address
-      // screen) instead of surfacing the raw gate code, then they can retry.
-      if (e?.code === NEEDS_EXACT_LOCATION || e?.message === NEEDS_EXACT_LOCATION) {
-        setErr('Set your delivery location on the map first.');
-        router.push('/address');
-      } else {
-        setErr(e?.message ?? 'Could not start the subscription. Please try again.');
-      }
-    }
-    finally { setBusy(false); }
-  }
 
   async function doToggle(s: Subscription) {
     setBusy(true); setErr('');
@@ -194,7 +142,7 @@ export default function Subscriptions() {
               </View>
             ))}
           </View>
-        ) : subs.length === 0 && !adding ? (
+        ) : subs.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: 8 }}>
             <Ionicons name="infinite-outline" size={40} color={colors.inkMute} />
             <TextBody>No active subscription.</TextBody>
@@ -272,34 +220,11 @@ export default function Subscriptions() {
           })()
         )}
 
-        {/* New subscription form */}
-        {adding ? (
-          <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: 12, ...shadow.soft }}>
-            <TextSemi style={{ fontSize: 16 }}>New subscription</TextSemi>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {subscribable.map((p) => (
-                <Tap key={p.id} onPress={() => setPid(p.id)} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.pill, backgroundColor: pid === p.id ? colors.action : colors.milk, borderWidth: 1, borderColor: pid === p.id ? colors.action : colors.line }}>
-                  <TextMed color={pid === p.id ? colors.white : colors.inkSoft} style={{ fontSize: 13 }}>{p.name} {p.variant}</TextMed>
-                </Tap>
-              ))}
-            </ScrollView>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {FREQS.map((f) => (
-                <Tap key={f.key} onPress={() => setFreq(f.key)} style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md, backgroundColor: freq === f.key ? colors.flameDeep : colors.milk, borderWidth: 1, borderColor: freq === f.key ? colors.flameDeep : colors.line }}>
-                  <TextMed color={freq === f.key ? colors.white : colors.inkSoft} style={{ fontSize: 12.5 }}>{f.label}</TextMed>
-                </Tap>
-              ))}
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <TextMed style={{ fontSize: 14 }}>Quantity</TextMed>
-              <Stepper qty={qty} onChange={(n) => setQty(Math.max(formMinQty, n))} min={formMinQty} />
-            </View>
-            <Button title="Start subscription" loading={busy} onPress={create} />
-            <Button title="Cancel" variant="ghost" onPress={() => setAdding(false)} />
-          </View>
-        ) : (
-          <Button title="+ New subscription" variant="outline" onPress={() => router.replace('/(tabs)')} />
-        )}
+        {/* New subscription: the home shop is the single create path (SubscribeSheet
+            owns qty floor, funds gate and unlock) — the old inline form here
+            bypassed the unlock gate and the 1 L floor, and was already
+            unreachable. */}
+        <Button title="+ New subscription" variant="outline" onPress={() => router.replace('/(tabs)')} />
       </ScrollView>
 
       {/* Subscription detail / manage sheet — opens on card tap so the row is never

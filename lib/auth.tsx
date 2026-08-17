@@ -7,6 +7,8 @@ import {
   type Session,
   type Profile,
 } from './session';
+import { resetServiceability } from './serviceability';
+import { useUserLocation } from './userLocation';
 
 type AuthValue = {
   session: Session;
@@ -71,6 +73,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await sessionSignOut();
     setProfile(null);
     setProfileLoaded(false);
+    // The serviceability cache and the in-memory location outlive the session;
+    // left alone, the NEXT account's first check short-circuits on this
+    // account's signature and inherits its verdict (fence lifted or lowered
+    // for the wrong person). Reset both so the new session resolves fresh.
+    resetServiceability();
+    useUserLocation.setState({ loc: null, ready: false });
   }, []);
 
   const refreshProfile = useCallback(async () => {

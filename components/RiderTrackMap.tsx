@@ -175,12 +175,18 @@ export function RiderTrackMap({
     () => ((hasFix || hasOrigin) && home !== undefined
       ? mapHtml(home, hasFix ? { lat: riderLat!, lng: riderLng! } : null, hasOrigin ? { lat: originLat!, lng: originLng! } : null, originLabel)
       : null),
-    // The HTML is frozen once built; later rider fixes ride injectJavaScript
-    // (which CREATES the marker on the first report if the map opened before
-    // the trip). The origin is fixed for the trip, so it too is baked in once.
+    // Later rider fixes ride injectJavaScript (which CREATES the marker on the
+    // first report if the map opened before the trip). The ORIGIN is a dep: the
+    // tracking screen renders the env-default store point first and latches the
+    // backend's real origin (or the rider's first fix) later — freezing the
+    // HTML on the first pass pinned the store at the hardcoded default for the
+    // whole trip.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasFix || hasOrigin, home !== undefined],
+    [hasFix || hasOrigin, home !== undefined, originLat, originLng],
   );
+  // A rebuilt page reloads the WebView; until its ready ping arrives, injected
+  // re-anchors would be swallowed by the __setRider guard.
+  useEffect(() => { readyRef.current = false; }, [html]);
 
   // Nothing at all to plot (no origin AND no rider) → say that, plainly.
   // Anything else here would be a rider we invented.
@@ -199,8 +205,11 @@ export function RiderTrackMap({
   }
 
   if (failed) {
+    // Fill the SAME slot the live map would (hero: full height, square
+    // corners) so a tile failure doesn't collapse the layout to a 96px chip
+    // floating inside a 340px hero.
     return (
-      <View style={{ height: 96, borderRadius: radius.lg, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+      <View style={{ height: hero ? height : 96, borderRadius: hero ? 0 : radius.lg, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center', gap: 6 }}>
         <Ionicons name="cloud-offline-outline" size={22} color={colors.inkMute} />
         <TextBody style={{ fontSize: 12.5 }} color={colors.inkSoft}>Map needs an internet connection</TextBody>
       </View>
@@ -242,16 +251,17 @@ export function RiderTrackMap({
       )}
       {/* Status ribbon over the map. "last reported" is the honest caveat: the pin
           is where the rider app last said they were, not a live extrapolation.
-          HERO mode pins it to the map's BOTTOM edge: the hero map is full-bleed
-          to the very top of the screen, so `top` would bury the ribbon under the
-          status bar / notch (it read as a half-hidden sliver) and collide with
-          the floating back button. The bottom edge stays on screen through the
-          whole collapse, so the ribbon is always fully visible. */}
-      <View pointerEvents="none" style={{ position: 'absolute', left: hero ? 14 : 10, ...(hero ? { bottom: 14 } : { top: 10 }), flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: radius.pill, paddingHorizontal: hero ? 14 : 12, paddingVertical: hero ? 9 : 7, ...shadow.soft }}>
-        <View style={{ width: hero ? 9 : 8, height: hero ? 9 : 8, borderRadius: 5, backgroundColor: active ? '#31B057' : colors.gold }} />
-        <TextSemi style={{ fontSize: hero ? 13.5 : 12 }}>{hasFix ? (active ? 'Rider on the way' : 'Rider assigned') : 'From your PYAAS store'}</TextSemi>
-        {hasFix ? <TextBody style={{ fontSize: hero ? 12 : 11 }} color={colors.inkSoft}>· last reported</TextBody> : null}
-      </View>
+          HERO mode renders NO ribbon here — the tracking screen pins its own
+          ribbon to the COLLAPSING container's bottom edge (this component's
+          fixed-height map is center-cropped inside it, so anything anchored
+          here would be clipped away as the hero shrinks). */}
+      {hero ? null : (
+        <View pointerEvents="none" style={{ position: 'absolute', left: 10, top: 10, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 7, ...shadow.soft }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#31B057' : colors.gold }} />
+          <TextSemi style={{ fontSize: 12 }}>{hasFix ? (active ? 'Rider on the way' : 'Rider assigned') : 'From your PYAAS store'}</TextSemi>
+          {hasFix ? <TextBody style={{ fontSize: 11 }} color={colors.inkSoft}>· last reported</TextBody> : null}
+        </View>
+      )}
     </View>
   );
 }

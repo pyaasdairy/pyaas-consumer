@@ -10,6 +10,7 @@ import { haptics } from '../lib/haptics';
 import { shouldShowFreePack, snoozeFreePack, freePackEligible, OFFER_QUALIFY_RECHARGE, FREE_PACK_DAILY_PRICE, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
 import { minSubscriptionQty } from '../lib/subscriptionFloor';
 import { getProduct } from '../constants/products';
+import { usePopupSlot, anyPopupOpen } from '../lib/popupGate';
 
 // The offer plan delivers the 1 L/day floor (2 × 500 ml), so every ₹/day the
 // flow quotes is the floor quantity times the pack price — never the lone pack.
@@ -23,7 +24,7 @@ const FREE_PACK_IMG = require('../assets/products/gold.png');
 // The popup is ONLY the funnel DOOR now: the intro sells, then it hands over
 // to the FULL-CREAM PRODUCT PAGE, where the standard SubscribeSheet runs the
 // STRICT gate order — 1) delivery address (saved + pinned) → 2) funds (the
-// ₹500 qualifying recharge / top-up, only when short) → 3) review → Confirm
+// qualifying recharge (OFFER_QUALIFY_RECHARGE) / top-up, only when short) → 3) review → Confirm
 // LAST (the only step that creates; attachTrialAfterSubscribe hooks the 2+2
 // on). 'subscribed' shows when a gold sub is already ACTIVE; 'ineligible'
 // when the trial is completed.
@@ -83,7 +84,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   }, [visible]);
 
   // THE DOOR: run the gates (sign-in → trial completed? → already subscribed?
-  // → the ₹500 qualifying recharge), then HAND OVER to the full-cream product
+  // → the qualifying recharge (OFFER_QUALIFY_RECHARGE)), then HAND OVER to the full-cream product
   // page — the standard SubscribeSheet (quantity, frequency, start date,
   // REVIEW → confirm) owns the creation, and attachTrialAfterSubscribe hooks
   // the 2+2 on after that confirm. This popup never creates anything itself.
@@ -108,7 +109,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
         setStep('subscribed');
         return;
       }
-      // Hand over. The ₹500 qualifying recharge is asked on the product page
+      // Hand over. The qualifying recharge (OFFER_QUALIFY_RECHARGE) is asked on the product page
       // AFTER the delivery address — location always comes first.
       goProductPage();
     } catch (e: any) {
@@ -288,6 +289,10 @@ export function ClaimPackGate() {
   const hasLocation = useUserLocation((s) => !!s.loc);
   const pickerOpen = useUserLocation((s) => s.pickerOpen);
 
+  // Register with the popup arbiter while actually on screen, so the OOZ
+  // sheet / money nudges never stack over (or under) the claim flow.
+  usePopupSlot(visible && hasLocation && !pickerOpen);
+
   // Re-check show-eligibility. Returns a cleanup that cancels the in-flight check,
   // so it doubles as the effect / focus cleanup below.
   const recheck = useCallback(() => {
@@ -298,7 +303,14 @@ export function ClaimPackGate() {
     if (!phone) { setVisible(false); return () => {}; }
     let cancelled = false;
     shouldShowFreePack(phone)
-      .then((show) => { if (cancelled) return; setVisible(show); if (show) openedRef.current = true; })
+      .then((show) => {
+        if (cancelled) return;
+        // One auto-popup at a time: if anything else presented itself while
+        // the eligibility check ran, stand down (we re-arm on next focus).
+        if (show && anyPopupOpen()) return;
+        setVisible(show);
+        if (show) openedRef.current = true;
+      })
       .catch(() => { /* signed out / offline — leave hidden */ });
     return () => { cancelled = true; };
   }, [phone]);
@@ -335,12 +347,4 @@ function PrimaryButton({ title, onPress, disabled, loading }: { title: string; o
 }
 
 
-function IntroLine({ icon, text }: { icon: any; text: string }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Ionicons name={icon} size={16} color={colors.flameDeep} />
-      <TextMed style={{ flex: 1, fontSize: 13, lineHeight: 18 }} color={colors.ink}>{text}</TextMed>
-    </View>
-  );
-}
 

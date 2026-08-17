@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 /**
  * POPUP ARBITER — at most ONE auto-presented popup on screen, ever.
@@ -39,4 +39,37 @@ export function usePopupSlot(visible: boolean): void {
 export function useOtherPopupsOpen(selfVisible: boolean): boolean {
   const total = useSyncExternalStore(subscribe, () => count, () => count);
   return total - (selfVisible ? 1 : 0) > 0;
+}
+
+/**
+ * CLAIM-BASED slot for self-deciding popups: pass `want` (this surface has
+ * something to show) and render only when the returned value is true. The hook
+ * claims the singleton slot when no other popup holds one, HOLDS it until
+ * `want` drops, and stands down (retrying when the screen frees up) otherwise.
+ *
+ * This replaces the read-then-register pattern (`useOtherPopupsOpen(false)` +
+ * `usePopupSlot(show)`), which self-cancels: the surface registers, sees its
+ * own slot as "another popup", hides, unregisters, sees the screen free, shows
+ * again — an unbounded open/close oscillation. A claim is atomic: once held it
+ * cannot be displaced by the holder's own registration.
+ */
+export function useAutoPopup(want: boolean): boolean {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!want) { setShow(false); return; }
+    let claimed = false;
+    const tryClaim = () => {
+      if (claimed || count > 0) return;
+      claimed = true; count += 1; emit();
+      setShow(true);
+    };
+    tryClaim();
+    const unsub = subscribe(() => tryClaim());
+    return () => {
+      unsub();
+      if (claimed) { count -= 1; emit(); }
+      setShow(false);
+    };
+  }, [want]);
+  return show;
 }

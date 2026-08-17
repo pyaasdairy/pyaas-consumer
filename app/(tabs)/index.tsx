@@ -28,7 +28,7 @@ import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
-import { freePackShowEligible, onFreePackChanged, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
+import { freePackShowEligible, onFreePackChanged, snoozeFreePack, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
 import { PREPAID_TARGET, prepaidTier } from '../../lib/prepaid';
 import { listSubscriptions } from '../../lib/subscriptions';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
@@ -225,10 +225,13 @@ export default function Shop() {
     const uid = profile?.id;
     if (!uid) return;
     if (anyPopupOpen()) return; // one popup at a time — retry next focus
-    autoOpenedClaim.current = true;
     void welcomeOfferSeen(uid).then((seen) => {
-      if (anyPopupOpen()) return;
-      if (seen) { if (!claimFlowOnScreen()) setClaimOpen(true); return; }
+      // Latch ONLY when something actually opens — latching before this async
+      // check meant a popup-blocked attempt burned the one shot per launch.
+      if (autoOpenedClaim.current) return;
+      if (anyPopupOpen() || claimFlowOnScreen()) return;
+      autoOpenedClaim.current = true;
+      if (seen) { setClaimOpen(true); return; }
       void markWelcomeOfferSeen(uid);
       setWelcomeOpen(true);
     });
@@ -348,7 +351,18 @@ export default function Shop() {
   // layers (no add controls, the product page's waitlist CTA, and placeOrder's
   // serviceable gate). `null` (still resolving) falls through to the skeleton,
   // so a slow check never flashes the browse-only state.
-  const comingSoon = svcServiceable === false;
+  //
+  // FRESH-VERDICT GATED, same rule as the popup: while a check is in flight
+  // (or the last verdict belongs to different coords than the member's chosen
+  // location), the previous location's `false` must not grey the shop or print
+  // "Unserviceable" in the header for the round-trip.
+  const svcVerdictFresh =
+    !svcLoading &&
+    (!userLoc ||
+      (svcLat != null && svcLng != null &&
+        Math.abs(svcLat - userLoc.coords.lat) <= 0.001 &&
+        Math.abs(svcLng - userLoc.coords.lng) <= 0.001));
+  const comingSoon = svcServiceable === false && svcVerdictFresh;
 
   if (!ready) return <ShopSkeleton />;
 
@@ -605,12 +619,15 @@ export default function Shop() {
         onClose={() => setWelcomeOpen(false)}
       />
 
-      {/* Free-pack funnel sheet, opened from the claim card / status card */}
+      {/* Free-pack funnel sheet, opened from the claim card / status card.
+          Dismissal SNOOZES like the tabs-level gate does — without it the gate
+          re-opened the same sheet on the next focus and "Maybe later" did
+          nothing. */}
       <ClaimPackFlow
         visible={claimOpen}
-        onClose={() => setClaimOpen(false)}
+        onClose={() => { void snoozeFreePack(); setClaimOpen(false); }}
         onClaimed={() => { recheckClaim(); void refreshWallet(); }}
-        onStartShopping={() => setClaimOpen(false)}
+        onStartShopping={() => { void snoozeFreePack(); setClaimOpen(false); }}
       />
     </View>
   );

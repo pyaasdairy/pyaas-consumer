@@ -32,7 +32,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'How do I get a bill / invoice?',
-    a: 'Every order has a proforma bill with product-wise GST (CGST + SGST) and HSN codes. Open the order and choose "View bill" to view and share it. If you have a company GSTIN, add it during checkout to see it on the bill.',
+    a: 'Every order records product-wise GST (CGST + SGST) and HSN codes. Message us on WhatsApp from the Help section with your order number and we will send the bill. If you have a company GSTIN, add it during checkout to see it on the bill.',
   },
   {
     q: 'How should I store the products?',

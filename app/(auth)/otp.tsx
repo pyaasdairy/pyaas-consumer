@@ -179,8 +179,13 @@ export default function OtpLogin() {
     // on the MSG91 path, to a third party. Guarding only the button would leave
     // the violation one refactor away from returning, so the guard lives here.
     if (!consented) { setDiscloseOpen(true); return; }
+    // IN-FLIGHT GUARD on the transmit path itself: the button gates on
+    // `loading` but the keyboard's "done" key did not, so a submit while the
+    // auto-advance request was still flying fired a SECOND paid SMS.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     const ds = raw.replace(/\D/g, '').slice(-10);
-    if (ds.length < 10) { setError('Enter a valid 10-digit mobile number.'); return; }
+    if (ds.length < 10) { sendingRef.current = false; setError('Enter a valid 10-digit mobile number.'); return; }
     setError(''); setLoading(true);
     try {
       if (isBackendConfigured()) {
@@ -192,8 +197,11 @@ export default function OtpLogin() {
       setStep('code');
       setResendIn(30); // start the resend cooldown
     } catch (e: any) {
+      // Re-arm the 10-digit auto-advance for this same number: the send FAILED,
+      // so "once per number" must not disarm the retry path.
+      autoSent.current = '';
       setError(friendly(e, 'Could not send the code. Please try again.'));
-    } finally { setLoading(false); }
+    } finally { sendingRef.current = false; setLoading(false); }
   }
 
   function sendCode() { void sendCodeFor(phone); }
@@ -206,6 +214,9 @@ export default function OtpLogin() {
   // is materially different from the removed behaviour, which read AND sent
   // the number with zero user action and zero disclosure.
   const autoSent = useRef('');
+  // Synchronous in-flight guards (state alone is stale inside closures).
+  const sendingRef = useRef(false);
+  const verifyingRef = useRef(false);
   useEffect(() => {
     if (!consented || step !== 'phone' || loading) return;
     const ds = digits();
@@ -241,8 +252,14 @@ export default function OtpLogin() {
   }, [resendIn]);
 
   async function verify(codeArg?: string) {
+    // Synchronous single-flight: the SMS retriever's callback closes over a
+    // STALE `loading`, so autofill landing in the box the same tick as the
+    // retriever fired verify twice — the second attempt errored "code already
+    // used" over a sign-in that actually succeeded.
+    if (verifyingRef.current) return;
+    verifyingRef.current = true;
     const c = (codeArg ?? code).replace(/\D/g, '');
-    if (c.length < 6) { setError('Enter the 6-digit code.'); return; }
+    if (c.length < 6) { verifyingRef.current = false; setError('Enter the 6-digit code.'); return; }
     setLoading(true); setError('');
     try {
       if (isBackendConfigured()) {
@@ -283,7 +300,7 @@ export default function OtpLogin() {
       } catch { /* non-fatal */ }
     } catch (e: any) {
       setError(friendly(e, 'Could not sign you in. Please try again.'));
-    } finally { setLoading(false); }
+    } finally { verifyingRef.current = false; setLoading(false); }
   }
 
   // FIRST-RUN CONSENT, promoted from a modal to its own full-screen moment.
