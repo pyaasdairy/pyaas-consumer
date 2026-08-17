@@ -136,8 +136,10 @@ export default function OrderConfirmed() {
             <TextSemi color={colors.white} style={{ fontSize: 16 }}>View my subscriptions</TextSemi>
           </View>
         </Tap>
-        <Tap haptic={false} onPress={close} style={{ alignItems: 'center', paddingVertical: 6 }}>
-          <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Continue shopping</TextMed>
+        <Tap onPress={close}>
+          <View style={{ height: 54, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flameDeep }}>
+            <TextSemi color={colors.flameDeep} style={{ fontSize: 16 }}>Continue shopping</TextSemi>
+          </View>
         </Tap>
       </View>
     </View>

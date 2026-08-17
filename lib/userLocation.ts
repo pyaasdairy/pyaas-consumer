@@ -53,11 +53,25 @@ async function persist(loc: UserLoc | null) {
 }
 
 /** Reverse-geocode a coordinate to a city name (OS geocoder, no key). Best-effort. */
+/** Snap a reverse-geocoded name to the nearest KNOWN city when the coordinate
+ *  sits within its metro radius. The OS geocoder loves returning the
+ *  neighbourhood/tehsil ("Muzaffar Nagar" for a Ghusval, Lucknow pin) as the
+ *  "city", which then mislabels the whole app. Inside ~45 km of a known city,
+ *  that city's name wins; further out, the geocoder's answer stands. */
+function snapToKnownCity(raw: string | null, c: Coords): string | null {
+  for (const k of CITIES) {
+    const dLat = (k.coords.lat - c.lat) * 111;
+    const dLng = (k.coords.lng - c.lng) * 111 * Math.cos((c.lat * Math.PI) / 180);
+    if (Math.sqrt(dLat * dLat + dLng * dLng) <= 45) return k.name;
+  }
+  return raw;
+}
+
 export async function cityFromCoords(c: Coords): Promise<string | null> {
   try {
     const res = await Location.reverseGeocodeAsync({ latitude: c.lat, longitude: c.lng });
     const r = res?.[0];
-    return r?.city || (r as { subregion?: string } | undefined)?.subregion || r?.region || null;
+    return snapToKnownCity(r?.city || (r as { subregion?: string } | undefined)?.subregion || r?.region || null, c);
   } catch {
     return null;
   }
@@ -72,7 +86,7 @@ export async function geoAddress(c: Coords): Promise<{ city: string | null; pinc
   try {
     const res = await Location.reverseGeocodeAsync({ latitude: c.lat, longitude: c.lng });
     const r = res?.[0];
-    const city = r?.city || (r as { subregion?: string } | undefined)?.subregion || r?.region || null;
+    const city = snapToKnownCity(r?.city || (r as { subregion?: string } | undefined)?.subregion || r?.region || null, c);
     const pincode = r?.postalCode || null;
     return { city, pincode };
   } catch {

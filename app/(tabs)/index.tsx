@@ -317,11 +317,9 @@ export default function Shop() {
   // The shelf leads with what can actually be BOUGHT (Taaza + Gold today):
   // out-of-stock bestsellers never headline the shop. Falls back to the full
   // most-ordered list only if literally everything is out.
-  const popular = useMemo(() => {
-    const most = products.filter((p) => p.mostOrdered);
-    const inStock = most.filter((p) => !p.outOfStock);
-    return inStock.length > 0 ? inStock : most;
-  }, [products]);
+  // STRICTLY available: an out-of-stock product never appears on this shelf
+  // (founder's call). If everything is out, the shelf simply doesn't render.
+  const popular = useMemo(() => products.filter((p) => p.mostOrdered && !p.outOfStock), [products]);
   const favorites = useMemo(() => favIds.map((id) => products.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds, products]);
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
 
@@ -408,7 +406,7 @@ export default function Shop() {
                       {stripOrders.length === 1 ? 'Track your order' : `${stripOrders.length} orders on the way`}
                     </TextSemi>
                     <TextBody style={{ fontSize: 12.5 }} color={colors.inkMute} numberOfLines={1}>
-                      {stripOrders.length === 1 ? STATUS_LABEL[stripOrders[0].status] : 'Tap to follow them live'}
+                      {stripOrders.length === 1 ? STATUS_LABEL[stripOrders[0].status] : 'Track your order'}
                     </TextBody>
                   </View>
                   <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }}>

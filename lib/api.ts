@@ -138,6 +138,52 @@ export function deliveryFeeFor(subtotal: number, isPlus = false): number {
 // ── Addresses ────────────────────────────────────────────────────────────────
 export async function listAddresses(): Promise<Address[]> {
   const uid = await requireUserId();
+  // BACKEND-FIRST HYDRATION — the address-persistence fix. Saves have always
+  // MIRRORED to the server (mirrorAddressCreate below), but reads were
+  // local-only: every reinstall wiped AsyncStorage and the member "lost" the
+  // address they had saved again and again. Pull the server rows and upsert
+  // them into the local cache (idempotent by backend_id); offline or on any
+  // failure the local cache answers exactly as before.
+  if (isBackendConfigured()) {
+    try {
+      const remote = await api.get<Array<Record<string, unknown>>>('/addresses');
+      if (Array.isArray(remote)) {
+        const local = await getRows<Address>('addresses', uid);
+        for (const r of remote) {
+          const bid = String((r as { id?: unknown }).id ?? '');
+          if (!bid) continue;
+          const patch = {
+            backend_id: bid,
+            label: String(r.label ?? 'Home'),
+            line1: String(r.line1 ?? ''),
+            line2: (r.line2 as string) || null,
+            city: String(r.city ?? ''),
+            pincode: String(r.pincode ?? ''),
+            is_default: !!r.is_default,
+            lat: (r.lat as number | null) ?? null,
+            lng: (r.lng as number | null) ?? null,
+            receiver_name: (r.receiver_name as string) || null,
+            geo_label: (r.geo_label as string) || null,
+            ring_bell: !!r.ring_bell,
+            call_before: !!r.call_before,
+            instructions: (r.instructions as string) || null,
+            door_photo_uri: (r.door_photo_uri as string) || null,
+          } as Partial<Address>;
+          const existing = local.find((l) => l.backend_id === bid);
+          if (existing) {
+            await updateRows<Address>('addresses', uid, (x) => x.id === existing.id, patch);
+          } else {
+            await insertRow<Address>('addresses', uid, {
+              ...(patch as Address),
+              id: newId('addr'),
+              user_id: uid,
+              created_at: String(r.created_at ?? new Date().toISOString()),
+            });
+          }
+        }
+      }
+    } catch { /* offline / endpoint unavailable — the local cache answers */ }
+  }
   const rows = await getRows<Address>('addresses', uid);
   return rows.sort((a, b) => {
     if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;

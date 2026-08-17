@@ -48,13 +48,13 @@ export function HomeHeader({ firstName }: { firstName: string }) {
     <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(236,226,220,0.6)' }, hideStyle]}>
       {/* Subtle frosted glass: the feed faintly shows through the pinned header. */}
       <BlurView tint="light" intensity={28} experimentalBlurMethod="dimezisBlurView" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.72)' }} />
-      <Animated.View entering={FadeIn.duration(420)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+      <Animated.View entering={FadeIn.duration(420)} style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: 8 }}>
           {/* PYAAS wordmark · prominent but balanced: 118 wide leaves the
               location line + greeting real room on small screens (150 crushed
               them into "Deliver t..."), keeping the row symmetric. */}
           <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 96, height: 96 * (317 / 1127), flexShrink: 0 }} contentFit="contain" />
-          <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
             <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Ionicons name="location" size={13} color={colors.flameDeep} />
