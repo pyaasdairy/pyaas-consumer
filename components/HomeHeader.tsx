@@ -58,8 +58,10 @@ export function HomeHeader({ firstName }: { firstName: string }) {
             <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Ionicons name="location" size={13} color={colors.flameDeep} />
+                {/* Same length class as "Deliver to <city>" so the row never
+                    truncates; the pin + chevron already read as "tap to change". */}
                 <TextMed style={{ fontSize: 12.5, letterSpacing: 0.1 }} numberOfLines={1} color={outOfZone ? colors.flameDeep : colors.ink}>
-                  {outOfZone ? 'Unserviceable · change location' : city ? `Deliver to ${city}` : 'Set your location'}
+                  {outOfZone ? 'Unserviceable' : city ? `Deliver to ${city}` : 'Set your location'}
                 </TextMed>
                 <Ionicons name="chevron-down" size={13} color={colors.flameDeep} />
               </View>
