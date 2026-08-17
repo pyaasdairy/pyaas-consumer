@@ -4,6 +4,7 @@ import { getRows } from './localStore';
 import { getUserId } from './session';
 import { DEFAULT_REGION } from './location';
 import { currentUserLoc, CITIES } from './userLocation';
+import { isPlayTesterSession } from './testAccess';
 import type { Address } from './api';
 
 /**
@@ -137,6 +138,12 @@ function outOfZone(distanceKm: number): Serviceability {
  * serviceable, backend or not.
  */
 export async function getServiceability(point: CheckPoint): Promise<Serviceability> {
+  // GOOGLE PLAY REVIEWER (hardcoded test account): fully serviceable from
+  // anywhere, before any fence or backend gate — the reviewer must reach every
+  // feature with no location blocker. Everyone else takes the normal path.
+  if (await isPlayTesterSession()) {
+    return { serviceable: true, standard: true, instant: true, storeName: `PYAAS ${SERVICE_AREA.label}`, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null };
+  }
   // Launch geofence FIRST. A resolved point outside the service area is out of
   // zone, full stop — before any backend call or fail-open default.
   //
