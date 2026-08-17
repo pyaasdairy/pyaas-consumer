@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, ScrollView, RefreshControl } from 'react-native';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -412,27 +411,31 @@ export default function Shop() {
               </Animated.View>
             )}
 
-            {/* Free-pack funnel · the selling point, punchy pink gradient card.
-                Fresh members only (no active/paused subscription and the trial not
-                yet redeemed) — an existing subscriber is never nudged to "start". */}
+            {/* Free-pack funnel · the selling point. WHITE with a pink outline
+                on purpose — subtle and rich, not a pink slab; the accent lives
+                in the pill, the title and the gift disc. Fresh members only (no
+                active/paused subscription and the trial not yet redeemed) — an
+                existing subscriber is never nudged to "start". */}
             {freshUser && claimEligible ? (
               <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-                <Tap weight="medium" onPress={() => setClaimOpen(true)} style={{ borderRadius: radius.lg, overflow: 'hidden', ...shadow.card }}>
-                  <LinearGradient colors={[colors.flameDeep, colors.blue]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14 }}>
-                    <Image source={FREE_PACK_IMG} style={{ width: 58, height: 58 }} contentFit="contain" />
-                    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                      <View style={{ flexDirection: 'row' }}>
-                        <Pill small label={`${TRIAL_FREE_DAYS} DAYS FREE`} bg={colors.white} color={colors.blue} />
-                      </View>
-                      <TextSemi color={colors.white} style={{ fontSize: 15 }} numberOfLines={1}>Start your subscription</TextSemi>
-                      <TextBody color="rgba(255,255,255,0.92)" style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
-                        Pay {TRIAL_PAID_DAYS} days, get {TRIAL_FREE_DAYS} FREE · 500 ml every morning · pause anytime
-                      </TextBody>
+                <Tap
+                  weight="medium"
+                  onPress={() => setClaimOpen(true)}
+                  style={{ borderRadius: radius.lg, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flame, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, ...shadow.card }}
+                >
+                  <Image source={FREE_PACK_IMG} style={{ width: 58, height: 58 }} contentFit="contain" />
+                  <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                    <View style={{ flexDirection: 'row' }}>
+                      <Pill small label={`${TRIAL_FREE_DAYS} DAYS FREE`} bg={colors.flameSoft} color={colors.flameDeep} />
                     </View>
-                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name="gift" size={17} color={colors.white} />
-                    </View>
-                  </LinearGradient>
+                    <TextSemi color={colors.ink} style={{ fontSize: 15 }} numberOfLines={1}>Start your subscription</TextSemi>
+                    <TextBody color={colors.inkMute} style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
+                      Pay {TRIAL_PAID_DAYS} days, get {TRIAL_FREE_DAYS} FREE · 500 ml every morning · pause anytime
+                    </TextBody>
+                  </View>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="gift" size={17} color={colors.flameDeep} />
+                  </View>
                 </Tap>
               </Animated.View>
             ) : null}
