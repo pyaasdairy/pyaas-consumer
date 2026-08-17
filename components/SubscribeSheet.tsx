@@ -12,6 +12,7 @@ import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
 import { hasExactLocation } from '../lib/location';
 import { useUserLocation } from '../lib/userLocation';
 import { AddressCaptureSheet } from './AddressCapture';
+import { AddressPicker } from './AddressPicker';
 import { listAddresses, type Address } from '../lib/api';
 import { isBackendConfigured } from '../lib/apiClient';
 import { currentMandate, createMandate } from '../lib/autopay';
@@ -73,6 +74,8 @@ export function SubscribeSheet({
   const [startDate, setStartDate] = useState(tomorrowISO());
   const [busy, setBusy] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [addrPickOpen, setAddrPickOpen] = useState(false);
+  const [deliverTo, setDeliverTo] = useState<Address | null>(null);
   const [err, setErr] = useState('');
   // ONE-TAP SUBSCRIBE: the single "Subscribe · ₹X" button runs the gate chain
   // (address → funds) and creates immediately when everything passes; a short
@@ -93,6 +96,9 @@ export function SubscribeSheet({
       // silently resetting it to tomorrow; fall back to tomorrow when none/invalid.
       setStartDate(initialStartDate && initialStartDate >= tomorrowISO() ? initialStartDate : tomorrowISO());
       setErr('');
+      void listAddresses()
+        .then((rows) => setDeliverTo(rows.find((a) => a.is_default && hasPin(a)) ?? rows.find(hasPin) ?? null))
+        .catch(() => setDeliverTo(null));
     }
   }, [visible, initialFreq, initialQty, initialStartDate]);
 
@@ -342,6 +348,18 @@ export function SubscribeSheet({
                 grant free days, so we never promise them — that would be a false
                 money claim (the buyer would be charged full price for all 4 days). */}
 
+            {deliverTo ? (
+              <Tap haptic={false} onPress={() => { haptics.select(); setAddrPickOpen(true); }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.wash, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 10 }}>
+                  <Ionicons name="location" size={15} color={colors.flameDeep} />
+                  <TextBody style={{ flex: 1, fontSize: 12.5 }} numberOfLines={1}>
+                    Delivering to {deliverTo.label} · {deliverTo.line1}
+                  </TextBody>
+                  <TextSemi color={colors.flameDeep} style={{ fontSize: 12.5 }}>Change</TextSemi>
+                </View>
+              </Tap>
+            ) : null}
+
             {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
 
             {/* ONE TAP: gates (address → funds) then create. The fee-inclusive
@@ -359,6 +377,12 @@ export function SubscribeSheet({
         </Animated.View>
       </View>
     </Modal>
+    <AddressPicker
+      visible={addrPickOpen}
+      onClose={() => setAddrPickOpen(false)}
+      onPicked={(a) => { setAddrPickOpen(false); setDeliverTo(a); }}
+      onAddNew={() => { setAddrPickOpen(false); setMapOpen(true); }}
+    />
     <AddressCaptureSheet visible={mapOpen} onClose={() => setMapOpen(false)} onSaved={onAddressSaved} />
     </>
   );

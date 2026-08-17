@@ -14,6 +14,7 @@ import { useCart } from '../store/cart';
 import { useWallet } from '../store/wallet';
 import { placeOrder, listAddresses, deliveryFeeFor, FREE_DELIVERY_OVER, type Address } from '../lib/api';
 import { AddressCaptureSheet } from '../components/AddressCapture';
+import { AddressPicker } from '../components/AddressPicker';
 import { InstantPlaceSheet } from '../components/InstantPlaceSheet';
 import { getProduct } from '../constants/products';
 import { listSubscriptions, listVacations, subscriptionDueOn } from '../lib/subscriptions';
@@ -101,13 +102,20 @@ export default function Cart() {
   // Only then comes the wallet (unlock / top-up), then the order itself.
   const [needsAddr, setNeedsAddr] = useState(false);
   const [capOpen, setCapOpen] = useState(false);
+  // The saved-address picker: ordering ALWAYS shows the member where it's
+  // going, with one tap to switch between saved addresses or add a new one.
+  const [addrPickOpen, setAddrPickOpen] = useState(false);
+  const [deliverTo, setDeliverTo] = useState<Address | null>(null);
   const hasPin = (a: Address) => {
     const g = a as unknown as { lat?: number | null; lng?: number | null };
     return g.lat != null && g.lng != null;
   };
   const recheckAddr = useCallback(() => {
     listAddresses()
-      .then((rows) => setNeedsAddr(!rows.some(hasPin)))
+      .then((rows) => {
+        setNeedsAddr(!rows.some(hasPin));
+        setDeliverTo(rows.find((a) => a.is_default && hasPin(a)) ?? rows.find(hasPin) ?? null);
+      })
       .catch(() => setNeedsAddr(false)); // label fail-open; place() re-guards
   }, []);
 
@@ -588,6 +596,17 @@ export default function Cart() {
           </View>
         ) : null}
 
+        {deliverTo ? (
+          <Tap haptic={false} onPress={() => { haptics.select(); setAddrPickOpen(true); }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+              <Ionicons name="location" size={14} color={colors.flameDeep} />
+              <TextBody style={{ flex: 1, fontSize: 12.5 }} numberOfLines={1} color={colors.ink}>
+                Deliver to {deliverTo.label} · {deliverTo.line1}
+              </TextBody>
+              <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }}>Change</TextMed>
+            </View>
+          </Tap>
+        ) : null}
         <Tap onPress={blocked ? undefined : needsAddr ? () => { haptics.press(); setCapOpen(true); } : locked ? goUnlock : short > 0 ? goRecharge : isInstant ? () => { void openInstantSheet(); } : place} disabled={placing || blocked || orderable.length === 0}>
           <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: blocked || orderable.length === 0 ? colors.inkMute : colors.flameDeep, height: 56, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: placing ? 0.85 : 1, ...shadow.card }}>
             {placing ? <ActivityIndicator color={colors.white} /> : null}
@@ -618,6 +637,13 @@ export default function Cart() {
         addressText={sheetAddr ? [sheetAddr.line1, sheetAddr.line2, sheetAddr.city, sheetAddr.pincode].filter(Boolean).join(', ') : ''}
         onConfirm={() => { setSheetOpen(false); void place(); }}
         onCancel={() => setSheetOpen(false)}
+      />
+
+      <AddressPicker
+        visible={addrPickOpen}
+        onClose={() => setAddrPickOpen(false)}
+        onPicked={() => { setAddrPickOpen(false); recheckAddr(); }}
+        onAddNew={() => { setAddrPickOpen(false); setCapOpen(true); }}
       />
 
       {/* Address capture (gate 1) — on save, the flow resumes automatically:

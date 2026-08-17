@@ -317,9 +317,15 @@ export default function Shop() {
   // The shelf leads with what can actually be BOUGHT (Taaza + Gold today):
   // out-of-stock bestsellers never headline the shop. Falls back to the full
   // most-ordered list only if literally everything is out.
-  // STRICTLY available: an out-of-stock product never appears on this shelf
-  // (founder's call). If everything is out, the shelf simply doesn't render.
-  const popular = useMemo(() => products.filter((p) => p.mostOrdered && !p.outOfStock), [products]);
+  // STRICTLY available (founder's call): the shelf holds IN-STOCK products
+  // only — bestsellers first, topped up with other in-stock SKUs to six, and
+  // never a single out-of-stock card. Everything out → the shelf hides.
+  const popular = useMemo(() => {
+    const inStock = products.filter((p) => !p.outOfStock);
+    const best = inStock.filter((p) => p.mostOrdered);
+    const fill = inStock.filter((p) => !p.mostOrdered);
+    return [...best, ...fill].slice(0, 6);
+  }, [products]);
   const favorites = useMemo(() => favIds.map((id) => products.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p), [favIds, products]);
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
 

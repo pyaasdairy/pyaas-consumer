@@ -54,9 +54,9 @@ export function HomeHeader({ firstName }: { firstName: string }) {
               location line + greeting real room on small screens (150 crushed
               them into "Deliver t..."), keeping the row symmetric. */}
           <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 96, height: 96 * (317 / 1127), flexShrink: 0 }} contentFit="contain" />
-          <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+          <View style={{ flex: 1, minWidth: 0, marginLeft: 10, overflow: 'hidden' }}>
             <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, maxWidth: '100%' }}>
                 <Ionicons name="location" size={13} color={colors.flameDeep} />
                 {/* Same length class as "Deliver to <city>" so the row never
                     truncates; the pin + chevron already read as "tap to change". */}
