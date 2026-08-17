@@ -293,7 +293,7 @@ export default function Cart() {
         if (useWallet.getState().balance < total) {
           setPlacing(false);
           setInstantPayChoice('cod');
-          setErr('Your wallet balance changed and no longer covers this order. Switched to pay on delivery — review and place again.');
+          setErr('Your wallet balance changed and no longer covers this order. Switched to pay on delivery. Review and place again.');
           return;
         }
       }

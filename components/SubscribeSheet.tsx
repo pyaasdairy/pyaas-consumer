@@ -335,7 +335,7 @@ export function SubscribeSheet({
             {/* Estimated first charge */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.wash, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 12 }}>
               <View>
-                <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>Est. per-delivery charge</TextBody>
+                <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>Amount to pay</TextBody>
                 <TextBody style={{ fontSize: 11 }} color={colors.inkMute}>Charged after delivery · pause anytime</TextBody>
               </View>
               <TextSemi style={{ fontSize: 18, ...tabular }} color={colors.flameDeep}>{rupee(perDelivery)}</TextSemi>
@@ -357,12 +357,12 @@ export function SubscribeSheet({
             <View style={{ backgroundColor: colors.wash, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
               <ReviewRow icon="cube" label={product.name} value={`${qty} × ${product.variant} · ${FREQS.find((f) => f.key === freq)?.label ?? freq}`} />
               <ReviewRow icon="calendar" label="First delivery" value={`${formatShort(startDate)} · 5–7:30 AM`} highlight />
-              <ReviewRow icon="location" label="Delivering to" value={reviewAddr ? `${reviewAddr.line1}${reviewAddr.line2 ? ', ' + reviewAddr.line2 : ''}, ${reviewAddr.city} - ${reviewAddr.pincode}` : '—'} />
+              <ReviewRow icon="location" label="Delivering to" value={reviewAddr ? `${reviewAddr.line1}${reviewAddr.line2 ? ', ' + reviewAddr.line2 : ''}, ${reviewAddr.city} - ${reviewAddr.pincode}` : 'Not set'} />
               <ReviewRow icon="pricetag" label="Items per delivery" value={rupee(itemsSubtotal)} />
               {perDeliveryFee > 0 ? (
                 <ReviewRow icon="bicycle" label="Delivery fee" value={rupee(perDeliveryFee)} />
               ) : null}
-              <ReviewRow icon="cash" label="To pay per delivery" value={`${rupee(perDelivery)} · from your wallet`} highlight />
+              <ReviewRow icon="cash" label="To pay" value={`${rupee(perDelivery)} · from your wallet`} highlight />
             </View>
             {/* Policy — the exact terms, no surprises. */}
             <View style={{ gap: 6 }}>
@@ -376,7 +376,7 @@ export function SubscribeSheet({
             {err ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{err}</TextBody> : null}
             <Tap onPress={busy ? undefined : confirm} style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
               {busy ? <ActivityIndicator color={colors.white} /> : <Ionicons name="checkmark-circle" size={19} color={colors.white} />}
-              <TextSemi color={colors.white} style={{ fontSize: 16 }}>{busy ? 'Starting…' : `Confirm subscription · ${rupee(perDelivery)}/delivery`}</TextSemi>
+              <TextSemi color={colors.white} style={{ fontSize: 16 }}>{busy ? 'Starting…' : `Confirm subscription · ${rupee(perDelivery)}`}</TextSemi>
             </Tap>
             <Tap haptic={false} onPress={() => setStage('edit')} style={{ alignItems: 'center', paddingVertical: 4 }}>
               <TextMed color={colors.inkMute} style={{ fontSize: 13.5 }}>Edit details</TextMed>

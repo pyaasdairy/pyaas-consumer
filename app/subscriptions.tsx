@@ -222,7 +222,7 @@ export default function Subscriptions() {
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
                       <TextSemi style={{ fontSize: 14.5 }}>{s.qty} × {p?.name ?? s.product_id}</TextSemi>
-                      <TextBody style={{ fontSize: 12.5, ...tabular }}>{FREQS.find((f) => f.key === s.frequency)?.label} · {rupee(s.unit_price * s.qty)}/delivery</TextBody>
+                      <TextBody style={{ fontSize: 12.5, ...tabular }}>{FREQS.find((f) => f.key === s.frequency)?.label} · {rupee(s.unit_price * s.qty)}</TextBody>
                       <Pill label={s.status === 'active' ? 'ACTIVE' : 'PAUSED'} bg={s.status === 'active' ? colors.blueSoft : colors.cream} color={s.status === 'active' ? colors.blue : colors.inkMute} />
                     </View>
                   </Tap>
@@ -363,7 +363,7 @@ export default function Subscriptions() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Serif style={{ fontSize: 20 }}>{p?.name ?? d.product_id}</Serif>
-                    <TextBody style={{ fontSize: 12.5 }} color={colors.inkSoft}>{d.qty} × {p?.variant ?? ''} · {FREQS.find((f) => f.key === d.frequency)?.label} · {rupee(d.unit_price * d.qty)}/delivery</TextBody>
+                    <TextBody style={{ fontSize: 12.5 }} color={colors.inkSoft}>{d.qty} × {p?.variant ?? ''} · {FREQS.find((f) => f.key === d.frequency)?.label} · {rupee(d.unit_price * d.qty)}</TextBody>
                   </View>
                 </View>
 
