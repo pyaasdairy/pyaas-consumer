@@ -53,7 +53,7 @@ export function HomeHeader({ firstName }: { firstName: string }) {
           {/* PYAAS wordmark · prominent but balanced: 118 wide leaves the
               location line + greeting real room on small screens (150 crushed
               them into "Deliver t..."), keeping the row symmetric. */}
-          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 118, height: 118 * (317 / 1127) }} contentFit="contain" />
+          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 106, height: 106 * (317 / 1127) }} contentFit="contain" />
           <View style={{ flex: 1 }}>
             <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -68,7 +68,7 @@ export function HomeHeader({ firstName }: { firstName: string }) {
             </Tap>
             {/* adjustsFontSizeToFit: the greeting shrinks instead of ellipsizing,
                 so it fits any name on any display width. */}
-            <Serif style={{ fontSize: 21, lineHeight: 26, letterSpacing: -0.3 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{greetingFor(firstName)}</Serif>
+            <Serif style={{ fontSize: 18, lineHeight: 23, letterSpacing: -0.2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{greetingFor(firstName)}</Serif>
           </View>
         </View>
         {/* Right side: ONLY the wallet chip — no cart button, no avatar. The
@@ -89,10 +89,10 @@ function WalletChip() {
       onPress={() => router.push('/(tabs)/wallet')}
       scaleTo={0.94}
       accessibilityLabel={`Wallet balance ${rupee(balance)}`}
-      style={{ height: 42, minWidth: 56, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.flameDeep, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, ...shadow.soft }}
+      style={{ height: 34, minWidth: 48, paddingHorizontal: 10, borderRadius: radius.pill, backgroundColor: colors.flameDeep, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, ...shadow.soft }}
     >
-      <Ionicons name="wallet" size={15} color={colors.white} />
-      <TextSemi color={colors.white} style={{ fontSize: 13.5, ...tabular }} numberOfLines={1}>{rupee(balance)}</TextSemi>
+      <Ionicons name="wallet" size={13} color={colors.white} />
+      <TextSemi color={colors.white} style={{ fontSize: 12, ...tabular }} numberOfLines={1}>{rupee(balance)}</TextSemi>
     </Tap>
   );
 }
