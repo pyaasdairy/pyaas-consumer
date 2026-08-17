@@ -84,6 +84,26 @@ export default function OrderTracking() {
   const debitedRef = useRef(false);
   // Pay-while-we-deliver checkout sheet (instant COD orders, local mode only).
   const [payOpen, setPayOpen] = useState(false);
+  // Fixed trip origin for the instant-lane store→you map. Latched ONCE, from a
+  // real coordinate only — never a synthesised point:
+  //   • the backend's store coordinate when it sends one (store_lat/store_lng);
+  //   • otherwise the FIRST rider position we observe. For an instant order the
+  //     member watches from the moment they place it, and the rider's trip
+  //     begins at the serving store, so that first reported fix is the pickup.
+  // Once set it stays put for the whole trip while the live rider marker moves.
+  const [storeOrigin, setStoreOrigin] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (storeOrigin || !order) return;
+    const be = order as unknown as { store_lat?: number | null; store_lng?: number | null };
+    if (be.store_lat != null && be.store_lng != null) {
+      setStoreOrigin({ lat: be.store_lat, lng: be.store_lng });
+      return;
+    }
+    const r = order.riders;
+    if (r?.current_lat != null && r?.current_lng != null) {
+      setStoreOrigin({ lat: r.current_lat, lng: r.current_lng });
+    }
+  }, [order, storeOrigin]);
 
   const load = useCallback(async () => {
     try {
@@ -215,6 +235,10 @@ export default function OrderTracking() {
   const cancelled = order.status === 'cancelled';
   const delivered = order.status === 'delivered';
   const hasRider = !!order.riders && (order.status === 'assigned' || order.status === 'out_for_delivery' || delivered);
+  // Instant lane → the tracking map draws the store→you route (a store pin plus
+  // the live rider). Standard orders keep the rider-only map.
+  const isInstant =
+    order.lane === 'instant' || (order.delivery_window ?? '').trim().toLowerCase().startsWith('by ');
   const canCancel = order.status === 'placed' || order.status === 'confirmed';
   const canSimulate = order.status === 'placed' || order.status === 'confirmed' || order.status === 'preparing';
 
@@ -386,6 +410,8 @@ export default function OrderTracking() {
                 riderLat={order.riders.current_lat}
                 riderLng={order.riders.current_lng}
                 active={order.status === 'out_for_delivery'}
+                originLat={isInstant ? storeOrigin?.lat : undefined}
+                originLng={isInstant ? storeOrigin?.lng : undefined}
               />
             ) : null}
             <View style={{ padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 12 }}>

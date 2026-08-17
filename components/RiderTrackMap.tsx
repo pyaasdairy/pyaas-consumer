@@ -21,8 +21,10 @@ import { LEAFLET_CSS, LEAFLET_JS } from './leafletAssets';
  * rider had never reported a position at all. With no reported position there is
  * now no map, just the honest "not shared yet" state.
  */
-function mapHtml(home: Coords | null, rider: Coords): string {
+function mapHtml(home: Coords | null, rider: Coords, origin: Coords | null, originLabel: string): string {
   const homeJs = home ? `[${home.lat},${home.lng}]` : 'null';
+  const originJs = origin ? `[${origin.lat},${origin.lng}]` : 'null';
+  const originLabelJs = JSON.stringify(originLabel);
   return `<!DOCTYPE html><html><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
@@ -32,6 +34,8 @@ function mapHtml(home: Coords | null, rider: Coords): string {
   #map{width:100%}
   .pin{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:#F36CB5;box-shadow:0 2px 8px rgba(0,0,0,.28);font-size:17px}
   .pin.home{background:#2E2329}
+  .pin.store{background:#F49F1C}
+  .tag{transform:translateY(-4px);font:600 10px/1 -apple-system,sans-serif;color:#2E2329;background:rgba(255,255,255,.92);padding:2px 6px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.18);white-space:nowrap}
   .pulse{position:absolute;left:-8px;top:-8px;width:50px;height:50px;border-radius:50%;background:rgba(243,108,181,.28);animation:pp 1.6s ease-out infinite}
   @keyframes pp{0%{transform:scale(.5);opacity:.9}100%{transform:scale(1.25);opacity:0}}
   .leaflet-control-attribution{font-size:9px}
@@ -46,6 +50,7 @@ function mapHtml(home: Coords | null, rider: Coords): string {
   if (typeof L === 'undefined') { __rnpost({err:true}); }
   else try {
   var home=${homeJs};
+  var origin=${originJs};
   var start=[${rider.lat},${rider.lng}];
   var map=L.map('map',{zoomControl:false,attributionControl:true,dragging:true});
   var tiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
@@ -56,17 +61,27 @@ function mapHtml(home: Coords | null, rider: Coords): string {
   tiles.on('tileload',function(){ if(!tilesOk){ tilesOk=true; __rnpost({tiles:true}); } });
   tiles.on('tileerror',function(){ if(!tilesOk && ++tileErrs>=4) __rnpost({tiles:false}); });
   var homeIcon=L.divIcon({html:'<div class="pin home">🏠</div>',className:'',iconSize:[34,34],iconAnchor:[17,17]});
+  var storeIcon=L.divIcon({html:'<div class="pin store">🏪</div><div class="tag">'+${originLabelJs}+'</div>',className:'',iconSize:[34,34],iconAnchor:[17,17]});
   var riderIcon=L.divIcon({html:'<div style="position:relative"><div class="pulse"></div><div class="pin">🛵</div></div>',className:'',iconSize:[34,34],iconAnchor:[17,17]});
   var rider=L.marker(start,{icon:riderIcon}).addTo(map);
-  var route=null;
+  var route=null;   // the LIVE remaining leg: rider → home, redrawn as the rider moves
+  var plan=null;    // the FULL planned trip: store → home, static and faint
+  var bounds=[start];
+  // Store pin + planned store→you line: drawn only when we actually know the
+  // pickup point. For an instant order the trip origin IS the serving store.
+  if(origin){
+    L.marker(origin,{icon:storeIcon}).addTo(map);
+    bounds.push(origin);
+    if(home) plan=L.polyline([origin,home],{color:'#F49F1C',weight:2,dashArray:'2 7',opacity:0.55}).addTo(map);
+  }
   // The home pin is drawn only when we know the member's actual delivery point.
   if(home){
     L.marker(home,{icon:homeIcon}).addTo(map);
+    bounds.push(home);
     route=L.polyline([start,home],{color:'#F36CB5',weight:3,dashArray:'6 8',opacity:0.85}).addTo(map);
-    map.fitBounds(L.latLngBounds([home,start]).pad(0.35));
-  } else {
-    map.setView(start,15);
   }
+  if(bounds.length>1){ map.fitBounds(L.latLngBounds(bounds).pad(0.32)); }
+  else { map.setView(start,15); }
   // The marker moves ONLY when the rider app reports a new position. No timer,
   // no interpolation — a still marker means the rider has not moved (or has not
   // reported), and that is the truth we owe the member.
@@ -89,6 +104,9 @@ export function RiderTrackMap({
   riderLat,
   riderLng,
   active,
+  originLat,
+  originLng,
+  originLabel = 'Store',
   height = 230,
 }: {
   /** The rider's last reported position. Null until the rider app reports one —
@@ -97,6 +115,14 @@ export function RiderTrackMap({
   riderLng?: number | null;
   /** True while the order is out for delivery (drives the status ribbon only). */
   active: boolean;
+  /** Fixed trip origin (the serving store / pickup point) for the instant lane.
+   *  When supplied, the map draws a store pin and the full store→you route
+   *  alongside the live rider. Omit for the standard rider-only tracking map.
+   *  Must be a REAL coordinate (store record, or the rider's pickup fix) — never
+   *  a synthesised point. */
+  originLat?: number | null;
+  originLng?: number | null;
+  originLabel?: string;
   height?: number;
 }) {
   const webRef = useRef<WebView>(null);
@@ -124,11 +150,15 @@ export function RiderTrackMap({
     webRef.current?.injectJavaScript(`window.__setRider && window.__setRider(${riderLat},${riderLng}); true;`);
   }, [riderLat, riderLng]);
 
+  const hasOrigin = originLat != null && originLng != null;
   const html = useMemo(
-    () => (hasFix && home !== undefined ? mapHtml(home, { lat: riderLat!, lng: riderLng! }) : null),
-    // The HTML is frozen once built; later fixes ride injectJavaScript, not a reload.
+    () => (hasFix && home !== undefined
+      ? mapHtml(home, { lat: riderLat!, lng: riderLng! }, hasOrigin ? { lat: originLat!, lng: originLng! } : null, originLabel)
+      : null),
+    // The HTML is frozen once built; later rider fixes ride injectJavaScript, not
+    // a reload. The origin is fixed for the trip, so it too is baked in once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasFix, home !== undefined],
+    [hasFix, home !== undefined, hasOrigin],
   );
 
   // No reported position → say that, plainly. Anything else here would be a
