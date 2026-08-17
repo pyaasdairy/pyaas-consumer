@@ -9,12 +9,17 @@ import { colors, radius, spacing, shadow } from '../lib/theme';
  * here. Swipeable + auto-plays, with a pill pagination indicator. Effects stay
  * inside the clipped card. Founder can drop replacement art into assets/banners.
  */
-// BRAND creatives — permanent marketing, incl. the 2+2 "HOW IT WORKS" slide.
-// Deliberately NOT funnel-gated: the slide stays for everyone, always (the
-// claim popup/card have their own eligibility; the carousel is the billboard).
+// BRAND creatives — permanent marketing. Deliberately NOT funnel-gated: the
+// slides stay for everyone, always (the claim popup/card have their own
+// eligibility; the carousel is the billboard).
+//
+// banner-2 is PULLED from rotation until the artwork is reissued: it still
+// claims a "7-DAY SUBSCRIPTION" and "free milk packets on us" for days 3-7,
+// neither of which the product does (the real offer is 2 free days then
+// Rs 29/day until paused). Showing it is a false money claim (Play Deceptive
+// Behavior) — do not re-add the file, add the corrected art.
 const SLIDES: ReturnType<typeof require>[] = [
   require('../assets/banners/home-banner-1.png'),
-  require('../assets/banners/home-banner-2.png'),
   require('../assets/banners/home-banner-3.png'),
 ];
 
