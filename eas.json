@@ -20,7 +20,12 @@
       "autoIncrement": true,
       "android": { "buildType": "app-bundle" },
       "env": {
-        "EXPO_PUBLIC_WALLET_TEST_TOPUP": "false"
+        "EXPO_PUBLIC_WALLET_TEST_TOPUP": "false",
+        "EXPO_PUBLIC_API_URL": "https://saathi-backend-d8ee.onrender.com/api/v1/consumer",
+        "EXPO_PUBLIC_CONSUMER_APP_KEY": "parag_consumer_dev_key_v1",
+        "EXPO_PUBLIC_CATALOG_BACKEND_AUTHORITATIVE": "true",
+        "EXPO_PUBLIC_GOOGLE_PLACES_KEY": "AIzaSyA6xN3Hku4zxOJc2Ia2xV5v-zJLp492RgI",
+        "EXPO_PUBLIC_RAZORPAY_KEY_ID": "rzp_live_TL4IGU7eh9K4vv"
       }
     }
   },
