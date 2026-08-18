@@ -451,11 +451,14 @@ export default function ProductDetail() {
   // reuse the shared confirmation screen.
   function onSubscribed(r: SubscribeResult) {
     if (!product) return;
-    setShowSubscribe(false);
+    // Push FIRST so the confirmation mounts behind the dismissing sheet — the
+    // sheet then slides away to reveal it. Closing first showed a beat of bare
+    // product screen while the push animation started from zero.
     router.push({
       pathname: '/order-confirmed',
       params: { id: product.id, qty: String(r.qty), freq: r.freq, start: r.startDate, total: String(r.total), saved: String(r.saved) },
     });
+    setShowSubscribe(false);
   }
 
   return (

@@ -6,7 +6,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
-import { Serif, TextBody, TextMed, Button, Field, Tap, BackButton } from '../components/ui';
+import { Serif, TextBody, TextMed, Button, Field, Tap, BackButton, KeyboardDoneBar } from '../components/ui';
 import { getFullProfile, updateProfile, pickAndUploadAvatar, type FullProfile } from '../lib/profileApi';
 
 const MILK_PREFS = [
@@ -83,7 +83,12 @@ export default function ProfileEdit() {
         <Serif style={{ fontSize: 24 }}>My profile</Serif>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      {/* automaticallyAdjustKeyboardInsets: iOS insets the scroll content in
+          perfect sync with the keyboard's own animation (and scrolls the
+          focused field into view), so lower fields and the save button are
+          never buried and nothing jumps. Android's window resizes natively
+          (softwareKeyboardLayoutMode "resize"), so it needs nothing extra. */}
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {/* Avatar */}
         <View style={{ alignItems: 'center', gap: 8 }}>
           <Tap haptic={false} onPress={changeAvatar}>
@@ -133,6 +138,8 @@ export default function ProfileEdit() {
         {msg ? <TextBody color={/saved|updated/i.test(msg) ? colors.blue : colors.inkSoft} style={{ fontSize: 13 }}>{msg}</TextBody> : null}
         <Button title="Save profile" loading={saving} onPress={save} />
       </ScrollView>
+
+      <KeyboardDoneBar />
     </View>
   );
 }

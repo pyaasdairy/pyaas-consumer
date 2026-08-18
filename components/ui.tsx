@@ -10,6 +10,9 @@ import {
   TextInput,
   TextInputProps,
   StyleSheet,
+  Platform,
+  Keyboard,
+  InputAccessoryView,
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { fireHaptic, type HapticWeight } from '../lib/haptics';
@@ -193,9 +196,64 @@ export function Field({
       {label ? <TextMed color={colors.inkSoft} style={{ fontSize: 13.5 }}>{label}</TextMed> : null}
       <TextInput
         placeholderTextColor={colors.inkMute}
+        inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
         style={[styles.field, style]}
         {...p}
       />
+    </View>
+  );
+}
+
+// ── Keyboard "Done" bar ────────────────────────────────────────────────────────
+// iOS keyboards (phone-pad and number-pad especially) have no key that
+// dismisses them, so every Field references this accessory ID and screens mount
+// <KeyboardDoneBar /> to attach a native bar with a Done button above the
+// keyboard. On screens that don't mount it, inputs behave exactly as before.
+// Android's window resizes under the keyboard (softwareKeyboardLayoutMode
+// "resize"), so there the same strip is pinned to the shrunken window's bottom
+// edge while the keyboard is up — the mounting screen's root view must fill the
+// window for that anchor to land above the keyboard.
+export const KB_DONE_ID = 'pyaas-kb-done';
+
+function DoneStrip() {
+  return (
+    <View style={styles.kbBar}>
+      <Pressable
+        onPress={() => {
+          fireHaptic('light');
+          Keyboard.dismiss();
+        }}
+        hitSlop={8}
+        style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1, paddingHorizontal: spacing.lg, paddingVertical: 11 })}
+      >
+        <Text style={{ fontFamily: fonts.sansBold, fontSize: 15.5, color: colors.action }}>Done</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export function KeyboardDoneBar() {
+  const [kbUp, setKbUp] = React.useState(false);
+  React.useEffect(() => {
+    if (Platform.OS === 'ios') return;
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbUp(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  if (Platform.OS === 'ios') {
+    return (
+      <InputAccessoryView nativeID={KB_DONE_ID}>
+        <DoneStrip />
+      </InputAccessoryView>
+    );
+  }
+  if (!kbUp) return null;
+  return (
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
+      <DoneStrip />
     </View>
   );
 }
@@ -296,4 +354,12 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   stepGlyph: { fontFamily: fonts.sansSemi, fontWeight: '600' as const, fontSize: 18, color: colors.flameDeep, lineHeight: 22 },
+  kbBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+  },
 });

@@ -104,7 +104,7 @@ function FoilNumber({ num, lineOne, lineTwo }: { num: number; lineOne: string; l
 
 // The membership card (hero). Faked depth via perspective + idle tilt + a
 // specular sheen. Flips up to face you each time the tab is focused, then idles.
-function HoloCard({ scrollY, num, lineOne, lineTwo, memberLine }: { scrollY: SharedValue<number>; num: number; lineOne: string; lineTwo: string; memberLine: string }) {
+function HoloCard({ scrollY, num, lineOne, lineTwo, memberLine }: { scrollY: SharedValue<number>; num: number | null; lineOne: string; lineTwo: string; memberLine: string }) {
   const tiltX = useSharedValue(0);
   const tiltY = useSharedValue(0);
   const sheen = useSharedValue(0);
@@ -171,14 +171,16 @@ function HoloCard({ scrollY, num, lineOne, lineTwo, memberLine }: { scrollY: Sha
 
           {/* top row: issuer logo + gold chip */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <Image source={require('../../assets/parag-logo.png')} style={{ width: 34, height: 34 }} resizeMode="contain" />
+            <Image source={require('../../assets/parag-logo.png')} style={{ width: 52, height: 52 }} resizeMode="contain" />
             <View style={{ width: 34, height: 26, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)', backgroundColor: GOLD }}>
               <View style={{ flex: 1, margin: 4, borderRadius: 3, borderWidth: 1, borderColor: 'rgba(0,0,0,0.25)' }} />
             </View>
           </View>
 
-          {/* foil number */}
-          <FoilNumber num={num} lineOne={lineOne} lineTwo={lineTwo} />
+          {/* foil number — members only (their days-left countdown). Prospects
+              get no number: Plus is sold, so the card must not flash "30 DAYS"
+              as if a free period were included. */}
+          {num != null ? <FoilNumber num={num} lineOne={lineOne} lineTwo={lineTwo} /> : null}
 
           {/* bottom row */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -357,9 +359,10 @@ export default function Vip() {
     );
   }
 
-  // What the card shows adapts to membership state.
-  const cardNum = active ? days : PLUS_PERIOD_DAYS;
-  const cardL2 = active ? 'LEFT' : 'DAYS';
+  // What the card shows adapts to membership state: members see their days-left
+  // countdown, prospects see no number at all (nothing that could read as a
+  // free period — Plus is paid).
+  const cardNum = active ? days : null;
   const upperName = (name ?? 'PYAAS FAMILY').toUpperCase();
   const memberLine = active ? (onTrial ? 'TRIAL ACTIVE' : upperName) : upperName;
 
@@ -378,7 +381,7 @@ export default function Vip() {
           <Animated.View entering={enterUp(60)} style={{ alignItems: 'center', marginBottom: 14 }}>
             <Text style={{ color: GOLD_DEEP, fontSize: 11, fontFamily: fonts.sansBold, letterSpacing: 4 }}>PYAAS PLUS MEMBERSHIP</Text>
           </Animated.View>
-          <HoloCard scrollY={scrollY} num={cardNum} lineOne="DAYS" lineTwo={cardL2} memberLine={memberLine} />
+          <HoloCard scrollY={scrollY} num={cardNum} lineOne="DAYS" lineTwo="LEFT" memberLine={memberLine} />
           <Animated.View entering={enterUp(140)} style={{ marginTop: 22, alignItems: 'center' }}>
             <TextSemi style={{ fontSize: 15, textAlign: 'center' }} color={INK}>
               {active

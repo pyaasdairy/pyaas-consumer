@@ -104,6 +104,9 @@ export function SubscribeSheet({
       // silently resetting it to tomorrow; fall back to tomorrow when none/invalid.
       setStartDate(initialStartDate && initialStartDate >= tomorrowISO() ? initialStartDate : tomorrowISO());
       setErr('');
+      // Warm the wallet store while the member is still dialling in qty/freq —
+      // the tap-time funds gate then answers from a fresh store instantly.
+      void refreshWallet().catch(() => {});
       void listAddresses()
         .then((rows) => setDeliverTo(rows.find((a) => a.is_default && hasPin(a)) ?? rows.find(hasPin) ?? null))
         .catch(() => setDeliverTo(null));
@@ -135,8 +138,11 @@ export function SubscribeSheet({
     const rt = `/product/${product.id}?qty=${qty}&freq=${freq}&start=${startDate}&subscribe=1`;
     const qs = `min=${min}&amount=${amount}&returnTo=${encodeURIComponent(rt)}&reason=${encodeURIComponent(reason)}`;
     haptics.press();
-    onClose();
+    // Push FIRST so recharge mounts behind this sheet, then slide the sheet
+    // away to reveal it — closing first left a beat of bare product screen
+    // while the push animation started from scratch.
     router.push(`/recharge?${qs}`);
+    onClose();
   }
 
   // THE GATE CHAIN (strict order): 1) ADDRESS — a SAVED address with its map
@@ -144,86 +150,60 @@ export function SubscribeSheet({
   // the qualifying recharge for a still-open 2+2 gold candidate, else the
   // unlock/2-day-cover top-up, ONLY when actually short → 3) CREATE. A member
   // with address + funds subscribes in this one tap, no interstitials.
+  //
+  // ONE fetch pass, run in parallel, with the button spinner on from the very
+  // first frame. The old shape fetched address→wallet sequentially here and
+  // then a separate confirm step re-fetched BOTH again — the button sat
+  // visually dead for the whole double round-trip. The gates now run once and
+  // the create happens in the same tap, so there is no check→write window for
+  // the old backstop to cover (createSubscription still enforces its own
+  // invariants server-side).
   async function startSubscribe() {
     // Synchronous re-entrancy guard AT THE TOP: two fast taps on the Subscribe
-    // button otherwise run two full gate chains (confirm's own guard only
-    // engages after two awaits) — a double daily plan and a double debit.
-    if (busyRef.current) return;
-    haptics.press();
-    setErr('');
-    // 1) ADDRESS FIRST.
-    const addrs = await listAddresses().catch(() => [] as Address[]);
-    const pick = addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin);
-    if (!pick) {
-      resumeOnSave.current = true; // THIS capture is part of the subscribe chain
-      setMapOpen(true); // capture → onAddressSaved resumes this chain
-      return;
-    }
-    // 2) FUNDS SECOND.
-    await refreshWallet();
-    const bal = useWallet.getState().balance;
-    // 2+2 candidate on the offer SKU who hasn't done the one-time qualifying
-    // recharge → that recharge IS the requirement (at a time — balance level is
-    // irrelevant to qualification). The floor to avail is ₹99, but we PRESELECT
-    // ₹500 (min=floor, amount=suggested), so ₹99 unlocks yet most fund a few
-    // days of milk at once.
-    if (product.id === FREE_PACK_PRODUCT_ID && freq === 'daily' && !(await offerCompleted()) && !(await offerQualified())) {
-      goRecharge(OFFER_QUALIFY_RECHARGE, OFFER_SUGGESTED_RECHARGE, 'to unlock your 2+2 offer');
-      return;
-    }
-    const unlocked = await purchasesUnlocked(bal);
-    const need = Math.max(minWalletToStart(perDelivery), unlocked ? 0 : WALLET_UNLOCK_TARGET);
-    if (bal < need) {
-      const short = Math.max(1, Math.ceil(need - bal));
-      goRecharge(short, Math.max(100, Math.ceil(short / 50) * 50), 'to start this subscription');
-      return;
-    }
-    // 3) Everything resolved → create right now (confirm re-guards internally
-    // against races, then plays the confirm haptic + success hand-off).
-    await confirm();
-  }
-
-  async function confirm() {
+    // button otherwise run two full gate chains — a double daily plan and a
+    // double debit.
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    haptics.press();
     setErr('');
     try {
-      // BACKSTOP GATES (the review chain already ran these; a race — address
-      // deleted mid-flow, balance spent from another screen — re-guards here).
-      // Address: a SAVED row with its map pin; a loose local GPS pin never counts.
-      const addrs = await listAddresses().catch(() => [] as Address[]);
-      if (!addrs.some(hasPin)) {
-        haptics.press();
-        resumeOnSave.current = true;
-        setMapOpen(true);
+      // 1) ADDRESS FIRST (fetched together with the wallet — independent reads).
+      const [addrs] = await Promise.all([
+        listAddresses().catch(() => [] as Address[]),
+        refreshWallet(),
+      ]);
+      const pick = addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin);
+      if (!pick) {
+        resumeOnSave.current = true; // THIS capture is part of the subscribe chain
+        setMapOpen(true); // capture → onAddressSaved resumes this chain
         return;
       }
-      // PREPAID START GATE (BOTH modes): a subscription can NEVER begin unless the
-      // wallet already covers at least the minimum days of the per-delivery
-      // charge. If it is short we create NOTHING and force the member to the wallet
-      // recharge screen first, returning here once funded.
-      await refreshWallet();
+      // 2) FUNDS SECOND.
       const bal = useWallet.getState().balance;
-      // UNLOCK GATE (WALLET_UNLOCK_TARGET): a still-locked account must fund the wallet to the unlock
-      // target before ANY purchase, subscriptions included.
+      // 2+2 candidate on the offer SKU who hasn't done the one-time qualifying
+      // recharge → that recharge IS the requirement (at a time — balance level is
+      // irrelevant to qualification). The floor to avail is ₹99, but we PRESELECT
+      // ₹500 (min=floor, amount=suggested), so ₹99 unlocks yet most fund a few
+      // days of milk at once.
+      if (product.id === FREE_PACK_PRODUCT_ID && freq === 'daily' && !(await offerCompleted()) && !(await offerQualified())) {
+        goRecharge(OFFER_QUALIFY_RECHARGE, OFFER_SUGGESTED_RECHARGE, 'to unlock your 2+2 offer');
+        return;
+      }
+      // PREPAID START GATE (BOTH modes): a subscription can NEVER begin unless
+      // the wallet already covers at least the minimum days of the per-delivery
+      // charge. UNLOCK GATE (WALLET_UNLOCK_TARGET): a still-locked account must
+      // fund the wallet to the unlock target before ANY purchase. If short we
+      // create NOTHING and route to recharge, returning here once funded with
+      // the member's selections intact (goRecharge carries them in returnTo).
       const unlocked = await purchasesUnlocked(bal);
       const need = Math.max(minWalletToStart(perDelivery), unlocked ? 0 : WALLET_UNLOCK_TARGET);
       if (bal < need) {
         const short = Math.max(1, Math.ceil(need - bal));
-        const amount = Math.max(100, Math.ceil(short / 50) * 50);
-        // Carry the member's chosen qty/frequency/start-date (and a flag to
-        // re-open this sheet) through the recharge round-trip, so a funded member
-        // resumes with their exact selections instead of a reset 1/daily/tomorrow.
-        const rt = `/product/${product.id}?qty=${qty}&freq=${freq}&start=${startDate}&subscribe=1`;
-        // Same encoding as product/[id].tsx goRecharge (encodeURIComponent → %20),
-        // so the returnTo + reason survive expo-router's param parser intact.
-        const qs = `min=${short}&amount=${amount}&returnTo=${encodeURIComponent(rt)}&reason=${encodeURIComponent('to start this subscription')}`;
-        haptics.press();
-        onClose();
-        router.push(`/recharge?${qs}`);
+        goRecharge(short, Math.max(100, Math.ceil(short / 50) * 50), 'to start this subscription');
         return;
       }
+      // 3) Everything resolved → create right now.
       await createSubscription({
         productId: product.id,
         variant: product.variant,

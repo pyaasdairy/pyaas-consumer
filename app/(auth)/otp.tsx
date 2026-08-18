@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Keyboard, FlatList, useWindowDimensions, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
+import { View, Text, TextInput, Platform, ScrollView, ActivityIndicator, Keyboard, FlatList, useWindowDimensions, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withTiming, interpolate, Extrapolation } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts } from '../../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap } from '../../components/ui';
 import { enterUp } from '../../lib/motion';
@@ -69,14 +69,16 @@ export default function OtpLogin() {
   const [resendIn, setResendIn] = useState(0);
   // In-flight guard so a burst of focus events doesn't launch the hint twice.
   const hintBusy = useRef(false);
-  // The keyboard covers the bottom card on phones — while it's up, collapse the
-  // slideshow so the "Get started" card (field + button) stays fully visible.
-  const [kbUp, setKbUp] = useState(false);
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setKbUp(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKbUp(false));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
+  // ULTRA-SMOOTH KEYBOARD. The old version flipped a boolean on
+  // keyboardDidShow — which fires AFTER the OS animation completes on iOS —
+  // and unmounted the whole hero in one frame: the visible "squash, then
+  // pop, then keyboard". useAnimatedKeyboard tracks the keyboard's height
+  // frame-by-frame on the UI thread, so the hero fades and the card rises in
+  // perfect lockstep with the keyboard's own curve; nothing mounts, unmounts
+  // or jumps. Android's window already resizes itself
+  // (softwareKeyboardLayoutMode "resize"), so the compensating spacer is
+  // iOS-only; the hero fade runs on both platforms.
+  const kb = useAnimatedKeyboard();
 
   /** Devanagari (०-९), Arabic-Indic (٠-٩) and extended (۰-۹) numerals map to
    *  ASCII so a Hindi keyboard types a normal number — they are NOT \d, so
@@ -131,6 +133,30 @@ export default function OtpLogin() {
    */
   const [hintOpen, setHintOpen] = useState(false);
   const hintDone = useRef(false); // resolved once (picked or dismissed) — don't relaunch
+
+  // The Play Services number chooser is a native sheet, not a keyboard, so the
+  // animated keyboard value never moves for it — fold it into the same smooth
+  // collapse with a timed 0→1 value instead of a hard layout swap.
+  const hintT = useSharedValue(0);
+  useEffect(() => {
+    hintT.value = withTiming(hintOpen ? 1 : 0, { duration: 220 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hintOpen]);
+  // Hero collapse, driven per-frame by whichever is up (keyboard px or the
+  // chooser). Fades out well before any clipping could show, with a gentle
+  // settle-scale so the departure reads as designed rather than squashed.
+  const heroStyle = useAnimatedStyle(() => {
+    const collapse = Math.max(kb.height.value, hintT.value * 320);
+    return {
+      opacity: interpolate(collapse, [0, 140], [1, 0], Extrapolation.CLAMP),
+      transform: [{ scale: interpolate(collapse, [0, 320], [1, 0.94], Extrapolation.CLAMP) }],
+    };
+  });
+  // iOS-only bottom spacer that grows in exact sync with the keyboard, lifting
+  // the card the way KeyboardAvoidingView did but on the keyboard's own curve.
+  const kbSpacerStyle = useAnimatedStyle(() => ({
+    height: Platform.OS === 'ios' ? kb.height.value : 0,
+  }));
   const launchHint = async () => {
     if (!consented) { setDiscloseOpen(true); return; } // never read the SIM un-consented
     if (hintBusy.current || hintDone.current || digits().length >= 10) return;
@@ -320,23 +346,19 @@ export default function OtpLogin() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.white }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={{ flex: 1, backgroundColor: colors.white }}>
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {step === 'phone' ? (
           <>
-            {/* Full-bleed landing slideshow with dot indicators. Collapses while
-                the keyboard OR the system number-picker is up so the field +
-                button stay fully visible. The collapsed spacer is a SMALL FIXED
-                strip (never flex:1 — a flexing spacer swallows the shrunken
-                viewport and shoves the card under the keyboard), so the
-                Get-started card floats to the TOP while typing. */}
-            {kbUp || hintOpen ? (
-              <View style={{ height: insets.top + spacing.md }} />
-            ) : (
-              <View style={{ flex: 1, justifyContent: 'center', paddingTop: insets.top }}>
-                <LandingSlideshow />
-              </View>
-            )}
+            {/* Full-bleed landing slideshow. ALWAYS MOUNTED: as the keyboard
+                rises, the iOS spacer below the ScrollView grows in exact sync,
+                flexbox shrinks this hero frame-by-frame (min-height keeps the
+                card clear of the notch), and heroStyle fades the artwork out
+                long before any clipping could show. No conditional unmount, so
+                there is nothing left to pop. */}
+            <Animated.View style={[{ flex: 1, justifyContent: 'center', paddingTop: insets.top, minHeight: insets.top + spacing.md, overflow: 'hidden' }, heroStyle]}>
+              <LandingSlideshow />
+            </Animated.View>
 
             {/* "Get started" card */}
             <Animated.View
@@ -351,7 +373,7 @@ export default function OtpLogin() {
                 <View style={{ width: 1, height: 24, backgroundColor: colors.line }} />
                 <TextInput
                   value={phone}
-                  onChangeText={(t) => setPhone(normalizeDigits(t))}
+                  onChangeText={(t) => { setPhone(normalizeDigits(t)); if (error) setError(''); }}
                   // BEFORE consent: focusing opens the disclosure, never the SIM.
                   // AFTER consent: the one-tap chooser returns on focus — the
                   // zero-typing feel — because the disclosure covering the SIM
@@ -448,6 +470,13 @@ export default function OtpLogin() {
         )}
       </ScrollView>
 
+      {/* iOS keyboard spacer: grows frame-for-frame with the keyboard (the
+          keyboard's own animation curve), lifting the card exactly as far as
+          the keyboard is tall. Android resizes its window natively, so this
+          stays 0 there. Replaces KeyboardAvoidingView, whose padding fought
+          the hero collapse and produced the mid-animation squash. */}
+      <Animated.View style={kbSpacerStyle} />
+
       {/* Mounted at the screen root so it covers the whole sign-in surface. The
           gate is enforced in launchHint() and sendCodeFor() regardless of what is
           on screen — this modal is how the member grants consent, not the thing
@@ -457,7 +486,7 @@ export default function OtpLogin() {
         onAccept={() => { void acceptDisclosure(); }}
         onDecline={() => setDiscloseOpen(false)}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
