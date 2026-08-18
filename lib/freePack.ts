@@ -7,6 +7,7 @@ import { WALLET_TEST_TOPUP, testTopup } from './razorpay';
 import { isBackendConfigured } from './apiClient';
 import { createSubscription, listSubscriptions, reactivateSubscription } from './subscriptions';
 import { tomorrowISO } from './dates';
+import { getMergedProduct } from './catalog';
 import { getProduct } from '../constants/products';
 import { beginTrial, getTrial, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 import { minSubscriptionQty } from './subscriptionFloor';
@@ -53,6 +54,19 @@ export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 export const FREE_PACK_PRODUCT_ID = 'gold-500ml';
 /** ₹/day of the funnel SKU (falls back to the launch price if the SKU moves). */
 export const FREE_PACK_DAILY_PRICE = getProduct(FREE_PACK_PRODUCT_ID)?.price ?? 35;
+
+/** LIVE per-pack price of the trial product — read from the MERGED catalog so
+ *  an ERP/store reprice reaches the claim funnel immediately; the bundled
+ *  constant above is only the offline fallback. Always quote THIS in UI copy
+ *  and charge THIS per day, or the funnel advertises a stale number forever. */
+export function freePackDailyPrice(): number {
+  try {
+    const p = getMergedProduct(FREE_PACK_PRODUCT_ID)?.price;
+    return typeof p === 'number' && p > 0 ? p : FREE_PACK_DAILY_PRICE;
+  } catch {
+    return FREE_PACK_DAILY_PRICE;
+  }
+}
 /** Value of the TWO FREE days (2 × the daily price) — shown as the pack's worth. */
 // Value of the giveaway = free days × the DAILY amount, which is the pack
 // price times the 1 L/day floor quantity (2 × 500 ml) — not one lone pack.
@@ -283,7 +297,7 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
         // The 1 L/day milk floor is absolute — the claim funnel's auto-created
         // plan subscribes 2 × 500 ml, same as every hand-built subscription.
         qty: minSubscriptionQty(sku ?? { id: FREE_PACK_PRODUCT_ID, category: 'milk', variant: '500ml' }),
-        unitPrice: FREE_PACK_DAILY_PRICE,
+        unitPrice: freePackDailyPrice(),
         frequency: 'daily',
         startDate: tomorrowISO(),
       });
@@ -311,7 +325,11 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
   // COMPLETION (2 paid days delivered, see freePackShowEligible). A member who
   // pauses/cancels after day 1 must keep seeing the offer until day 2 is done.
   notifyFreePackChanged();
-  return { ok: true, value: FREE_PACK_VALUE, subscriptionId };
+  return {
+    ok: true,
+    value: freePackDailyPrice() * TRIAL_FREE_DAYS * minSubscriptionQty(getProduct(FREE_PACK_PRODUCT_ID) ?? { id: FREE_PACK_PRODUCT_ID, category: 'milk', variant: '500ml' }),
+    subscriptionId,
+  };
 }
 
 // ── Change listeners ─────────────────────────────────────────────────────────

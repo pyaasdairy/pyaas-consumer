@@ -9,6 +9,7 @@
  */
 import { getUserId, requireUserId } from './session';
 import { getSingle, putSingle } from './localStore';
+import { isBackendConfigured } from './apiClient';
 import { getBalances, debitWallet } from './walletApi';
 
 /** Days of Plus one ₹99 charge buys. */
@@ -93,6 +94,13 @@ export async function getVip(): Promise<VipMembership | null> {
  * are charging for a perk the binary never delivers.
  */
 export async function isPlusActive(): Promise<boolean> {
+  // BACKEND MODE: Plus perks are OFF until the backend owns the membership.
+  // The server reprices every order from its own catalog and knows nothing of
+  // Plus, so an FE-applied member discount/free-fee shows a total the wallet
+  // is NOT charged — shown ₹X, debited ₹Y at the door. Shown must equal
+  // charged; perks return the moment membership + member pricing move
+  // server-side (TODO(api): GET /membership/me, applied inside createOrder).
+  if (isBackendConfigured()) return false;
   try {
     return vipActive(await getVip());
   } catch {
@@ -111,6 +119,12 @@ export async function isPlusActive(): Promise<boolean> {
  * recharge. On success the membership goes ACTIVE for PLUS_PERIOD_DAYS.
  */
 export async function purchaseMembership(): Promise<VipMembership & { charged: boolean }> {
+  // BACKEND MODE: joining is paused until the backend owns the membership —
+  // perks are server-blind there (see isPlusActive), and taking a real ₹99
+  // wallet debit for a device-local flag would charge money for nothing.
+  if (isBackendConfigured()) {
+    throw new Error('PYAAS Plus is coming soon on this build.');
+  }
   const uid = await requireUserId();
   const before = (await getBalances()).available;
   if (before < PLUS_PRICE_MONTH) {
