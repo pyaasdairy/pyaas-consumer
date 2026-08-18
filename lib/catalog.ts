@@ -328,7 +328,13 @@ export function applyOverlay(base: Product[], res: CatalogResponse | null | unde
 
   const patchById = new Map<string, CatalogPatch>();
   for (const p of patches) {
-    if (p && typeof p.id === 'string' && !patchById.has(p.id)) patchById.set(p.id, p);
+    if (!p || typeof p.id !== 'string') continue;
+    const prev = patchById.get(p.id);
+    // Same sku appearing twice (e.g. an override AND a served entry): MERGE
+    // instead of discarding — earlier patch's fields win (overrides come first),
+    // later patch fills the gaps (name/category/photo). A bare {price} override
+    // must never erase the rich entry a non-bundled SKU depends on to render.
+    patchById.set(p.id, prev ? { ...p, ...prev } : p);
   }
 
   const out: Product[] = [];
