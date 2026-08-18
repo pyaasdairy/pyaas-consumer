@@ -15,11 +15,28 @@ export const DEFAULT_REGION = { lat: 26.8467, lng: 80.9462 };
 
 export type Coords = { lat: number; lng: number };
 
-/** Ask for permission + read the current device GPS coordinate. */
+/** Ask for permission + read the current device GPS coordinate.
+ *  MUST only be called from an explicit user action that was immediately
+ *  preceded by the LocationDisclosure sheet (Play prominent-disclosure rule) —
+ *  never automatically on screen open. */
 export async function getDeviceCoords(): Promise<Coords | null> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return null;
+    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+  } catch {
+    return null;
+  }
+}
+
+/** Read the device GPS ONLY if permission is already granted — never prompts.
+ *  Safe for automatic conveniences (e.g. centering a map on open): a member
+ *  who has not yet agreed to the location disclosure sees no OS dialog. */
+export async function getDeviceCoordsIfGranted(): Promise<Coords | null> {
+  try {
+    const { granted } = await Location.getForegroundPermissionsAsync();
+    if (!granted) return null;
     const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     return { lat: pos.coords.latitude, lng: pos.coords.longitude };
   } catch {

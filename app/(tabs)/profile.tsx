@@ -18,7 +18,6 @@ import { getFullProfile, deleteMyAccount, type FullProfile } from '../../lib/pro
 import { listOrders } from '../../lib/api';
 import { listSubscriptions } from '../../lib/subscriptions';
 import { getVip, vipActive, vipDaysLeft, type VipMembership } from '../../lib/vip';
-import { isAdminUser } from '../../lib/admin';
 import { useTabBarClearance } from '../../components/PyaasTabBar';
 
 const SUPPORT_EMAIL = CARE_EMAIL;
@@ -62,7 +61,6 @@ export default function Profile() {
   const balCount = useCountUp(balance, 1000, focused);
   const plusActive = vipActive(vip);
   const plusDays = vipDaysLeft(vip);
-  const isAdmin = isAdminUser(email, full?.phone);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
@@ -202,12 +200,6 @@ export default function Profile() {
           <Row icon="close-circle-outline" label="Cancellation Policy" sub="Changing or cancelling an order" onPress={() => router.push('/cancellation-policy')} />
           <Row icon="cube-outline" label="Shipping & Delivery Policy" sub="How deliveries reach you" onPress={() => router.push('/shipping-policy')} last />
         </ListCard>
-
-        {isAdmin ? (
-          <ListCard delay={520}>
-            <Row icon="shield-checkmark-outline" label="Admin Console" sub="Store operations" onPress={() => router.push('/admin')} last />
-          </ListCard>
-        ) : null}
 
         <Animated.View entering={FadeInDown.duration(440).delay(540)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg, gap: 12, alignItems: 'center' }}>
           <Button title="Sign out" variant="outline" onPress={signOut} style={{ alignSelf: 'stretch' }} />

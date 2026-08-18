@@ -52,7 +52,7 @@ export const FLOWS: { icon: React.ComponentProps<typeof Ionicons>['name']; what:
     // the disclosure does not say it, nothing does.
     icon: 'call-outline',
     what: 'Your mobile number',
-    why: 'Sent to PYAAS servers, and to our SMS provider, to text you a one-time code and create your account. If you tap "use the number on this phone", we read the number from your SIM so you do not have to type it.',
+    why: 'Sent to and stored on PYAAS servers as your account id, and sent to our SMS provider to text you a one-time code. We keep it while your account exists; deleting your account removes it. If you tap "use the number on this phone", we read the number from your SIM so you do not have to type it.',
   },
   {
     icon: 'chatbubble-ellipses-outline',

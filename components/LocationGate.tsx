@@ -12,6 +12,8 @@ import { useServiceability } from '../lib/serviceability';
 import { listAddresses, type Address } from '../lib/api';
 import { listSubscriptions } from '../lib/subscriptions';
 import { placesAutocomplete, placeDetails, isPlacesEnabled, newSessionToken, type PlaceSuggestion } from '../lib/places';
+import { hasAcceptedLocationDisclosure } from '../lib/locationConsent';
+import { LocationDisclosure } from './LocationDisclosure';
 
 type Addr = Address & { lat?: number | null; lng?: number | null };
 
@@ -44,6 +46,18 @@ export default function LocationGate() {
   // anchors to the TOP instead of hiding behind the keyboard while typing).
   const [mapOpen, setMapOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  // Prominent disclosure BEFORE the OS location prompt (Play rule: the runtime
+  // request must be immediately preceded by an in-app disclosure with an
+  // affirmative action; declining leaves search + city pick fully usable).
+  const [locDiscOpen, setLocDiscOpen] = useState(false);
+  async function tapUseMyLocation() {
+    if (!(await hasAcceptedLocationDisclosure())) {
+      setLocDiscOpen(true);
+      return;
+    }
+    const ok = await useMyLocation();
+    if (ok) close();
+  }
 
   const [subCity, setSubCity] = useState<string | null>(null);
   const [subCoords, setSubCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -219,7 +233,7 @@ export default function LocationGate() {
                       <Ionicons name="chevron-forward" size={16} color={colors.white} />
                     </View>
                   </Tap>
-                  <Tap onPress={() => { void useMyLocation().then((ok) => { if (ok) close(); }); }}>
+                  <Tap onPress={() => { void tapUseMyLocation(); }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.flameSoft, borderRadius: radius.md, paddingVertical: 13, paddingHorizontal: 14 }}>
                       <Ionicons name="locate" size={20} color={colors.flameDeep} />
                       <TextSemi color={colors.flameDeep} style={{ fontSize: 14.5, flex: 1 }}>{locating ? 'Locating…' : 'Use my current location'}</TextSemi>
@@ -250,6 +264,14 @@ export default function LocationGate() {
             ) : null}
           </View>
         </View>
+
+        {/* Location prominent disclosure, stacked over the open sheet (the
+            parent stays presented, so no iOS modal swallow). */}
+        <LocationDisclosure
+          visible={locDiscOpen}
+          onAgree={() => { setLocDiscOpen(false); void useMyLocation().then((ok) => { if (ok) close(); }); }}
+          onDecline={() => setLocDiscOpen(false)}
+        />
       </Modal>
     );
   }

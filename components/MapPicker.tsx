@@ -7,7 +7,9 @@ import * as Location from 'expo-location';
 import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
-import { DEFAULT_REGION, getDeviceCoords, type Coords } from '../lib/location';
+import { DEFAULT_REGION, getDeviceCoords, getDeviceCoordsIfGranted, type Coords } from '../lib/location';
+import { hasAcceptedLocationDisclosure } from '../lib/locationConsent';
+import { LocationDisclosure } from './LocationDisclosure';
 import { placeLabelFromCoords } from '../lib/userLocation';
 import { placesAutocomplete, placeDetails, isPlacesEnabled, newSessionToken, type PlaceSuggestion } from '../lib/places';
 import { LEAFLET_CSS, LEAFLET_JS, MARKER_ICON_PNG, MARKER_ICON_2X_PNG, MARKER_SHADOW_PNG } from './leafletAssets';
@@ -141,7 +143,10 @@ export default function MapPicker({
     if (watchdogRef.current) clearTimeout(watchdogRef.current);
     watchdogRef.current = setTimeout(() => { setMapError(true); setPicked((p) => p ?? center); }, 7000);
     if (!initial) {
-      getDeviceCoords()
+      // NEVER prompts: on-open centering may only use a permission the member
+      // already granted. The OS dialog fires only from the explicit locate
+      // button, immediately after the LocationDisclosure sheet (Play rule).
+      getDeviceCoordsIfGranted()
         .then((c) => {
           if (!c) return;
           setPicked(c);
@@ -196,7 +201,17 @@ export default function MapPicker({
     return () => { on = false; clearTimeout(t); };
   }, [picked]);
 
+  // Location prominent disclosure: the OS permission prompt may only follow
+  // the in-app disclosure sheet with an affirmative "Agree and continue".
+  const [locDiscOpen, setLocDiscOpen] = useState(false);
   async function locateMe() {
+    if (!(await hasAcceptedLocationDisclosure())) {
+      setLocDiscOpen(true);
+      return;
+    }
+    await runLocate();
+  }
+  async function runLocate() {
     setLocating(true);
     const c = await getDeviceCoords();
     setLocating(false);
@@ -390,6 +405,14 @@ export default function MapPicker({
             <TextSemi color={colors.white} style={{ fontSize: 16 }}>{canConfirm ? 'Confirm this location' : 'Drag the pin to your door'}</TextSemi>
           </Tap>
         </View>
+
+        {/* Prominent disclosure BEFORE the OS location prompt (stacks over this
+            open modal; the parent stays presented, so no iOS modal swallow). */}
+        <LocationDisclosure
+          visible={locDiscOpen}
+          onAgree={() => { setLocDiscOpen(false); void runLocate(); }}
+          onDecline={() => setLocDiscOpen(false)}
+        />
       </View>
     </Modal>
   );
