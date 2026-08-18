@@ -54,13 +54,14 @@ function toFull(p: Profile | null): FullProfile | null {
  * state (so the user isn't left signed-out over a still-live server account). */
 export async function deleteMyAccount(): Promise<void> {
   const uid = await requireUserId();
-  if (isBackendConfigured()) {
-    await api.post('/me/erasure', {});
-  }
 
-  // Cancel the recurring commitments BEFORE wiping, so we never orphan a live
-  // UPI mandate or a subscription that keeps sweeping against a deleted account.
-  // Best-effort: a failure here must not strand the user half-deleted.
+  // Cancel the recurring commitments FIRST, while the account still exists and
+  // the access token is still valid — a live UPI mandate or a sweeping
+  // subscription must never outlive the account. These run BEFORE /me/erasure
+  // (the erasure cascade does not itself revoke gateway mandates), so the
+  // ordering here is load-bearing, not best-effort decoration. A cancel that
+  // throws still lets deletion proceed, but it is attempted against a live
+  // session rather than a half-erased one.
   try {
     const autopay = await getAutopay();
     if (autopay?.id && autopay.status !== 'cancelled') await cancelAutopay(autopay.id);
@@ -71,6 +72,10 @@ export async function deleteMyAccount(): Promise<void> {
       if (s.status !== 'cancelled') await setSubscriptionStatus(s.id, 'cancelled');
     }
   } catch { /* nothing to cancel */ }
+
+  if (isBackendConfigured()) {
+    await api.post('/me/erasure', {});
+  }
 
   // The old filter was `startsWith('parag:') && endsWith(':' + uid)`. That looks
   // exhaustive and is not — it provably missed four classes of key, each holding

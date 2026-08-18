@@ -7,7 +7,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts, rupee } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
-import { shouldShowFreePack, snoozeFreePack, freePackEligible, OFFER_QUALIFY_RECHARGE, FREE_PACK_DAILY_PRICE, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
+import { shouldShowFreePack, snoozeFreePack, freePackEligible, FREE_PACK_DAILY_PRICE, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../lib/freePack';
 import { minSubscriptionQty } from '../lib/subscriptionFloor';
 import { getProduct } from '../constants/products';
 import { usePopupSlot, anyPopupOpen } from '../lib/popupGate';
@@ -186,7 +186,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
                     { icon: 'sparkles-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>Days {TRIAL_PAID_DAYS + 1} & {TRIAL_PAID_DAYS + TRIAL_FREE_DAYS}: <TextSemi color={colors.flameDeep} style={{ fontSize: 13.5 }}>free</TextSemi></TextBody> },
                     { icon: 'sync-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>From day {TRIAL_PAID_DAYS + TRIAL_FREE_DAYS + 1}: {rupee(FREE_PACK_DAILY_PRICE * OFFER_DAY_QTY)}/day, paid from your wallet</TextBody> },
                     { icon: 'pause-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>Pause anytime, travelling or just a day off</TextBody> },
-                    { icon: 'card-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>Offer applies on a wallet recharge of {rupee(OFFER_QUALIFY_RECHARGE)} or more</TextBody> },
+                    { icon: 'card-outline' as const, body: <TextBody style={{ flex: 1, fontSize: 13.5, lineHeight: 19 }}>To begin, top up enough for your first {TRIAL_PAID_DAYS} paid days ({rupee(FREE_PACK_DAILY_PRICE * OFFER_DAY_QTY * TRIAL_PAID_DAYS)})</TextBody> },
                   ].map((row, i) => (
                     <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                       <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' }}>

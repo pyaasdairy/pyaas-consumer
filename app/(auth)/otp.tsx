@@ -25,13 +25,17 @@ import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
  * disclosure, so the order of operations here is deliberate and load-bearing:
  *
  *   1. The disclosure is shown and accepted (DataDisclosure) BEFORE anything
- *      reads or sends the number. Until then the field is not editable.
+ *      reads or sends the number. Until then the field is not editable, and
+ *      THAT ACCEPTANCE is the consent to transmit — Google's affirmative in-app
+ *      action, taken before any collection begins.
  *   2. After that one-time acceptance the zero-typing feel is back: focusing
  *      the field (or the explicit "Use the number on this phone" tap) opens the
- *      Play Services chooser. Picking FILLS THE FIELD AND STOPS — it never
- *      sends. Before acceptance, focus opens the disclosure instead.
- *   3. The member reviews the number and taps "Send verification code". That tap
- *      is the consent to transmit, and it is the only thing that transmits.
+ *      Play Services chooser. Picking FILLS THE FIELD — it does not itself send.
+ *      Before acceptance, focus opens the disclosure instead.
+ *   3. Once the field holds a complete 10-digit number the code is sent — either
+ *      by auto-advance the moment the tenth digit lands, or by the explicit
+ *      "Send verification code" tap. Both transmit only AFTER step 1's consent;
+ *      neither can run before it (sendCodeFor re-checks consent itself).
  *   4. The incoming OTP SMS is still auto-read and auto-verified — that reads a
  *      message addressed to this app, not the member's inbox, and needs no
  *      permission.

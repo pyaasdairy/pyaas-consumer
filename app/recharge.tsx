@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, ScrollView, ActivityIndicator, Modal, TextInput, Alert, Linking, BackHandler } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Modal, TextInput, Alert, BackHandler } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import { PREPAID_TARGET } from '../lib/prepaid';
 import { rechargeWallet } from '../lib/walletApi';
 import { recordRechargeForOffer } from '../lib/freePack';
 import { reconcileWithBalance } from '../lib/subscriptions';
+import { handleCheckoutNavigation } from '../lib/upiCheckout';
 import {
   createTopupOrder,
   isRazorpayConfigured,
@@ -39,22 +40,6 @@ function snapUp(min: number): number {
   const hit = PACKS.find((p) => p >= min);
   if (hit) return hit;
   return Math.ceil(min / 100) * 100; // above the grid → next ₹100
-}
-
-/**
- * WebView navigation gate. When the member picks a UPI app (PhonePe / GPay / Paytm
- * / any UPI app) inside Razorpay's checkout, Razorpay navigates to a `upi:` /
- * `intent:` / app-scheme deep link. With `originWhitelist={['*']}` the WebView would
- * try to load that non-http URL INTERNALLY (it stalls / shows a blank), so the UPI
- * app never opens. Here we hand every non-http(s) scheme to the OS via Linking so
- * the chosen app launches, and keep http(s)/about/data/blob in the WebView (those
- * are Razorpay's own checkout pages + assets).
- */
-function handleCheckoutNavigation(req: { url?: string }): boolean {
-  const url = req?.url ?? '';
-  if (!url || /^(https?:|about:|data:|blob:)/i.test(url)) return true;
-  Linking.openURL(url).catch(() => { /* no UPI app for this scheme — stay in sheet */ });
-  return false;
 }
 
 /**

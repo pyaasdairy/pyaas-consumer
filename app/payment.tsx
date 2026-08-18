@@ -16,6 +16,7 @@ import { rechargeWallet } from '../lib/walletApi';
 import { recordRechargeForOffer } from '../lib/freePack';
 import { reconcileWithBalance } from '../lib/subscriptions';
 import { createTopupOrder, checkoutHtml, verifyTopup, creditIsServerSide, WALLET_TEST_TOPUP, testTopup, type CheckoutResult } from '../lib/razorpay';
+import { handleCheckoutNavigation } from '../lib/upiCheckout';
 
 // Real brand marks (generated from the official single-colour logos).
 const BRAND = {
@@ -260,6 +261,7 @@ export default function Payment() {
             <WebView
               source={{ html: checkout, baseUrl: 'https://checkout.razorpay.com' }}
               originWhitelist={['*']}
+              onShouldStartLoadWithRequest={handleCheckoutNavigation}
               javaScriptEnabled
               domStorageEnabled
               onMessage={onCheckoutMessage}

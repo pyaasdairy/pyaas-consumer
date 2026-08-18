@@ -63,13 +63,11 @@ function RootNavigator() {
     });
   }, []);
 
-  // ONE-TIME versioned local reset (first launch of a new data version only):
-  // clears stale local rows from older builds — the LOGIN survives — then
-  // re-hydrates addresses + subscriptions from the backend. Every later
-  // launch is a no-op; screens refetch on focus, so a mid-boot race is safe.
-  useEffect(() => {
-    void runOneTimeLocalReset();
-  }, []);
+  // The one-time versioned local reset is driven from the consent effect below,
+  // NOT here — for a signed-in member it re-hydrates addresses + subscriptions
+  // from the backend, and that authenticated fetch must never run underneath
+  // the re-consent overlay (Play prominent-disclosure: no collection before the
+  // current disclosure is accepted). See the consent effect.
   const [maxWaited, setMaxWaited] = useState(false);
   // Premium type identity (Hanken Grotesk + Bricolage Grotesque), loaded at
   // runtime from bundled assets - no network, no native rebuild.
@@ -130,10 +128,19 @@ function RootNavigator() {
   // open so the Privacy Policy / Terms links inside it remain readable.
   const [needsConsent, setNeedsConsent] = useState(false);
   useEffect(() => {
-    if (!session) { setNeedsConsent(false); return; }
+    // Signed out: no re-consent needed, and the local reset can run (its
+    // authenticated calls simply no-op without a session) to clear stale rows.
+    if (!session) { setNeedsConsent(false); void runOneTimeLocalReset(); return; }
     let on = true;
     hasAcceptedDataDisclosure()
-      .then((ok) => { if (on) setNeedsConsent(!ok); })
+      .then((ok) => {
+        if (!on) return;
+        setNeedsConsent(!ok);
+        // Re-hydrate from the backend ONLY once the signed-in member has the
+        // current disclosure accepted — never fetch their data while the
+        // re-consent overlay is still up (GAP-3).
+        if (ok) void runOneTimeLocalReset();
+      })
       .catch(() => { if (on) setNeedsConsent(true); });
     return () => { on = false; };
   }, [session]);
@@ -145,6 +152,8 @@ function RootNavigator() {
       if (uid) await linkDisclosureToAccount(uid);
     } catch { /* attribution is best-effort */ }
     setNeedsConsent(false);
+    // Consent just granted → NOW it is safe to re-hydrate from the backend.
+    void runOneTimeLocalReset();
   }, []);
   const onSplashDone = useCallback(() => setSplashDone(true), []);
 

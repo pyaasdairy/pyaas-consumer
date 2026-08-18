@@ -535,7 +535,7 @@ export default function Vip() {
             {[
               { n: '1', icon: 'card' as const, title: 'Join for ' + rupee(PLUS_PRICE_MONTH) + '/mo', body: 'Pay securely via Razorpay through your PYAAS Wallet. That is the only way in — nothing is free.' },
               { n: '2', icon: 'flash' as const, title: 'Enjoy the perks', body: 'Priority morning slots, free delivery and member price on milk, from day one.' },
-              { n: '3', icon: 'refresh' as const, title: 'Renew or cancel', body: 'Your month runs its full period either way. Cancel anytime, no lock-in.' },
+              { n: '3', icon: 'refresh' as const, title: 'Renew or cancel', body: 'It never auto-renews. Cancel whenever you like; perks stop when you do, and there is no lock-in.' },
             ].map((row, i) => (
               <View key={row.n} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: spacing.md, paddingVertical: 14, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line }}>
                 <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line }}>
@@ -555,8 +555,7 @@ export default function Vip() {
           <TextSemi style={{ fontSize: 16, marginBottom: 6 }} color={INK}>Why members love Plus</TextSemi>
           <TextBody style={{ fontSize: 13.5, lineHeight: 21 }}>
             Plus is about getting looked after first. Your milk arrives in the earliest slot each morning,
-            delivery is always free, and you get offers and new launches before anyone else, with a faster
-            line to the team when you need it. Cancel anytime, no lock-in.
+            delivery is always free, and you pay the member price on milk. Cancel anytime, no lock-in.
           </TextBody>
         </Animated.View>
 

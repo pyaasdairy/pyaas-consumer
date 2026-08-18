@@ -207,7 +207,7 @@ export default function Profile() {
             haptic={false}
             onPress={() => Alert.alert(
               'Delete account?',
-              'Any remaining wallet balance is returned to you and active subscriptions (and any AutoPay mandate) are cancelled. Your personal details are permanently erased; only records the law requires us to keep (tax/financial) are retained. This cannot be undone.',
+              `Active subscriptions and any AutoPay mandate are cancelled, and your personal details are permanently erased; only records the law requires us to keep (tax/financial) are retained. If you have a wallet balance, contact us at ${SUPPORT_EMAIL} to settle it before you delete — this cannot be undone.`,
               [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete', style: 'destructive', onPress: async () => {

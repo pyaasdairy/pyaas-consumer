@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getSingle, putSingle, newId } from './localStore';
+import { getSingle, putSingle } from './localStore';
 
 /** New accounts start with an EMPTY wallet. Money only ever enters the wallet
  *  through a real Razorpay top-up (see lib/razorpay.ts) or the one legit Rs29
@@ -129,37 +129,18 @@ async function readAccounts(): Promise<Record<string, Account>> {
   }
 }
 
-export async function signUpWithEmail(email: string, password: string, fullName: string, phone: string): Promise<void> {
-  const em = email.trim().toLowerCase();
-  const accounts = await readAccounts();
-  if (accounts[em]) throw new Error('An account with this email already exists. Please sign in.');
-  // Collision-free uid. The registry is keyed by the exact normalized email, so
-  // sign-in resolves the uid via accounts[em].uid and never re-derives it (a
-  // lossy email->slug would collapse a.b@x.com and a-b@x.com onto one account).
-  const uid = newId('ue');
-  accounts[em] = { uid, email: em, password, full_name: fullName.trim() || null, phone: phone.trim() || null };
-  await AsyncStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
-  await AsyncStorage.setItem(UID_KEY, uid);
-  currentUid = uid;
-  await putSingle<Profile>('profile', uid, {
-    id: uid,
-    full_name: fullName.trim() || null,
-    phone: phone.trim() || null,
-    email: em,
-  });
-  await putSingle<{ balance: number }>('wallet', uid, { balance: DEMO_WALLET_SEED });
-  emit();
+// RETIRED. Email/password auth is gone — the only supported flow is phone OTP,
+// which never stores a password. These stubs remain so the (now empty) registry
+// can still be PRUNED on account deletion (removeAccountEntry below), but they
+// can never again write a cleartext credential. The sign-in/sign-up routes are
+// redirects to the OTP screen, so nothing calls these; they throw defensively
+// in case a future deep link or refactor reaches them.
+export async function signUpWithEmail(_email: string, _password: string, _fullName: string, _phone: string): Promise<void> {
+  throw new Error('Email sign-up is no longer supported. Please sign in with your phone number.');
 }
 
-export async function signInWithEmail(email: string, password: string): Promise<void> {
-  const em = email.trim().toLowerCase();
-  const accounts = await readAccounts();
-  const acct = accounts[em];
-  if (!acct) throw new Error('No account found for this email. Please create one.');
-  if (acct.password !== password) throw new Error('Incorrect password. Please try again.');
-  await AsyncStorage.setItem(UID_KEY, acct.uid);
-  currentUid = acct.uid;
-  emit();
+export async function signInWithEmail(_email: string, _password: string): Promise<void> {
+  throw new Error('Email sign-in is no longer supported. Please sign in with your phone number.');
 }
 
 /**
