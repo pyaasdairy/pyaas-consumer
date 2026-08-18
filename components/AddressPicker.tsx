@@ -8,6 +8,7 @@ import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import { listAddresses, setDefaultAddress, type Address } from '../lib/api';
+import { getUserId } from '../lib/session';
 
 /**
  * SAVED-ADDRESS PICKER — the ordering flows show the member their saved
@@ -31,8 +32,11 @@ const hasPin = (a: Address) => {
 };
 
 // The last fetched rows outlive one open/close, so reopening paints the saved
-// addresses on the FIRST frame — the network pass only freshens them.
+// addresses on the FIRST frame — the network pass only freshens them. The cache
+// is tied to the session uid: after a sign-out/switch on a shared device the
+// previous member's addresses must never paint for the next account.
 let cachedRows: Address[] | null = null;
+let cachedForUid: string | null = null;
 
 export function AddressPicker({
   visible,
@@ -50,21 +54,34 @@ export function AddressPicker({
   embedded?: boolean;
 }) {
   const insets = useSafeAreaInsets();
-  const [rows, setRows] = useState<Address[]>(cachedRows ?? []);
+  // Start empty — the effect below re-paints the cache only after confirming it
+  // belongs to the CURRENT session uid (no cross-account first-frame flash).
+  const [rows, setRows] = useState<Address[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     let on = true;
     setBusyId(null);
-    if (cachedRows) setRows(cachedRows);
-    listAddresses()
-      .then((r) => {
-        const withPin = r.filter(hasPin);
-        cachedRows = withPin;
-        if (on) setRows(withPin);
-      })
-      .catch(() => { if (on && !cachedRows) setRows([]); });
+    (async () => {
+      const uid = await getUserId();
+      if (!on) return;
+      if (uid !== cachedForUid) { // account switched → the old rows are not ours
+        cachedRows = null;
+        cachedForUid = uid;
+        setRows([]);
+      } else if (cachedRows) {
+        setRows(cachedRows);
+      }
+      listAddresses()
+        .then((r) => {
+          const withPin = r.filter(hasPin);
+          cachedRows = withPin;
+          cachedForUid = uid;
+          if (on) setRows(withPin);
+        })
+        .catch(() => { if (on && !cachedRows) setRows([]); });
+    })();
     return () => { on = false; };
   }, [visible]);
 

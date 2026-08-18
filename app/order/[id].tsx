@@ -184,7 +184,7 @@ export default function OrderTracking() {
       // with baseUrl checkout.razorpay.com) — a redirect inside the WebView
       // must not be able to fake a success.
       const src = e.nativeEvent.url ?? '';
-      if (!/^https:\/\/[a-z0-9.-]*razorpay\.com(\/|$)/i.test(src)) return;
+      if (!/^https:\/\/(?:[a-z0-9-]+\.)*razorpay\.com(\/|$)/i.test(src)) return;
       const msg = JSON.parse(e.nativeEvent.data ?? '{}');
       if (msg.type === 'success' && order) {
         // Client success is a HINT, not proof — but for an instant COD order it

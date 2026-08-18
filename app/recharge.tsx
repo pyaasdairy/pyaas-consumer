@@ -270,7 +270,7 @@ export default function Recharge() {
     // {type:'success'} (crediting is server-verified regardless — this is
     // defense in depth).
     const src = e.nativeEvent.url ?? '';
-    if (!/^https:\/\/[a-z0-9.-]*razorpay\.com(\/|$)/i.test(src)) return;
+    if (!/^https:\/\/(?:[a-z0-9-]+\.)*razorpay\.com(\/|$)/i.test(src)) return;
     let msg: any;
     try { msg = JSON.parse(e.nativeEvent.data); } catch { return; }
     if (msg?.type === 'success') {
