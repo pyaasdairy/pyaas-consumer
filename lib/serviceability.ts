@@ -140,10 +140,11 @@ function outOfZone(distanceKm: number): Serviceability {
 }
 
 /**
- * Ask the backend whether we deliver to a point. Fail-open on no-backend
- * (offline / local demo) so the shop always renders — EXCEPT the launch
- * geofence, which is enforced in every mode: outside the zone is never
- * serviceable, backend or not.
+ * Ask the backend whether we deliver to a point. The BACKEND store zone is
+ * authoritative — a radius the store manager draws around the PYAAS store in
+ * the Saathi console (PUT /stores/{id}/zone) — so the served area changes from
+ * the console with NO app release. There is no client-side geofence hardcode.
+ * Fail-open only on no-backend (offline / local demo) so the shop still renders.
  */
 export async function getServiceability(point: CheckPoint): Promise<Serviceability> {
   const fullyServiceable = (): Serviceability => ({ serviceable: true, standard: true, instant: true, storeName: `PYAAS ${SERVICE_AREA.label}`, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null });
@@ -171,12 +172,11 @@ export async function getServiceability(point: CheckPoint): Promise<Serviceabili
       return fullyServiceable();
     }
   }
-  // Launch geofence FIRST. A resolved point outside the service area is out of
-  // zone, full stop — before any backend call or fail-open default.
-  if (point.lat != null && point.lng != null) {
-    const d = distanceKmBetween(SERVICE_AREA.lat, SERVICE_AREA.lng, point.lat, point.lng);
-    if (d > SERVICE_AREA.radiusKm) return outOfZone(d);
-  }
+  // NO client-side geofence. A resolved point falls straight through to the
+  // backend /serviceability below, which decides against the store zone (the
+  // store manager's radius around the PYAAS store). Out-of-zone points come
+  // back serviceable:false with the backend's "nearest store is N km away"
+  // reason — accurate and store-driven, not a client hardcode.
   if (!isBackendConfigured()) {
     return { serviceable: true, standard: true, instant: true, storeName: `PYAAS ${SERVICE_AREA.label}`, monsoonRupees: 0, instantClosed: false, instantResumesLabel: null, reason: null, distanceKm: null };
   }

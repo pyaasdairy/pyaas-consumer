@@ -99,7 +99,7 @@ type BackendCompliance = {
  * Field casing matches the backend exactly: overrides + additions use snake
  * `in_stock`/`photo_url`, while variants/physical use camelCase.
  */
-type OverrideView = { price?: number; in_stock?: boolean; hidden?: boolean };
+type OverrideView = { price?: number; mrp?: number; in_stock?: boolean; hidden?: boolean };
 type BackendVariant = {
   variantId?: string;
   label?: string;
@@ -157,6 +157,10 @@ export function overlayToPatches(res: CatalogResponse | null | undefined): Catal
       if (!id || !ov) continue;
       const patch: CatalogPatch = { id };
       if (typeof ov.price === 'number') patch.price = ov.price;
+      // ERP-mirrored MRP: an explicit 0 clears a stale bundled strikethrough
+      // (mergePatch adopts mrp >= 0 and the card hides the strike at 0), so an
+      // ERP price hike can never render under an out-of-date bundled MRP.
+      if (typeof ov.mrp === 'number') patch.mrp = ov.mrp;
       if (typeof ov.hidden === 'boolean') patch.hidden = ov.hidden;
       if (typeof ov.in_stock === 'boolean') patch.outOfStock = !ov.in_stock; // in_stock → outOfStock
       patches.push(patch);
