@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Modal, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -43,7 +44,7 @@ export function StartDatePicker({ value, minISO, onConfirm, onClose }: {
   }
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <SafeModal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Animated.View entering={FadeIn.duration(180)} style={{ flex: 1, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center', padding: spacing.lg }}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View entering={FadeInDown.duration(300)} style={{ width: '100%', maxWidth: 384, backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 14, ...shadow.card }}>
@@ -108,6 +109,6 @@ export function StartDatePicker({ value, minISO, onConfirm, onClose }: {
           </Tap>
         </Animated.View>
       </Animated.View>
-    </Modal>
+    </SafeModal>
   );
 }

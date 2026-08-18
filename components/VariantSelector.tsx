@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Modal } from 'react-native';
+import { View } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadow, rupee, tabular } from '../lib/theme';
 import { TextBody, TextSemi, Tap } from './ui';
@@ -85,7 +86,7 @@ function VariantDropdown({ variants, selectedId, onSelect, compact }: { variants
         <Ionicons name="chevron-down" size={compact ? 14 : 16} color={colors.flameDeep} />
       </Tap>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <SafeModal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Tap haptic={false} onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', padding: 28 }}>
           <View style={{ alignSelf: 'stretch', backgroundColor: colors.white, borderRadius: radius.lg, overflow: 'hidden', ...shadow.card }}>
             <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line }}>
@@ -114,7 +115,7 @@ function VariantDropdown({ variants, selectedId, onSelect, compact }: { variants
             })}
           </View>
         </Tap>
-      </Modal>
+      </SafeModal>
     </View>
   );
 }

@@ -188,10 +188,12 @@ function mockResult(orderId?: string): CheckoutResult {
 export async function openCheckout(params: CheckoutParams): Promise<CheckoutOutcome> {
   const native = loadNativeRazorpay();
   if (!native) {
-    // No native sheet in this runtime → mock success so the credit loop still
-    // completes end-to-end in dev. Real money never moves here (there is no
-    // gateway); the screen documents that a dev build + key unlock the sheet.
-    return { status: 'success', result: mockResult(params.orderId), mock: true };
+    // No native sheet in this runtime. In DEV, mock success so the credit loop
+    // still completes end-to-end (real money never moves — there is no
+    // gateway). In RELEASE this must fail plainly: a fabricated success from a
+    // payment API is a loaded footgun for any future caller.
+    if (__DEV__) return { status: 'success', result: mockResult(params.orderId), mock: true };
+    return { status: 'failed', error: 'Payment sheet unavailable in this build.' };
   }
   const options: Record<string, unknown> = {
     key: RAZORPAY_KEY_ID,

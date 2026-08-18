@@ -37,6 +37,78 @@ const UID_KEY = 'parag_current_uid';
 /** Demo OTP that signs in any number when there is no live SMS backend. */
 export const DEMO_OTP = '123456';
 
+// ── User id derivation ───────────────────────────────────────────────────────
+// The uid used to BE the phone number (`u_<10 digits>`), which leaked the
+// number into every AsyncStorage key name, backend query string and diag line.
+// New sessions get either the SERVER's own profile id (backend mode — correct
+// for server association by construction) or a random local id. A device-local
+// phone→uid index (phone stored only as a short hash) keeps repeat local
+// logins landing on the same account without a phone-derived key anywhere.
+const UID_INDEX_KEY = 'parag_uid_index';
+const LOGIN_PHONE_KEY = 'parag_login_phone';
+const LEGACY_UID_RE = /^u_\d{10}$/;
+
+function hash10(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/** Random local id. An IDENTIFIER, not a secret — collision odds on one device
+ *  are negligible and nothing authorizes off this value. */
+function newLocalUid(): string {
+  const rand = () => Math.random().toString(36).slice(2, 10);
+  return `usr_${Date.now().toString(36)}${rand()}${rand()}`;
+}
+
+async function readUidIndex(): Promise<Record<string, string>> {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(UID_INDEX_KEY)) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+async function writeUidIndexEntry(digits: string, uid: string): Promise<void> {
+  const idx = await readUidIndex();
+  idx[hash10(digits)] = uid;
+  await AsyncStorage.setItem(UID_INDEX_KEY, JSON.stringify(idx));
+}
+
+/** Copy every AsyncStorage row keyed by (or internally referencing) `fromUid`
+ *  to `toUid`, flip the session pointer, then delete the old rows. The
+ *  write-new → flip-pointer → delete-old order makes a crash at ANY step
+ *  re-runnable: the legacy pattern is still detected next launch and the
+ *  copies are idempotent overwrites. The phone VALUE (+91…) never matches the
+ *  `u_<digits>` token, so profile data itself is untouched. */
+async function migrateUidData(fromUid: string, toUid: string): Promise<void> {
+  try {
+    const { preserveReferralCode } = await import('./referrals');
+    await preserveReferralCode(fromUid, toUid);
+  } catch { /* code re-derives from the new uid if this misses */ }
+  const keys = await AsyncStorage.getAllKeys();
+  const affected = keys.filter((k) => k.includes(fromUid));
+  for (const k of affected) {
+    const v = await AsyncStorage.getItem(k);
+    if (v == null) continue;
+    await AsyncStorage.setItem(k.split(fromUid).join(toUid), v.split(fromUid).join(toUid));
+  }
+  await AsyncStorage.setItem(UID_KEY, toUid);
+  currentUid = toUid;
+  if (affected.length) await AsyncStorage.multiRemove(affected);
+  try {
+    const { linkDisclosureToAccount } = await import('./dataConsent');
+    await linkDisclosureToAccount(toUid);
+  } catch { /* best-effort consent audit trail */ }
+}
+
+/** The OTP-verified phone of the CURRENT login (device-scoped, last 10
+ *  digits). The Play-reviewer gate compares against THIS — never the editable
+ *  profile phone field, and no longer the uid shape. */
+export async function getLoginPhone(): Promise<string | null> {
+  return AsyncStorage.getItem(LOGIN_PHONE_KEY);
+}
+
 let currentUid: string | null = null;
 const listeners = new Set<() => void>();
 
@@ -51,6 +123,22 @@ function emit() {
 /** Load the persisted session on cold start. */
 export async function loadSession(): Promise<Session> {
   currentUid = await AsyncStorage.getItem(UID_KEY);
+  // One-time repair of the legacy phone-derived uid — LOCAL mode only. In
+  // backend mode the id must follow the SERVER's own profile id, which we only
+  // learn at the next OTP verify (signInWithPhone adopts it there); changing
+  // the id under a live server session on our own could orphan server rows.
+  if (currentUid && LEGACY_UID_RE.test(currentUid)) {
+    try {
+      const { isBackendConfigured } = await import('./apiClient');
+      if (!isBackendConfigured()) {
+        const oldUid = currentUid;
+        const digits = oldUid.slice(2);
+        const toUid = newLocalUid();
+        await migrateUidData(oldUid, toUid);
+        await writeUidIndexEntry(digits, toUid);
+      }
+    } catch { /* keep the legacy uid — never risk the member's data */ }
+  }
   return currentUid ? { user: { id: currentUid } } : null;
 }
 
@@ -76,9 +164,28 @@ export async function getUserId(): Promise<string | null> {
  *  server-known `fullName` (from OTP verify) so a RETURNING member's name is
  *  written BEFORE the emit — the router gate then never even flashes the
  *  complete-profile step on a fresh device. */
-export async function signInWithPhone(phone: string, fullName?: string | null): Promise<void> {
+export async function signInWithPhone(phone: string, fullName?: string | null, serverId?: string | null): Promise<void> {
   const digits = phone.replace(/\D/g, '').slice(-10);
-  const uid = `u_${digits}`;
+  // Device-scoped record of the OTP-verified login phone (reviewer gate reads
+  // this; it is not reachable from profile-edit).
+  await AsyncStorage.setItem(LOGIN_PHONE_KEY, digits);
+  const legacyUid = `u_${digits}`;
+  let uid: string;
+  if (serverId && typeof serverId === 'string' && serverId.trim()) {
+    // Backend mode: the server's own profile id IS the account identity.
+    uid = serverId.trim();
+  } else {
+    const idx = await readUidIndex();
+    uid = idx[hash10(digits)] ?? '';
+    if (!uid) uid = newLocalUid(); // never a phone-derived id again
+  }
+  // Adopt any legacy phone-keyed rows for this phone exactly once (covers
+  // both fresh random ids and server ids on updated installs).
+  if (uid !== legacyUid) {
+    const legacy = await getSingle<Profile>('profile', legacyUid);
+    if (legacy) await migrateUidData(legacyUid, uid);
+  }
+  await writeUidIndexEntry(digits, uid);
   await AsyncStorage.setItem(UID_KEY, uid);
   currentUid = uid;
   const nm = fullName?.trim() || null;
@@ -163,8 +270,23 @@ export async function removeAccountEntry(uid: string): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  const uid = currentUid ?? (await AsyncStorage.getItem(UID_KEY));
   await AsyncStorage.removeItem(UID_KEY);
+  await AsyncStorage.removeItem(LOGIN_PHONE_KEY);
   currentUid = null;
+  // Shared/resold devices must not retain the previous member's phone, exact
+  // home coordinates and spend history after sign-out. In backend mode the
+  // server is the source of truth, so the local rows are just cache — purge
+  // them. In LOCAL mode the rows ARE the data (same phone → same uid brings
+  // them back on re-login), so they stay.
+  try {
+    const { isBackendConfigured } = await import('./apiClient');
+    if (uid && isBackendConfigured()) {
+      const keys = await AsyncStorage.getAllKeys();
+      const doomed = keys.filter((k) => k.includes(uid));
+      if (doomed.length) await AsyncStorage.multiRemove(doomed);
+    }
+  } catch { /* best-effort — the uid pointer is already cleared above */ }
   // Also wipe the JWT access/refresh tokens from SecureStore — otherwise they
   // linger after sign-out and the next account on a shared device inherits the
   // previous session. Dynamic import avoids a session↔apiClient require cycle.

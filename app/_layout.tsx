@@ -166,7 +166,6 @@ function RootNavigator() {
         <Stack.Screen name="product/[id]" options={{ presentation: 'card' }} />
         <Stack.Screen name="cart" options={{ presentation: 'card' }} />
         <Stack.Screen name="recharge" options={{ presentation: 'card' }} />
-        <Stack.Screen name="payment" options={{ presentation: 'card' }} />
         <Stack.Screen name="search" options={{ presentation: 'card', animation: 'fade' }} />
         <Stack.Screen name="order-confirmed" options={{ presentation: 'card', gestureEnabled: false }} />
         <Stack.Screen name="address" options={{ presentation: 'modal' }} />

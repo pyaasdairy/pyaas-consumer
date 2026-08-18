@@ -61,7 +61,9 @@ export const WHATSAPP_URL: string = HAS_WHATSAPP ? `https://wa.me/${WHATSAPP_NUM
 export const CARE_EMAIL = 'support@pyaasdairy.com';
 
 /** Named Grievance Officer under the DPDP Act, per Privacy Policy §21. */
-export const GRIEVANCE_OFFICER = 'Amiya Sharma';
+export const GRIEVANCE_OFFICER = 'Amiya Sinha';
+/** Dedicated grievance inbox — distinct from general support. */
+export const GRIEVANCE_EMAIL = 'grievance@pyaasdairy.com';
 export const SITE_URL = 'https://www.pyaasdairy.com';
 
 // ─────────────────────────────────────────────────────────────────────────────

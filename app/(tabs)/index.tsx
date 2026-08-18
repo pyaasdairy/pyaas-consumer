@@ -3,8 +3,8 @@ import { View, ScrollView, RefreshControl } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { useHideTabBarOnScroll } from '../../lib/navVisibility';
+import Animated, { FadeInDown, FadeOutDown, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { useHideTabBarOnScroll, navHidden } from '../../lib/navVisibility';
 import { colors, radius, spacing, shadow, rupee } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../../components/ui';
 import { ProductCard } from '../../components/ProductCard';
@@ -639,13 +639,39 @@ export default function Shop() {
  * carries a ⚡ 20-minute mini-badge. Writes the shared delivery-mode store so
  * the product page and checkout honour the same mode.
  */
+const TOGGLE_PAD = 4;
+const TOGGLE_GAP = 4;
+
 function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabel }: { instant: boolean; instantServed: boolean; instantClosed?: boolean; resumesLabel?: string | null }) {
   // Instant segment disables when the address isn't served OR the store is shut
   // for the night; the note below explains which. Morning always stays available.
   const closedForNight = !!instantClosed;
+  // Sliding thumb: ONE pink pill that springs between the two segments on the
+  // UI thread, instead of each segment repainting its own background (which
+  // read as a bland instant swap). Segments stay transparent; the thumb sits
+  // behind them and carries the fill + shadow.
+  const [trackW, setTrackW] = useState(0);
+  const activeIdx = instant && instantServed ? 1 : 0;
+  const pos = useSharedValue(activeIdx);
+  useEffect(() => {
+    pos.value = withSpring(activeIdx, { damping: 19, stiffness: 240, mass: 0.7 });
+  }, [activeIdx, pos]);
+  const thumbW = trackW > 0 ? (trackW - TOGGLE_PAD * 2 - TOGGLE_GAP) / 2 : 0;
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pos.value * (thumbW + TOGGLE_GAP) }],
+  }));
   return (
     <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, padding: 4, gap: 4, ...shadow.soft }}>
+      <View
+        onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+        style={{ flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, padding: TOGGLE_PAD, gap: TOGGLE_GAP, ...shadow.soft }}
+      >
+        {thumbW > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[{ position: 'absolute', left: TOGGLE_PAD, top: TOGGLE_PAD, bottom: TOGGLE_PAD, width: thumbW, borderRadius: radius.pill, backgroundColor: colors.action, ...shadow.soft }, thumbStyle]}
+          />
+        ) : null}
         <ModeSegment
           active={!instant}
           onPress={() => setDeliveryMode('morning')}
@@ -684,7 +710,9 @@ function ModeSegment({ active, onPress, icon, label, sub, badge, a11yLabel, disa
       accessibilityRole="button"
       accessibilityState={{ selected: active, disabled: !!disabled }}
       accessibilityLabel={a11yLabel ?? label}
-      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, backgroundColor: active ? colors.action : 'transparent', opacity: disabled ? 0.42 : 1, ...(active ? shadow.soft : null) }}
+      // The sliding thumb behind the row carries the active fill + shadow —
+      // segments stay transparent so the pill can glide between them.
+      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, opacity: disabled ? 0.42 : 1 }}
     >
       <Ionicons name={icon} size={15} color={active ? colors.onAction : colors.flameDeep} />
       <View style={{ alignItems: 'flex-start' }}>
@@ -714,9 +742,22 @@ function ViewCartBar({ bottomClearance }: { bottomClearance: number }) {
   const mode = useDeliveryMode();
   const lane = mode === 'instant' ? 'instant' : 'morning';
   const count = useCart((s) => s.lines.filter((l) => l.lane === lane).reduce((n, l) => n + l.qty, 0));
+  // Rides the SAME navHidden signal as the tab bar + BottomBar, so the whole
+  // bottom cluster leaves and returns together on scroll — a pill floating
+  // alone over the feed while the rest of the chrome hides reads as detached.
+  // navHidden is driven by withTiming on the UI thread; this style only READS
+  // it, so hide/reveal never touches the JS thread mid-scroll.
+  const hideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: navHidden.value * (bottomClearance + 60) }],
+    opacity: 1 - navHidden.value,
+  }));
   if (count === 0) return null;
   return (
-    <View style={{ position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: bottomClearance - 6 }}>
+    <Animated.View
+      entering={FadeInDown.duration(320)}
+      exiting={FadeOutDown.duration(200)}
+      style={[{ position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: bottomClearance - 6 }, hideStyle]}
+    >
       <Tap onPress={() => { haptics.press(); router.push('/cart'); }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameDeep, borderRadius: radius.pill, paddingHorizontal: 18, height: 52, ...shadow.card }}>
           <Ionicons name="bag-handle" size={18} color={colors.white} />
@@ -727,6 +768,6 @@ function ViewCartBar({ bottomClearance }: { bottomClearance: number }) {
           <Ionicons name="chevron-forward" size={16} color={colors.white} />
         </View>
       </Tap>
-    </View>
+    </Animated.View>
   );
 }

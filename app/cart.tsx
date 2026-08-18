@@ -264,12 +264,15 @@ export default function Cart() {
     haptics.success();
   }
 
-  async function place() {
+  async function place(saved?: Address) {
     if (placing || orderable.length === 0 || blocked) return;
     // 1) ADDRESS FIRST — a saved address with its map pin, before ANY wallet
-    //    ask. No pinned address → capture it, then resume this flow.
-    const addrRows = await listAddresses().catch(() => [] as Address[]);
-    const savedAddr = addrRows.find((a) => a.is_default && hasPin(a)) ?? addrRows.find(hasPin);
+    //    ask. No pinned address → capture it, then resume this flow. A resume
+    //    from the capture sheet passes the JUST-SAVED address in — re-fetching
+    //    here raced the backend write and could bounce straight back into the
+    //    capture sheet mid-dismissal (the black-screen modal race).
+    const addrRows = saved ? [saved] : await listAddresses().catch(() => [] as Address[]);
+    const savedAddr = saved ?? (addrRows.find((a) => a.is_default && hasPin(a)) ?? addrRows.find(hasPin));
     if (!savedAddr) { setCapOpen(true); return; }
     // 2) FUNDS SECOND — unlock target, then order cover.
     if (locked) { goUnlock(); return; }
@@ -605,16 +608,20 @@ export default function Cart() {
 
         {deliverTo ? (
           <Tap haptic={false} onPress={() => { haptics.select(); setAddrPickOpen(true); }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
-              <Ionicons name="location" size={14} color={colors.flameDeep} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.wash, borderRadius: radius.md, paddingLeft: spacing.md, paddingRight: 6, paddingVertical: 6 }}>
+              <Ionicons name="location" size={15} color={colors.flameDeep} />
               <TextBody style={{ flex: 1, fontSize: 12.5 }} numberOfLines={1} color={colors.ink}>
                 Deliver to {deliverTo.label} · {deliverTo.line1}
               </TextBody>
-              <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }}>Change</TextMed>
+              {/* A filled pill, not bare 12.5px text — the address switcher is a
+                  primary action here and was nearly invisible. */}
+              <View style={{ backgroundColor: colors.flameDeep, borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 8 }}>
+                <TextSemi color={colors.white} style={{ fontSize: 13 }}>Change</TextSemi>
+              </View>
             </View>
           </Tap>
         ) : null}
-        <Tap onPress={blocked ? undefined : needsAddr ? () => { haptics.press(); setCapOpen(true); } : locked ? goUnlock : short > 0 ? goRecharge : isInstant ? () => { void openInstantSheet(); } : place} disabled={placing || blocked || orderable.length === 0}>
+        <Tap onPress={blocked ? undefined : needsAddr ? () => { haptics.press(); setCapOpen(true); } : locked ? goUnlock : short > 0 ? goRecharge : isInstant ? () => { void openInstantSheet(); } : () => { void place(); }} disabled={placing || blocked || orderable.length === 0}>
           <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: blocked || orderable.length === 0 ? colors.inkMute : colors.flameDeep, height: 56, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: placing ? 0.85 : 1, ...shadow.card }}>
             {placing ? <ActivityIndicator color={colors.white} /> : null}
             <TextSemi color={colors.white} style={{ fontSize: 16.5, ...tabular }}>
@@ -647,9 +654,17 @@ export default function Cart() {
       />
 
       <AddressPicker
+        embedded
         visible={addrPickOpen}
         onClose={() => setAddrPickOpen(false)}
-        onPicked={() => { setAddrPickOpen(false); recheckAddr(); }}
+        onPicked={(a) => {
+          setAddrPickOpen(false);
+          // Adopt the picked row immediately — recheckAddr still re-derives
+          // from the server, but the header must not show the OLD address for
+          // the round-trip it takes.
+          setDeliverTo(a);
+          recheckAddr();
+        }}
         onAddNew={() => { setAddrPickOpen(false); setCapOpen(true); }}
       />
 
@@ -658,10 +673,12 @@ export default function Cart() {
       <AddressCaptureSheet
         visible={capOpen}
         onClose={() => setCapOpen(false)}
-        onSaved={() => {
+        onSaved={(a, c) => {
           setCapOpen(false);
           setNeedsAddr(false);
-          void place();
+          // Resume with the just-saved, known-pinned address — never re-fetch
+          // while the capture sheet is still dismissing.
+          void place(c ? a : undefined);
         }}
       />
     </View>

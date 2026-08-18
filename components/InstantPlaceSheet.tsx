@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Modal, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing, cancelAnimation } from 'react-native-reanimated';
@@ -96,7 +97,7 @@ export function InstantPlaceSheet({ visible, method, total, addressLabel, addres
   const fillStyle = useAnimatedStyle(() => ({ width: `${fill.value * 100}%` }));
 
   return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="slide" onRequestClose={cancel}>
+    <SafeModal visible={visible} transparent statusBarTranslucent animationType="slide" onRequestClose={cancel}>
       {/* Backdrop tap = cancel. Cancelling is the safe direction; placing never is. */}
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'flex-end' }} onPress={cancel}>
         <Pressable onPress={() => { /* swallow taps inside the card */ }}>
@@ -159,13 +160,15 @@ export function InstantPlaceSheet({ visible, method, total, addressLabel, addres
                 {method === 'cod' ? (
                   <Animated.View style={[{ position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.flameDeep }, fillStyle]} />
                 ) : null}
+                {/* No visible countdown digits — the pill's fill IS the timer.
+                    The accessibility label keeps announcing the seconds: a
+                    screen-reader user can't see the fill, and an auto-place
+                    they weren't told about is the dark pattern this sheet
+                    exists to avoid. */}
                 <View style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
                   <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>
                     {method === 'wallet' ? `Place and pay ${rupee(total)}` : 'Place order now'}
                   </TextSemi>
-                  {method === 'cod' ? (
-                    <TextMed color={colors.white} style={{ fontSize: 13, opacity: 0.85 }}>· {secondsLeft}s</TextMed>
-                  ) : null}
                 </View>
               </View>
             </Tap>
@@ -176,6 +179,6 @@ export function InstantPlaceSheet({ visible, method, total, addressLabel, addres
           </View>
         </Pressable>
       </Pressable>
-    </Modal>
+    </SafeModal>
   );
 }

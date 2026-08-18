@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, Modal, TextInput, Keyboard, Linking } from 'react-native';
+import { View, StyleSheet, Dimensions, TextInput, Keyboard, Linking } from 'react-native';
+import { SafeModal } from '../../components/SafeModal';
 import { CameraView, useCameraPermissions, type BarcodeType } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -71,7 +72,7 @@ export default function Traceability() {
   }, [code, open]);
 
   const enterModal = (
-    <Modal visible={manual} transparent animationType="fade" onRequestClose={() => setManual(false)}>
+    <SafeModal visible={manual} transparent animationType="fade" onRequestClose={() => setManual(false)}>
       <View style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'center', padding: spacing.xl }}>
         <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: spacing.md }}>
           <Serif style={{ fontSize: 22 }}>Enter batch code</Serif>
@@ -93,7 +94,7 @@ export default function Traceability() {
           </Tap>
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 
   if (!permission || !permission.granted) {
@@ -149,7 +150,7 @@ export default function Traceability() {
 
         {/* Bottom mask + controls */}
         <View style={{ flex: 1.7, backgroundColor: MASK, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 22, paddingBottom: insets.bottom + 24 }}>
-          <Tap onPress={() => setTorch((t) => !t)} style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: torch ? colors.white : 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }}>
+          <Tap onPress={() => setTorch((t) => !t)} accessibilityLabel={torch ? 'Turn torch off' : 'Turn torch on'} accessibilityState={{ selected: torch }} style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: torch ? colors.white : 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }}>
             <Ionicons name={torch ? 'flashlight' : 'flashlight-outline'} size={23} color={torch ? colors.flameDeep : colors.white} />
           </Tap>
           <TextBody color="rgba(255,255,255,0.6)" style={{ fontSize: 11.5, marginTop: 8 }}>{torch ? 'Torch on' : 'Tap for torch'}</TextBody>

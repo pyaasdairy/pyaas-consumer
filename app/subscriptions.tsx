@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, ScrollView, Modal } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, ScrollView } from 'react-native';
+import { SafeModal } from '../components/SafeModal';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,6 +35,10 @@ export default function Subscriptions() {
   const [lowBalance, setLowBalance] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmConfig | null>(null);
   const [detailSub, setDetailSub] = useState<Subscription | null>(null);
+  // Latch the last non-null detail so the sheet keeps its content painted
+  // while SafeModal animates it away (visible flips false before unmount).
+  const lastDetail = useRef<Subscription | null>(null);
+  if (detailSub) lastDetail.current = detailSub;
   const refreshWallet = useWallet((s) => s.refresh);
 
   const load = useCallback(async () => {
@@ -230,8 +235,13 @@ export default function Subscriptions() {
       {/* Subscription detail / manage sheet — opens on card tap so the row is never
           a dead end. Shows ACTIVE, or PAUSED with the right reason (low wallet ->
           recharge, else -> resume), plus vacation + cancel. */}
-      {detailSub ? (() => {
-        const d = detailSub;
+      {(() => {
+        // Always-mounted, visibility-driven: unmounting a presented Modal is an
+        // unserialized native dismissal that races the ConfirmSheet's present
+        // (cancelSub does close() + setConfirm in one commit) — the SafeModal
+        // queue turns that into dismiss-fully, then present.
+        const d = detailSub ?? lastDetail.current;
+        if (!d) return null;
         const p = resolveProduct(d.product_id);
         const cost = perDeliveryCost(d);
         const bal = useWallet.getState().balance;
@@ -285,7 +295,7 @@ export default function Subscriptions() {
           finally { setBusy(false); }
         };
         return (
-          <Modal visible transparent animationType="slide" onRequestClose={close}>
+          <SafeModal visible={!!detailSub} transparent animationType="slide" onRequestClose={close}>
             <View style={{ flex: 1, justifyContent: 'flex-end' }}>
               <Tap haptic={false} onPress={close} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }}><View /></Tap>
               <View style={{ backgroundColor: colors.milk, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: insets.bottom + spacing.lg, gap: spacing.md }}>
@@ -358,9 +368,9 @@ export default function Subscriptions() {
                 </Tap>
               </View>
             </View>
-          </Modal>
+          </SafeModal>
         );
-      })() : null}
+      })()}
 
       <ConfirmSheet config={confirm} onDismiss={() => setConfirm(null)} />
     </View>

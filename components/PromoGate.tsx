@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { View, Modal } from 'react-native';
+import { View } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
@@ -202,9 +203,11 @@ function PromoModal({
   body: string;
   cta: string;
 }) {
-  if (!visible) return null;
+  // Always-mounted, visibility-driven: a focus re-evaluation that flips one
+  // promo off and another on in the same commit becomes a queued
+  // dismiss-then-present instead of an unserialized native swap.
   return (
-    <Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
+    <SafeModal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
       <Animated.View
         entering={FadeIn.duration(200)}
         style={{ flex: 1, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center', padding: spacing.lg }}
@@ -241,6 +244,6 @@ function PromoModal({
           </View>
         </Animated.View>
       </Animated.View>
-    </Modal>
+    </SafeModal>
   );
 }

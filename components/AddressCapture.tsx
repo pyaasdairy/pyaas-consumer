@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Modal, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Keyboard, Platform, useWindowDimensions } from 'react-native';
+import { View, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Keyboard, Platform, useWindowDimensions } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +33,25 @@ import { useAuth } from '../lib/auth';
  * rider, the words route a human) and marks the member's delivery location
  * exact, then hands the saved Address back to the caller.
  */
+
+/** The Locality/Area field sits directly ABOVE the form's own City and Pincode
+ *  fields, so the reverse-geocode label must shed those two parts before it
+ *  prefills — otherwise every capture reads "…, Lucknow 226030" over City
+ *  "Lucknow" / Pincode "226030". Drops comma-segments that are exactly the
+ *  city and scrubs any 6-digit pincode; everything else passes through. */
+function localityFromLabel(label: string, city?: string | null, pincode?: string | null): string {
+  const cityLc = city?.trim().toLowerCase();
+  return label
+    .split(',')
+    .map((part) => {
+      let p = part.replace(/\b\d{6}\b/g, ' ');
+      if (pincode) p = p.split(pincode).join(' ');
+      return p.replace(/\s{2,}/g, ' ').trim();
+    })
+    .filter((p) => p.length > 0 && (!cityLc || p.toLowerCase() !== cityLc))
+    .join(', ');
+}
+
 export function AddressCaptureSheet({
   visible,
   onClose,
@@ -39,7 +59,10 @@ export function AddressCaptureSheet({
 }: {
   visible: boolean;
   onClose: () => void;
-  onSaved: (address: Address) => void;
+  /** The saved address AND the pin it was saved with — callers that resume a
+   *  gate chain must consume these instead of re-fetching, so a lagging or
+   *  failed coords write can never send them back into the capture loop. */
+  onSaved: (address: Address, coords: Coords | null) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
@@ -153,10 +176,14 @@ export function AddressCaptureSheet({
     if (g.city) setCity(g.city);
     if (g.pincode) setPincode(g.pincode);
     // Area prefills from the pin's own neighbourhood label; stays editable and
-    // never overwrites something the member already typed.
+    // never overwrites something the member already typed. The label is
+    // stripped of city + pincode first — those live in their own fields right
+    // below, and "Plumeria Avenue, Sushant Golf City, Lucknow 226030" above
+    // City "Lucknow" and Pincode "226030" reads as the form repeating itself.
     try {
       const label = await placeLabelFromCoords(c);
-      if (label) setLocality((cur) => cur || label);
+      const area = label ? localityFromLabel(label, g.city, g.pincode) : '';
+      if (area) setLocality((cur) => cur || area);
     } catch { /* best-effort */ }
   }
 
@@ -166,16 +193,11 @@ export function AddressCaptureSheet({
     if (!coords) onClose();
   }
 
-  // Banner tap must ALWAYS present the map. If the banner was tappable while
-  // mapOpen is already true, the nested Modal failed to present (Android race)
-  // — flip false→true to force a fresh presentation.
+  // Banner tap must ALWAYS present the map. SafeModal's sequencer retries a
+  // swallowed present on its own (watchdog), so the old flip-false-then-true
+  // bounce — itself a modal race — is gone: setting the target true is enough.
   function openMap() {
-    if (mapOpen) {
-      setMapOpen(false);
-      setTimeout(() => setMapOpen(true), 60);
-    } else {
-      setMapOpen(true);
-    }
+    setMapOpen(true);
   }
 
   // "Add a door photo" opens the CAMERA (that's what the label promises); the
@@ -250,7 +272,7 @@ export function AddressCaptureSheet({
         try { await useUserLocation.getState().setFromAddress(city.trim(), coords, true); } catch { /* non-fatal */ }
       }
       haptics.confirm();
-      onSaved(created);
+      onSaved(created, coords);
     } catch (e: any) {
       setErr(e?.message ?? 'Could not save the address. Please try again.');
     } finally {
@@ -259,7 +281,7 @@ export function AddressCaptureSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose} presentationStyle="fullScreen" onShow={() => setMapOpen(true)}>
+    <SafeModal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose} presentationStyle="fullScreen" onShow={() => setMapOpen(true)}>
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.milk }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.line }}>
@@ -405,7 +427,7 @@ export function AddressCaptureSheet({
 
         <MapPicker visible={mapOpen} initial={coords} onClose={onMapClose} onConfirm={onMapConfirm} />
       </KeyboardAvoidingView>
-    </Modal>
+    </SafeModal>
   );
 }
 

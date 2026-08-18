@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, View } from 'react-native';
+import { View } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, shadow } from '../lib/theme';
@@ -24,7 +25,7 @@ export type ConfirmConfig = {
 export function ConfirmSheet({ config, onDismiss }: { config: ConfirmConfig | null; onDismiss: () => void }) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={!!config} transparent animationType="slide" onRequestClose={onDismiss}>
+    <SafeModal visible={!!config} transparent animationType="slide" onRequestClose={onDismiss}>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Tap haptic={false} onPress={onDismiss} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(46,35,41,0.45)' }}>
           <View />
@@ -57,6 +58,6 @@ export function ConfirmSheet({ config, onDismiss }: { config: ConfirmConfig | nu
           </View>
         ) : null}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }

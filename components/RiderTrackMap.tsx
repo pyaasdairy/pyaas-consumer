@@ -22,10 +22,20 @@ import { LEAFLET_CSS, LEAFLET_JS } from './leafletAssets';
  * now no map, just the honest "not shared yet" state.
  */
 function mapHtml(home: Coords | null, rider: Coords | null, origin: Coords | null, originLabel: string): string {
-  const homeJs = home ? `[${home.lat},${home.lng}]` : 'null';
-  const riderJs = rider ? `[${rider.lat},${rider.lng}]` : 'null';
-  const originJs = origin ? `[${origin.lat},${origin.lng}]` : 'null';
-  const originLabelJs = JSON.stringify(originLabel);
+  // Everything below is INTERPOLATED INTO SCRIPT running in the WebView, so
+  // nothing may pass through unless it is provably a finite number — a backend
+  // that ever returned a string here would otherwise become script injection
+  // in a page that holds the member's home coordinates.
+  const pt = (c: Coords | null) => {
+    const la = Number(c?.lat), ln = Number(c?.lng);
+    return Number.isFinite(la) && Number.isFinite(ln) ? `[${la},${ln}]` : 'null';
+  };
+  const homeJs = pt(home);
+  const riderJs = pt(rider);
+  const originJs = pt(origin);
+  // JSON.stringify escapes quotes but NOT '<' — and this string lands in
+  // divIcon innerHTML. Escape it so markup in a store label can never run.
+  const originLabelJs = JSON.stringify(originLabel).replace(/</g, '\\u003c');
   return `<!DOCTYPE html><html><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
@@ -167,7 +177,10 @@ export function RiderTrackMap({
   // point to the map without reloading the WebView.
   useEffect(() => {
     if (!readyRef.current || riderLat == null || riderLng == null) return;
-    webRef.current?.injectJavaScript(`window.__setRider && window.__setRider(${riderLat},${riderLng}); true;`);
+    // Runtime numeric coercion before injection (same reason as mapHtml).
+    const la = Number(riderLat), ln = Number(riderLng);
+    if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
+    webRef.current?.injectJavaScript(`window.__setRider && window.__setRider(${la},${ln}); true;`);
   }, [riderLat, riderLng]);
 
   const hasOrigin = hasOriginPt;

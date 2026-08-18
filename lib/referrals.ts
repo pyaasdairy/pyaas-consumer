@@ -40,10 +40,23 @@ function codeFromUid(uid: string): string {
   return ('PG' + body + 'XXXX').slice(0, 6);
 }
 
-/** The signed-in user's shareable referral code (deterministic, offline-safe). */
+/** Carry a member's code across a uid migration: codes are derived from the
+ *  uid, so without this a migrated account would silently mint a NEW code and
+ *  every previously shared one would stop attributing. Stored codes win over
+ *  derivation from then on. */
+export async function preserveReferralCode(fromUid: string, toUid: string): Promise<void> {
+  const stored = await getSingle<{ code: string }>('referral_code', fromUid);
+  const code = stored?.code ?? codeFromUid(fromUid);
+  await putSingle('referral_code', toUid, { code });
+}
+
+/** The signed-in user's shareable referral code (deterministic, offline-safe;
+ *  a stored code — e.g. carried over a uid migration — takes precedence). */
 export async function getReferralCode(): Promise<string> {
   const uid = await getUserId();
-  return uid ? codeFromUid(uid) : '';
+  if (!uid) return '';
+  const stored = await getSingle<{ code: string }>('referral_code', uid);
+  return stored?.code ?? codeFromUid(uid);
 }
 
 // ── Reward ledger ────────────────────────────────────────────────────────────

@@ -10,9 +10,6 @@ import {
   TextInput,
   TextInputProps,
   StyleSheet,
-  Platform,
-  Keyboard,
-  InputAccessoryView,
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { fireHaptic, type HapticWeight } from '../lib/haptics';
@@ -24,18 +21,24 @@ import { spring } from '../lib/motion';
 // fontWeight here (it would faux-bold on iOS / be ignored on Android).
 type TProps = TextProps & { color?: string };
 
+// OS font scaling stays ON but is CAPPED at 1.4×: the layout is built on
+// fixed-height buttons/cards (54-58pt CTAs, the 200pt membership card), and
+// uncapped accessibility sizes clip labels inside them. 1.4× keeps large-type
+// users meaningfully larger without breaking any fixed box.
+const MAX_FONT_SCALE = 1.4;
+
 export function Serif({ style, color, ...p }: TProps) {
   // Display / headings / prices - Bricolage Grotesque (Bold).
-  return <Text {...p} style={[{ fontFamily: fonts.serif, color: color ?? colors.ink }, style]} />;
+  return <Text maxFontSizeMultiplier={MAX_FONT_SCALE} {...p} style={[{ fontFamily: fonts.serif, color: color ?? colors.ink }, style]} />;
 }
 export function TextBody({ style, color, ...p }: TProps) {
-  return <Text {...p} style={[{ fontFamily: fonts.sans, color: color ?? colors.inkSoft, fontSize: 15 }, style]} />;
+  return <Text maxFontSizeMultiplier={MAX_FONT_SCALE} {...p} style={[{ fontFamily: fonts.sans, color: color ?? colors.inkSoft, fontSize: 15 }, style]} />;
 }
 export function TextMed({ style, color, ...p }: TProps) {
-  return <Text {...p} style={[{ fontFamily: fonts.sansMed, color: color ?? colors.ink, fontSize: 15 }, style]} />;
+  return <Text maxFontSizeMultiplier={MAX_FONT_SCALE} {...p} style={[{ fontFamily: fonts.sansMed, color: color ?? colors.ink, fontSize: 15 }, style]} />;
 }
 export function TextSemi({ style, color, ...p }: TProps) {
-  return <Text {...p} style={[{ fontFamily: fonts.sansSemi, color: color ?? colors.ink, fontSize: 15 }, style]} />;
+  return <Text maxFontSizeMultiplier={MAX_FONT_SCALE} {...p} style={[{ fontFamily: fonts.sansSemi, color: color ?? colors.ink, fontSize: 15 }, style]} />;
 }
 
 // ── Pressable that scales on press (the "uber" tactile feel) ──────────────────
@@ -54,6 +57,7 @@ export function Tap({
   const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
   return (
     <AnimatedPressable
+      accessibilityRole="button"
       {...p}
       onPressIn={() => {
         s.value = withSpring(scaleTo, spring.press);
@@ -196,64 +200,18 @@ export function Field({
       {label ? <TextMed color={colors.inkSoft} style={{ fontSize: 13.5 }}>{label}</TextMed> : null}
       <TextInput
         placeholderTextColor={colors.inkMute}
-        inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
         style={[styles.field, style]}
         {...p}
+        // "done" gives every keyboard an explicit dismiss affordance: iOS
+        // number/phone pads get the native Done toolbar above the keyboard
+        // (they have no return key at all), text keyboards a "done" return
+        // key that blurs on submit, Android a Done IME action key. A shared
+        // InputAccessoryView cannot do this — on Fabric it pairs with exactly
+        // ONE TextInput (first DFS match), and tagging an input with an
+        // accessory ID also disables the built-in Done toolbar. Multiline
+        // fields keep their Enter key for newlines.
+        returnKeyType={p.returnKeyType ?? (p.multiline ? undefined : 'done')}
       />
-    </View>
-  );
-}
-
-// ── Keyboard "Done" bar ────────────────────────────────────────────────────────
-// iOS keyboards (phone-pad and number-pad especially) have no key that
-// dismisses them, so every Field references this accessory ID and screens mount
-// <KeyboardDoneBar /> to attach a native bar with a Done button above the
-// keyboard. On screens that don't mount it, inputs behave exactly as before.
-// Android's window resizes under the keyboard (softwareKeyboardLayoutMode
-// "resize"), so there the same strip is pinned to the shrunken window's bottom
-// edge while the keyboard is up — the mounting screen's root view must fill the
-// window for that anchor to land above the keyboard.
-export const KB_DONE_ID = 'pyaas-kb-done';
-
-function DoneStrip() {
-  return (
-    <View style={styles.kbBar}>
-      <Pressable
-        onPress={() => {
-          fireHaptic('light');
-          Keyboard.dismiss();
-        }}
-        hitSlop={8}
-        style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1, paddingHorizontal: spacing.lg, paddingVertical: 11 })}
-      >
-        <Text style={{ fontFamily: fonts.sansBold, fontSize: 15.5, color: colors.action }}>Done</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-export function KeyboardDoneBar() {
-  const [kbUp, setKbUp] = React.useState(false);
-  React.useEffect(() => {
-    if (Platform.OS === 'ios') return;
-    const show = Keyboard.addListener('keyboardDidShow', () => setKbUp(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKbUp(false));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-  if (Platform.OS === 'ios') {
-    return (
-      <InputAccessoryView nativeID={KB_DONE_ID}>
-        <DoneStrip />
-      </InputAccessoryView>
-    );
-  }
-  if (!kbUp) return null;
-  return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
-      <DoneStrip />
     </View>
   );
 }
@@ -354,12 +312,4 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   stepGlyph: { fontFamily: fonts.sansSemi, fontWeight: '600' as const, fontSize: 18, color: colors.flameDeep, lineHeight: 22 },
-  kbBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.line,
-  },
 });

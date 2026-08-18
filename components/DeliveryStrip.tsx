@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, ScrollView, Modal, Pressable } from 'react-native';
+import { View, ScrollView, Pressable } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -135,7 +136,7 @@ export function DeliveryStrip() {
       </Animated.View>
 
       {/* Product picker · the user chooses what to subscribe to (no preselected SKU) */}
-      <Modal visible={picking} transparent animationType="slide" onRequestClose={() => setPicking(false)}>
+      <SafeModal visible={picking} transparent animationType="slide" onRequestClose={() => setPicking(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(20,10,16,0.45)' }} onPress={() => setPicking(false)} />
         <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.milk, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, paddingTop: 8, paddingBottom: insets.bottom + 12, maxHeight: '78%' }}>
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.line, marginBottom: 10 }} />
@@ -164,7 +165,7 @@ export function DeliveryStrip() {
             ))}
           </ScrollView>
         </View>
-      </Modal>
+      </SafeModal>
     </View>
   );
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
-import { View, Modal, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Image } from 'expo-image';
 import Animated, { Easing, FadeIn, FadeInDown, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming, ZoomIn } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -33,7 +34,7 @@ const CONFETTI_COUNT = 26;
  */
 export function WelcomeOffer({ visible, onClaim, onClose }: { visible: boolean; onClaim: () => void; onClose: () => void }) {
   return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
+    <SafeModal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.white }}>
         {visible ? <ConfettiRain /> : null}
 
@@ -77,7 +78,7 @@ export function WelcomeOffer({ visible, onClaim, onClose }: { visible: boolean; 
           </Animated.View>
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 

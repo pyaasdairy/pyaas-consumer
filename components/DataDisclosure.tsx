@@ -1,10 +1,12 @@
 import React from 'react';
-import { View, Modal, ScrollView } from 'react-native';
+import { View, ScrollView } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
+import { discStrings, setDiscLang, useDiscLang, type DiscLang } from '../lib/i18n';
 
 /**
  * PROMINENT DISCLOSURE — shown BEFORE the app reads or sends the phone number.
@@ -41,70 +43,75 @@ type Props = {
   onDecline: () => void;
 };
 
-/** One disclosed data flow: what we take, why, and who else sees it.
- *  Exported as the single source of truth: the full-screen ConsentWelcome and
- *  this modal must always disclose the identical set of flows. */
-export const FLOWS: { icon: React.ComponentProps<typeof Ionicons>['name']; what: string; why: string }[] = [
-  {
-    // Names the SIM read explicitly. This is the exact capability Google
-    // enforced on: the Play Services chooser reads the number off the SIM, and
-    // because that API needs no Android permission the OS shows no dialog. If
-    // the disclosure does not say it, nothing does.
-    icon: 'call-outline',
-    what: 'Your mobile number',
-    why: 'Sent to and stored on PYAAS servers as your account id, and sent to our SMS provider to text you a one-time code. We keep it while your account exists; deleting your account removes it. If you tap "use the number on this phone", we read the number from your SIM so you do not have to type it.',
-  },
-  {
-    icon: 'chatbubble-ellipses-outline',
-    what: 'The sign-in code we text you',
-    why: 'On Android we read that one message automatically so the code fills itself in. We cannot read any of your other messages.',
-  },
-  {
-    icon: 'location-outline',
-    what: 'Your delivery address and location',
-    why: 'Stored on PYAAS servers so we know where to deliver. Only collected when you set an address or tap "use my location".',
-  },
-  {
-    // The address-search field streams what you type to Google on a 250ms
-    // debounce (lib/places.ts). That is a third-party recipient of address data,
-    // and it was previously disclosed nowhere — the same defect shape that had
-    // this app removed, on a second data type.
-    icon: 'search-outline',
-    what: 'What you type in address search',
-    why: 'Sent to Google Maps as you type, so it can suggest real addresses. Skip it by picking your city and dropping a pin on the map instead.',
-  },
-  {
-    // Tile requests carry z/x/y plus the IP, which tells OpenStreetMap which
-    // block is on screen. leafletAssets.ts already inlines the Leaflet library
-    // to remove one undisclosed third-party call; the tiles were the hole left
-    // in that reasoning.
-    icon: 'map-outline',
-    what: 'The map, when you open it',
-    why: 'Map images come from OpenStreetMap, so it can see roughly which area you are looking at.',
-  },
-  {
-    icon: 'phone-portrait-outline',
-    what: 'A device identifier',
-    why: 'A random id stored on this phone, so a one-time offer cannot be claimed over and over on the same device. It is not your advertising id and we do not track you with it.',
-  },
-  {
-    icon: 'card-outline',
-    what: 'When you pay',
-    why: 'Your name, mobile number and email are sent to Razorpay, our payment processor, to open the payment screen and process the charge. Card and UPI details go to Razorpay directly and never touch PYAAS servers.',
-  },
-  {
-    icon: 'receipt-outline',
-    what: 'Your orders and wallet activity',
-    why: 'Stored on PYAAS servers to run deliveries, subscriptions and refunds, and to issue your bills.',
-  },
+/** One icon per disclosed flow, in the FIXED order of the `flows` tuple in
+ *  lib/i18n.ts (which now owns the copy in both languages, along with the
+ *  per-flow compliance rationale comments — SIM read, Google Places, OSM
+ *  tiles). The tuple type there guarantees neither language can drop a flow. */
+const FLOW_ICONS: React.ComponentProps<typeof Ionicons>['name'][] = [
+  'call-outline',              // your mobile number (incl. the SIM read)
+  'chatbubble-ellipses-outline', // the sign-in code we text you
+  'location-outline',          // delivery address and location
+  'search-outline',            // address-search keystrokes → Google Maps
+  'map-outline',               // map tiles → OpenStreetMap
+  'phone-portrait-outline',    // device identifier
+  'card-outline',              // payment details → Razorpay
+  'receipt-outline',           // orders and wallet activity
 ];
+
+export type Flow = { icon: React.ComponentProps<typeof Ionicons>['name']; what: string; why: string };
+
+/** The disclosed data flows, in the requested language. Exported as the single
+ *  source of truth: the full-screen ConsentWelcome and this modal must always
+ *  disclose the identical set of flows. */
+export function FLOWS(lang: DiscLang): Flow[] {
+  const strings = discStrings(lang).flows;
+  return FLOW_ICONS.map((icon, i) => ({ icon, ...strings[i] }));
+}
+
+/** The English/Hindi switch shared by all three consent surfaces (this modal,
+ *  ConsentWelcome, LocationDisclosure). It flips the ONE store in lib/i18n, so
+ *  every surface follows, and the acceptance records capture whichever language
+ *  is showing at the moment of the Agree tap. Label names the language you
+ *  would switch TO, written in that language. */
+export function DiscLangToggle({ style }: { style?: object }) {
+  const lang = useDiscLang();
+  return (
+    <Tap
+      haptic={false}
+      onPress={() => setDiscLang(lang === 'en' ? 'hi' : 'en')}
+      accessibilityRole="button"
+      accessibilityLabel={lang === 'en' ? 'हिंदी में देखें' : 'View in English'}
+      style={style}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 5,
+          paddingHorizontal: 11,
+          paddingVertical: 6,
+          borderRadius: radius.pill,
+          backgroundColor: colors.cream,
+          borderWidth: 1,
+          borderColor: colors.line,
+        }}
+      >
+        <Ionicons name="language-outline" size={13} color={colors.flameDeep} />
+        <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }}>{lang === 'en' ? 'हिंदी' : 'English'}</TextMed>
+      </View>
+    </Tap>
+  );
+}
 
 export function DataDisclosure({ visible, onAccept, onDecline }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const lang = useDiscLang();
+  const s = discStrings(lang);
+  const flows = FLOWS(lang);
 
   return (
-    <Modal
+    <SafeModal
       visible={visible}
       transparent
       animationType="fade"
@@ -127,20 +134,27 @@ export function DataDisclosure({ visible, onAccept, onDecline }: Props) {
             ...shadow.card,
           }}
         >
+          {/* Language switch, top-right, ABOVE the fold: a member who cannot
+              read the English text must find the Hindi one before anything
+              asks them to agree. */}
+          <View style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 2 }}>
+            <DiscLangToggle />
+          </View>
+
           <View style={{ alignItems: 'center', gap: 6 }}>
             <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="shield-checkmark-outline" size={26} color={colors.flameDeep} />
             </View>
-            <Serif style={{ fontSize: 23, textAlign: 'center' }}>Before you sign in</Serif>
+            <Serif style={{ fontSize: 23, textAlign: 'center' }}>{s.data.title}</Serif>
             <TextBody color={colors.inkMute} style={{ fontSize: 14, textAlign: 'center' }}>
-              Here is exactly what PYAAS collects, what we use it for, and who else sees it.
+              {s.data.intro}
             </TextBody>
           </View>
 
           <ScrollView style={{ flexGrow: 0 }} showsVerticalScrollIndicator={false}>
             <View style={{ gap: 14, paddingVertical: 4 }}>
-              {FLOWS.map((f) => (
-                <View key={f.what} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+              {flows.map((f) => (
+                <View key={f.icon} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
                   <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
                     <Ionicons name={f.icon} size={17} color={colors.flameDeep} />
                   </View>
@@ -154,8 +168,7 @@ export function DataDisclosure({ visible, onAccept, onDecline }: Props) {
 
             <View style={{ backgroundColor: colors.cream, borderRadius: radius.md, padding: spacing.md, marginTop: 14, gap: 6 }}>
               <TextBody style={{ fontSize: 13, lineHeight: 19 }}>
-                We never sell your personal data. You can delete your account and its data at any
-                time from your profile.
+                {s.data.neverSell}
               </TextBody>
             </View>
           </ScrollView>
@@ -163,23 +176,24 @@ export function DataDisclosure({ visible, onAccept, onDecline }: Props) {
           {/* The ONLY path that grants consent. */}
           <Tap onPress={onAccept}>
             <View style={{ height: 54, borderRadius: radius.md, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-              <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>Agree and continue</TextSemi>
+              <TextSemi color={colors.white} style={{ fontSize: 16.5 }}>{s.agree}</TextSemi>
             </View>
           </Tap>
 
           <Tap haptic={false} onPress={onDecline} style={{ alignItems: 'center', paddingVertical: 2 }}>
-            <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Not now</TextMed>
+            <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>{s.notNow}</TextMed>
           </Tap>
 
           {/* An ADDITION to the disclosure above, never a substitute for it (rule 3). */}
           <TextBody style={{ fontSize: 12, textAlign: 'center' }} color={colors.inkMute}>
-            Full details in our{' '}
-            <TextMed color={colors.flameDeep} onPress={() => router.push('/privacy-policy')}>Privacy Policy</TextMed>
-            {' '}and{' '}
-            <TextMed color={colors.flameDeep} onPress={() => router.push('/terms')}>Terms</TextMed>.
+            {s.fullDetails.prefix}
+            <TextMed color={colors.flameDeep} onPress={() => router.push('/privacy-policy')}>{s.fullDetails.privacy}</TextMed>
+            {s.fullDetails.middle}
+            <TextMed color={colors.flameDeep} onPress={() => router.push('/terms')}>{s.fullDetails.terms}</TextMed>
+            {s.fullDetails.suffix}
           </TextBody>
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }

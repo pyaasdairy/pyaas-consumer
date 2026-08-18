@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Modal, ScrollView, TextInput, ActivityIndicator } from 'react-native';
+import { View, ScrollView, TextInput, ActivityIndicator } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
@@ -133,9 +134,12 @@ export default function LocationGate() {
   const close = () => { setPickerOpen(false); setQuery(''); setSugs([]); setSearchFocused(false); };
 
   async function onMapConfirm(c: Coords) {
+    // Close the map AND the sheet in the same commit — both visibility flips
+    // route through SafeModal's global queue, and flipping them together stops
+    // the sheet flashing back between the map's dismissal and the pin write.
     setMapOpen(false);
-    await setFromPin(c);
     close();
+    await setFromPin(c);
   }
   // Never trap the member: hardware-back / "Skip for now" on first launch defaults
   // to a serviceable city — they can change it from the header chip anytime.
@@ -171,14 +175,13 @@ export default function LocationGate() {
   usePopupSlot(showPicker && !mapOpen);
   usePopupSlot(cityShift);
 
-  if (showPicker) {
-    // Map open → show the full-screen draggable-pin picker instead of the sheet
-    // (avoids stacking two Modals); confirming drops the pin and closes both.
-    if (mapOpen) {
-      return <MapPicker visible initial={loc?.coords ?? null} onClose={() => setMapOpen(false)} onConfirm={onMapConfirm} />;
-    }
-    return (
-      <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={needsLocation ? skipDefault : close}>
+  // ONE always-mounted fragment — the surfaces swap by VISIBILITY, never by
+  // mount/unmount: unmounting a presented Modal is an unserialized native
+  // dismissal racing whatever presents next (the black-screen wedge). All
+  // flips route through SafeModal's global transition queue.
+  return (
+    <>
+      <SafeModal visible={showPicker && !mapOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={needsLocation ? skipDefault : close}>
         {/* While typing, ANCHOR the sheet to the TOP so the keyboard never hides it
             (it drops back to the bottom on blur — "sticks on top only when entering"). */}
         <View style={{ flex: 1, justifyContent: searchFocused ? 'flex-start' : 'flex-end', paddingTop: searchFocused ? insets.top + spacing.sm : 0, backgroundColor: 'rgba(0,0,0,0.4)' }}>
@@ -189,7 +192,7 @@ export default function LocationGate() {
                 <TextBody style={{ fontSize: 12.5, marginTop: 2 }} color={colors.inkSoft}>{loc ? `Delivering to ${loc.city}` : 'Set your delivery location, change it anytime.'}</TextBody>
               </View>
               {!needsLocation ? (
-                <Tap haptic={false} onPress={close} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
+                <Tap haptic={false} onPress={close} accessibilityLabel="Close location picker" style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="close" size={20} color={colors.ink} />
                 </Tap>
               ) : null}
@@ -272,37 +275,35 @@ export default function LocationGate() {
           onAgree={() => { setLocDiscOpen(false); void useMyLocation().then((ok) => { if (ok) close(); }); }}
           onDecline={() => setLocDiscOpen(false)}
         />
-      </Modal>
-    );
-  }
+      </SafeModal>
 
-  if (cityShift) {
-    return (
-      <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setShiftHandled(true)}>
-        <View style={{ flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <View style={{ backgroundColor: colors.white, borderRadius: 24, padding: spacing.lg, gap: spacing.md, ...shadow.card }}>
-            <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="navigate" size={24} color={colors.flameDeep} />
+      <MapPicker visible={showPicker && mapOpen} initial={loc?.coords ?? null} onClose={() => setMapOpen(false)} onConfirm={onMapConfirm} />
+
+      <SafeModal visible={cityShift} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setShiftHandled(true)}>
+        {loc && subCity ? (
+          <View style={{ flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: 'rgba(0,0,0,0.4)' }}>
+            <View style={{ backgroundColor: colors.white, borderRadius: 24, padding: spacing.lg, gap: spacing.md, ...shadow.card }}>
+              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="navigate" size={24} color={colors.flameDeep} />
+              </View>
+              <Serif style={{ fontSize: 22 }}>Looks like you’ve moved</Serif>
+              <TextBody style={{ fontSize: 14 }}>
+                You’re in <TextSemi>{loc.city}</TextSemi>, but your subscription delivers to <TextSemi>{subCity}</TextSemi>. What would you like to do?
+              </TextBody>
+              <Tap onPress={() => { if (subCoords) void setFromAddress(subCity, subCoords, true); setShiftHandled(true); }}>
+                <View style={{ height: 52, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+                  <TextSemi color={colors.white} style={{ fontSize: 15 }}>Keep delivering to {subCity}</TextSemi>
+                </View>
+              </Tap>
+              <Tap onPress={() => setShiftHandled(true)}>
+                <View style={{ height: 52, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }}>
+                  <TextSemi color={colors.flameDeep} style={{ fontSize: 15 }}>I’ve moved to {loc.city}</TextSemi>
+                </View>
+              </Tap>
             </View>
-            <Serif style={{ fontSize: 22 }}>Looks like you’ve moved</Serif>
-            <TextBody style={{ fontSize: 14 }}>
-              You’re in <TextSemi>{loc!.city}</TextSemi>, but your subscription delivers to <TextSemi>{subCity}</TextSemi>. What would you like to do?
-            </TextBody>
-            <Tap onPress={() => { if (subCoords) void setFromAddress(subCity!, subCoords, true); setShiftHandled(true); }}>
-              <View style={{ height: 52, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-                <TextSemi color={colors.white} style={{ fontSize: 15 }}>Keep delivering to {subCity}</TextSemi>
-              </View>
-            </Tap>
-            <Tap onPress={() => setShiftHandled(true)}>
-              <View style={{ height: 52, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }}>
-                <TextSemi color={colors.flameDeep} style={{ fontSize: 15 }}>I’ve moved to {loc!.city}</TextSemi>
-              </View>
-            </Tap>
           </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  return null;
+        ) : null}
+      </SafeModal>
+    </>
+  );
 }

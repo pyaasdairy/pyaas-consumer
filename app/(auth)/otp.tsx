@@ -10,12 +10,11 @@ import { TextBody, TextMed, TextSemi, Serif, Tap } from '../../components/ui';
 import { enterUp } from '../../lib/motion';
 import { signInWithPhone, saveProfile, getUserId, DEMO_OTP } from '../../lib/session';
 import { api, isBackendConfigured, setTokens } from '../../lib/apiClient';
-import { isMsg91Configured, msg91SendOtp, msg91RetryOtp, msg91VerifyOtp } from '../../lib/msg91';
 import { requestPhoneHint, startSmsRetriever, hasNativeConvenience } from '../../lib/nativeConvenience';
 import { hasAcceptedDataDisclosure, recordDataDisclosureAccepted, linkDisclosureToAccount } from '../../lib/dataConsent';
 import { DataDisclosure } from '../../components/DataDisclosure';
+import { discStrings, getDiscLang, useDiscLang } from '../../lib/i18n';
 import { ConsentWelcome } from '../../components/ConsentWelcome';
-import { WALLET_TEST_TOPUP } from '../../lib/razorpay';
 
 /**
  * Phone OTP sign-in.
@@ -62,9 +61,6 @@ export default function OtpLogin() {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  // Test OTP echoed by the backend in dev (OTP_DEV_MODE) so we can sign in
-  // without SMS. Shown below the code input; the real SMS API lands later.
-  const [devOtp, setDevOtp] = useState('');
   // Seconds until "Resend code" re-enables (0 = ready).
   const [resendIn, setResendIn] = useState(0);
   // In-flight guard so a burst of focus events doesn't launch the hint twice.
@@ -107,9 +103,16 @@ export default function OtpLogin() {
     hasAcceptedDataDisclosure().then(setConsented).catch(() => setConsented(false));
   }, []);
 
-  /** The one place consent is granted — reached only from the Agree button. */
+  // Disclosure language (lib/i18n): the inline caption below follows the same
+  // shared EN/HI store as the DataDisclosure modal's toggle, so the caption
+  // always matches the language the member chose on the disclosure.
+  const discS = discStrings(useDiscLang());
+
+  /** The one place consent is granted — reached only from the Agree button.
+   *  getDiscLang() here captures WHICH language the disclosure was showing at
+   *  the moment of the Agree tap, into the stored acceptance record. */
   const acceptDisclosure = async () => {
-    await recordDataDisclosureAccepted();
+    await recordDataDisclosureAccepted(null, getDiscLang());
     setConsented(true);
     setDiscloseOpen(false);
   };
@@ -219,10 +222,9 @@ export default function OtpLogin() {
     setError(''); setLoading(true);
     try {
       if (isBackendConfigured()) {
-        const r = await api.post<{ sent: boolean; dev_otp?: string }>('/auth/otp/request', { phone: ds });
-        setDevOtp(r.dev_otp ?? '');
-      } else if (isMsg91Configured()) {
-        await msg91SendOtp(ds);
+        // The dev_otp echo (backend OTP_DEV_MODE) is deliberately IGNORED —
+        // no client plumbing may surface or store it.
+        await api.post<{ sent: boolean; dev_otp?: string }>('/auth/otp/request', { phone: ds });
       }
       setStep('code');
       setResendIn(30); // start the resend cooldown
@@ -261,16 +263,6 @@ export default function OtpLogin() {
   async function resend() {
     if (resendIn > 0 || loading) return;
     setCode(''); setError('');
-    if (!isBackendConfigured() && isMsg91Configured()) {
-      setLoading(true);
-      try {
-        await msg91RetryOtp(digits());
-        setResendIn(30);
-      } catch (e: any) {
-        setError(friendly(e, 'Could not resend the code. Please try again.'));
-      } finally { setLoading(false); }
-      return;
-    }
     sendCode();
   }
 
@@ -301,11 +293,9 @@ export default function OtpLogin() {
         // Hand the server-known name straight into the session write (pre-emit)
         // so the router gate NEVER shows a registered member the name step
         // again — not even a flash — on any device or reinstall.
-        await signInWithPhone(digits(), pair.profile?.full_name);
-      } else if (isMsg91Configured()) {
-        // Real SMS OTP via MSG91: verify the code, then open the local session.
-        await msg91VerifyOtp(digits(), c);
-        await signInWithPhone(digits());
+        // Hand the SERVER's profile id in as the session uid — the local id
+        // must never again be derived from the phone number.
+        await signInWithPhone(digits(), pair.profile?.full_name, pair.profile?.id ?? null);
       } else if (__DEV__) {
         // Offline DEV fallback only (no backend, no MSG91). __DEV__ is compiled
         // out of release bundles, so a store build can never reach this branch.
@@ -412,8 +402,7 @@ export default function OtpLogin() {
                   it describes — not in a menu, not only in the policy (rules 2 & 3).
                   Kept to the sign-in data only, with no marketing copy (rule 4). */}
               <TextBody color={colors.inkMute} style={{ fontSize: 12, lineHeight: 17 }}>
-                PYAAS sends your mobile number to our servers and to our SMS provider to text
-                you a one-time code and create your account.
+                {discS.otpCaption}
               </TextBody>
 
               {/* Labelled with what it actually does. This tap IS the consent to
@@ -458,7 +447,7 @@ export default function OtpLogin() {
                   )}
                 </View>
               </Tap>
-              {isBackendConfigured() || isMsg91Configured() ? (
+              {isBackendConfigured() ? (
                 <Tap haptic={false} onPress={() => { void resend(); }} style={{ alignItems: 'center', paddingVertical: 12 }}>
                   <TextMed color={resendIn > 0 ? colors.inkMute : colors.flameDeep} style={{ fontSize: 13.5 }}>
                     {resendIn > 0 ? `Resend code in ${resendIn}s` : "Didn't get the code? Resend"}

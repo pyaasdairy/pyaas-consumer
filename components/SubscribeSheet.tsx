@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import { View, ScrollView, ActivityIndicator } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -9,7 +10,7 @@ import { haptics } from '../lib/haptics';
 import { createSubscription, minWalletToStart, NEEDS_EXACT_LOCATION, type Frequency } from '../lib/subscriptions';
 import { attachTrialAfterSubscribe, offerCompleted, offerQualified, OFFER_QUALIFY_RECHARGE, OFFER_SUGGESTED_RECHARGE, FREE_PACK_PRODUCT_ID } from '../lib/freePack';
 import { purchasesUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
-import { hasExactLocation } from '../lib/location';
+import { hasExactLocation, type Coords } from '../lib/location';
 import { useUserLocation } from '../lib/userLocation';
 import { AddressCaptureSheet } from './AddressCapture';
 import { AddressPicker } from './AddressPicker';
@@ -158,7 +159,7 @@ export function SubscribeSheet({
   // the create happens in the same tap, so there is no check→write window for
   // the old backstop to cover (createSubscription still enforces its own
   // invariants server-side).
-  async function startSubscribe() {
+  async function startSubscribe(preset?: Address) {
     // Synchronous re-entrancy guard AT THE TOP: two fast taps on the Subscribe
     // button otherwise run two full gate chains — a double daily plan and a
     // double debit.
@@ -168,12 +169,16 @@ export function SubscribeSheet({
     haptics.press();
     setErr('');
     try {
-      // 1) ADDRESS FIRST (fetched together with the wallet — independent reads).
+      // 1) ADDRESS FIRST (fetched together with the wallet — independent
+      //    reads). A resume from the capture sheet passes the JUST-SAVED
+      //    address as `preset`: consuming it instead of re-fetching means a
+      //    lagging backend write can never bounce the member straight back
+      //    into the capture sheet (the save→reopen modal-race loop).
       const [addrs] = await Promise.all([
-        listAddresses().catch(() => [] as Address[]),
+        preset ? Promise.resolve([preset]) : listAddresses().catch(() => [] as Address[]),
         refreshWallet(),
       ]);
-      const pick = addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin);
+      const pick = preset ?? (addrs.find((a) => a.is_default && hasPin(a)) ?? addrs.find(hasPin));
       if (!pick) {
         resumeOnSave.current = true; // THIS capture is part of the subscribe chain
         setMapOpen(true); // capture → onAddressSaved resumes this chain
@@ -249,21 +254,27 @@ export function SubscribeSheet({
   // auto-running the chain from there enrolled them in a recurring charge with
   // no Subscribe tap (the unintended-enrollment pattern that got the app taken
   // down). For that path we adopt the new address and hand control back.
-  function onAddressSaved() {
+  function onAddressSaved(a: Address, pin: Coords | null) {
     setMapOpen(false);
     if (resumeOnSave.current) {
       resumeOnSave.current = false;
-      void startSubscribe();
+      // Resume with the just-saved address (only when its pin write succeeded
+      // — a pin-less row must still fall through to the normal gate).
+      void startSubscribe(pin ? a : undefined);
+      return;
+    }
+    if (pin) {
+      setDeliverTo(a);
       return;
     }
     void listAddresses()
-      .then((rows) => setDeliverTo(rows.find((a) => a.is_default && hasPin(a)) ?? rows.find(hasPin) ?? null))
+      .then((rows) => setDeliverTo(rows.find((r) => r.is_default && hasPin(r)) ?? rows.find(hasPin) ?? null))
       .catch(() => { /* keep the previous deliverTo */ });
   }
 
   return (
     <>
-    <Modal visible={visible && !mapOpen} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+    <SafeModal visible={visible && !mapOpen} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' }}>
         {/* Tap-out backdrop */}
         <Tap haptic={false} onPress={onClose} style={{ flex: 1 }} scaleTo={1}>
@@ -388,7 +399,7 @@ export function SubscribeSheet({
 
         {/* EMBEDDED overlay, not a second Modal: iOS silently drops a modal
             presented while this one is mid-dismissal, which is exactly what a
-            sibling <Modal> did here — the Change button read as dead. */}
+            sibling native modal did here — the Change button read as dead. */}
         <AddressPicker
           embedded
           visible={addrPickOpen}
@@ -397,7 +408,7 @@ export function SubscribeSheet({
           onAddNew={() => { setAddrPickOpen(false); setMapOpen(true); }}
         />
       </View>
-    </Modal>
+    </SafeModal>
     <AddressCaptureSheet visible={mapOpen} onClose={() => setMapOpen(false)} onSaved={onAddressSaved} />
     </>
   );

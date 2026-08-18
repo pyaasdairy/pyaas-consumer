@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Linking, TextInput, Modal, ActivityIndicator } from 'react-native';
+import { View, Linking, TextInput, ActivityIndicator } from 'react-native';
+import { SafeModal } from '../../components/SafeModal';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -179,6 +180,11 @@ export default function OrderTracking() {
 
   function onPayMessage(e: WebViewMessageEvent) {
     try {
+      // Only the Razorpay checkout page may post outcomes (the sheet loads
+      // with baseUrl checkout.razorpay.com) — a redirect inside the WebView
+      // must not be able to fake a success.
+      const src = e.nativeEvent.url ?? '';
+      if (!/^https:\/\/[a-z0-9.-]*razorpay\.com(\/|$)/i.test(src)) return;
       const msg = JSON.parse(e.nativeEvent.data ?? '{}');
       if (msg.type === 'success' && order) {
         // Client success is a HINT, not proof — but for an instant COD order it
@@ -501,6 +507,10 @@ export default function OrderTracking() {
 
         {error ? <TextBody color={colors.flameDeep} style={{ fontSize: 13 }}>{error}</TextBody> : null}
 
+        {/* The end of tracking is the start of the next order — hand the
+            member back to the shelf instead of a dead-ended scroll. */}
+        <Button title="Continue shopping" onPress={() => router.replace('/(tabs)')} />
+
       </Animated.ScrollView>
 
       {/* PAY WHILE WE DELIVER — instant COD orders only, and only where an
@@ -534,7 +544,7 @@ export default function OrderTracking() {
       })()}
 
       {/* Razorpay checkout sheet for the pay-while-we-deliver flow. */}
-      <Modal visible={payOpen} animationType="slide" onRequestClose={() => setPayOpen(false)}>
+      <SafeModal visible={payOpen} animationType="slide" onRequestClose={() => setPayOpen(false)}>
         <View style={{ flex: 1, backgroundColor: colors.cream }}>
           <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderBottomWidth: 1, borderColor: colors.line }}>
             <Tap haptic={false} onPress={() => setPayOpen(false)} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
@@ -545,7 +555,7 @@ export default function OrderTracking() {
           {payOpen && order ? (
             <WebView
               originWhitelist={['*']}
-              source={{ html: checkoutHtml({ keyId: RAZORPAY_KEY_ID, amountPaise: Math.round(order.total * 100), themeColor: colors.flameDeep }) }}
+              source={{ html: checkoutHtml({ keyId: RAZORPAY_KEY_ID, amountPaise: Math.round(order.total * 100), themeColor: colors.flameDeep }), baseUrl: 'https://checkout.razorpay.com' }}
               onShouldStartLoadWithRequest={payNavGuard}
               onMessage={onPayMessage}
               startInLoadingState
@@ -559,7 +569,7 @@ export default function OrderTracking() {
             />
           ) : null}
         </View>
-      </Modal>
+      </SafeModal>
     </View>
   );
 }

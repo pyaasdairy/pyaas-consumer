@@ -1,12 +1,13 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, ScrollView, ActivityIndicator } from 'react-native';
+import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
-import { Serif, TextBody, TextMed, Button, Field, Tap, BackButton, KeyboardDoneBar } from '../components/ui';
+import { Serif, TextBody, TextMed, Button, Field, Tap, BackButton } from '../components/ui';
 import { getFullProfile, updateProfile, pickAndUploadAvatar, type FullProfile } from '../lib/profileApi';
 
 const MILK_PREFS = [
@@ -27,6 +28,11 @@ export default function ProfileEdit() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState('');
+  // Success overlay: shows "Profile saved!" then returns to wherever the
+  // member came from — saving must not strand them on the form.
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
 
   useFocusEffect(useCallback(() => {
     getFullProfile().then((d) => { setP(d); setForm(d ?? {}); });
@@ -67,7 +73,8 @@ export default function ProfileEdit() {
         delivery_slot: form.delivery_slot ?? null,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setMsg('Profile saved.');
+      setSaved(true);
+      savedTimer.current = setTimeout(() => router.back(), 1100);
     } catch (e: any) {
       setMsg(e?.message ?? 'Could not save.');
     } finally { setSaving(false); }
@@ -139,7 +146,21 @@ export default function ProfileEdit() {
         <Button title="Save profile" loading={saving} onPress={save} />
       </ScrollView>
 
-      <KeyboardDoneBar />
+      {/* Saved! — a springing check over a near-opaque wash, then auto-back. */}
+      {saved ? (
+        <Animated.View
+          entering={FadeIn.duration(180)}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,252,248,0.97)', alignItems: 'center', justifyContent: 'center', gap: 16 }}
+        >
+          <Animated.View
+            entering={ZoomIn.springify().damping(12).stiffness(200)}
+            style={{ width: 92, height: 92, borderRadius: 46, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.card }}
+          >
+            <Ionicons name="checkmark" size={48} color={colors.white} />
+          </Animated.View>
+          <Serif style={{ fontSize: 24 }}>Profile saved!</Serif>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

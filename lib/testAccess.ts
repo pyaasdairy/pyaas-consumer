@@ -1,4 +1,4 @@
-import { getUserId } from './session';
+import { getUserId, getLoginPhone } from './session';
 
 /**
  * GOOGLE PLAY REVIEW ACCESS — the reviewer signs in with the hardcoded test
@@ -21,11 +21,14 @@ export function isPlayTesterPhone(phone: string | null | undefined): boolean {
 }
 
 /** Whether the CURRENT signed-in session is the Play reviewer's account.
- *  Keyed off the SIGN-IN uid (`u_<phone>`, immutable for the session), NOT the
- *  profile's phone field — profile-edit lets any member retype their number,
- *  and reading that would let anyone self-assign the reviewer bypass. */
+ *  Keyed off the OTP-VERIFIED login phone recorded at sign-in (device-scoped,
+ *  unreachable from profile-edit), NOT the profile's phone field — reading
+ *  that would let anyone self-assign the reviewer bypass. The legacy
+ *  `u_<phone>` uid check remains for sessions from before the uid migration. */
 export async function isPlayTesterSession(): Promise<boolean> {
   try {
+    const login = await getLoginPhone();
+    if (login === PLAY_TESTER_PHONE) return true;
     const uid = await getUserId();
     return uid === `u_${PLAY_TESTER_PHONE}`;
   } catch {

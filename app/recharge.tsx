@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, ScrollView, ActivityIndicator, Modal, TextInput, Alert, BackHandler } from 'react-native';
+import { View, ScrollView, ActivityIndicator, TextInput, Alert, BackHandler } from 'react-native';
+import { SafeModal } from '../components/SafeModal';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -64,7 +65,11 @@ export default function Recharge() {
   // shortfall (`min` param) can only RAISE the floor, never lower it.
   const MIN_RECHARGE = 99; // aligned with the advertised 2+2 offer minimum
   const min = Math.max(MIN_RECHARGE, Math.round(Number(params.min) || 0));
-  const returnTo = typeof params.returnTo === 'string' ? params.returnTo : '';
+  // returnTo is deep-linkable (pyaas://recharge?returnTo=...), so it may only
+  // ever point at an INTERNAL route — a crafted link must not steer
+  // post-payment navigation anywhere else at the exact moment the member paid.
+  const rawReturnTo = typeof params.returnTo === 'string' ? params.returnTo : '';
+  const returnTo = rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//') ? rawReturnTo : '';
   const reason = typeof params.reason === 'string' ? params.reason : '';
 
   const balance = useWallet((s) => s.balance);
@@ -259,6 +264,13 @@ export default function Recharge() {
   }
 
   function onCheckoutMessage(e: WebViewMessageEvent) {
+    // Only the checkout page itself may post outcomes. The sheet loads with
+    // baseUrl checkout.razorpay.com and Razorpay stays on *.razorpay.com; any
+    // other page that ends up inside the WebView must not be able to fake a
+    // {type:'success'} (crediting is server-verified regardless — this is
+    // defense in depth).
+    const src = e.nativeEvent.url ?? '';
+    if (!/^https:\/\/[a-z0-9.-]*razorpay\.com(\/|$)/i.test(src)) return;
     let msg: any;
     try { msg = JSON.parse(e.nativeEvent.data); } catch { return; }
     if (msg?.type === 'success') {
@@ -427,7 +439,7 @@ export default function Recharge() {
       </View>
 
       {/* Razorpay WebView Standard Checkout overlay (fallback path) */}
-      <Modal visible={!!checkout} animationType="slide" onRequestClose={confirmCancelPayment} presentationStyle="fullScreen">
+      <SafeModal visible={!!checkout} animationType="slide" onRequestClose={confirmCancelPayment} presentationStyle="fullScreen">
         {/* paddingBottom: the fullscreen modal draws edge-to-edge, so without
             the bottom inset Razorpay's sticky Continue bar sits UNDER the
             system navigation bar and can't be tapped. */}
@@ -460,7 +472,7 @@ export default function Recharge() {
             />
           ) : null}
         </View>
-      </Modal>
+      </SafeModal>
     </View>
   );
 }

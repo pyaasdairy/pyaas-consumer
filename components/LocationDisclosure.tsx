@@ -1,11 +1,14 @@
 import React from 'react';
-import { View, Modal, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import { recordLocationDisclosureAccepted } from '../lib/locationConsent';
+import { DiscLangToggle } from './DataDisclosure';
+import { discStrings, getDiscLang, useDiscLang } from '../lib/i18n';
 
 /**
  * LOCATION PROMINENT DISCLOSURE sheet. Shown ONCE, immediately before the
@@ -37,46 +40,55 @@ export function LocationDisclosure({
   onDecline: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  // Shared disclosure language (lib/i18n) — same store as the sign-in
+  // disclosures, so the sheet appears in whichever language the member chose.
+  const s = discStrings(useDiscLang());
 
   function agree() {
     haptics.confirm();
-    void recordLocationDisclosureAccepted();
+    // Record WHICH language the sheet was showing at the moment of the tap.
+    void recordLocationDisclosureAccepted(getDiscLang());
     onAgree();
   }
 
   return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="slide" onRequestClose={onDecline}>
+    <SafeModal visible={visible} transparent statusBarTranslucent animationType="slide" onRequestClose={onDecline}>
       {/* Backdrop tap = decline, never consent. */}
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'flex-end' }} onPress={onDecline}>
         <Pressable onPress={() => { /* swallow taps inside the card */ }}>
           <View style={{ backgroundColor: colors.white, borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.lg, gap: spacing.md, ...shadow.card }}>
+            {/* Language switch, top-right — same shared store as the sign-in
+                disclosures, so one choice follows the member everywhere. */}
+            <View style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 2 }}>
+              <DiscLangToggle />
+            </View>
             <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.line }} />
             <View style={{ alignSelf: 'center', width: 64, height: 64, borderRadius: 32, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="location-outline" size={32} color={colors.flameDeep} />
             </View>
-            <Serif style={{ fontSize: 22, textAlign: 'center' }}>Your location</Serif>
+            <Serif style={{ fontSize: 22, textAlign: 'center' }}>{s.location.title}</Serif>
 
             <TextBody color={colors.inkSoft} style={{ fontSize: 14, lineHeight: 21 }}>
-              PYAAS collects your precise device location, only while you use the app and only when you tap a location button, to pin your exact delivery doorstep, check that we deliver in your area, and route your morning delivery.
+              {s.location.para1}
             </TextBody>
             <TextBody color={colors.inkSoft} style={{ fontSize: 14, lineHeight: 21 }}>
-              The point you choose is sent to and stored on PYAAS servers as your saved delivery address. It is never sold, never used for advertising, and never read in the background. We use precise location because a doorstep delivery needs an exact pin, not a neighbourhood.
+              {s.location.para2}
             </TextBody>
 
             <Tap onPress={agree} style={{ alignSelf: 'stretch' }}>
               <View style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-                <TextSemi color={colors.white} style={{ fontSize: 16 }}>Agree and continue</TextSemi>
+                <TextSemi color={colors.white} style={{ fontSize: 16 }}>{s.agree}</TextSemi>
               </View>
             </Tap>
             <Tap haptic={false} onPress={onDecline} style={{ alignItems: 'center', paddingVertical: 4 }}>
-              <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Not now</TextMed>
+              <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>{s.notNow}</TextMed>
             </Tap>
             <TextBody color={colors.inkMute} style={{ fontSize: 11.5, textAlign: 'center' }}>
-              You can always type your address or pick your city instead.
+              {s.location.fallback}
             </TextBody>
           </View>
         </Pressable>
       </Pressable>
-    </Modal>
+    </SafeModal>
   );
 }

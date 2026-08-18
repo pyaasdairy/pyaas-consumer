@@ -72,6 +72,7 @@ export default function Terms() {
                 'Wallet balances are prepaid amounts for products. They are not a deposit, earn no interest, and are non-transferable.',
                 'For subscriptions, the amount for each scheduled delivery is taken from your wallet or chosen payment method.',
                 'We may pause deliveries if a payment fails or the wallet balance is insufficient.',
+                'If you delete your account, any remaining wallet balance is forfeited unless you contact support to settle it before deletion; deletion is irreversible.',
               ],
             },
             { kind: 'para', text: `For payment disputes, contact ${CARE_EMAIL}.` },

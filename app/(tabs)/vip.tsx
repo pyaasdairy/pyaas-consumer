@@ -10,7 +10,8 @@
  * components/Fx primitives.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Image, Text, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Image, Text, ActivityIndicator, Alert } from 'react-native';
+import { SafeModal } from '../../components/SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -87,9 +88,14 @@ function FoilNumber({ num, lineOne, lineTwo }: { num: number; lineOne: string; l
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', overflow: 'hidden' }}>
       <View>
-        {/* dark engraved copy underneath the gold face */}
-        <Text style={{ position: 'absolute', top: 2, left: 0, fontSize: 60, fontFamily: fonts.serifBlack, color: 'rgba(0,0,0,0.5)', letterSpacing: -2, ...tabular }}>{num}</Text>
-        <Text style={{ fontSize: 60, fontFamily: fonts.serifBlack, color: GOLD, letterSpacing: -2, ...tabular }}>{num}</Text>
+        {/* dark engraved copy underneath the gold face. Explicit lineHeight on
+            BOTH copies (identical, to keep them registered): without it Android
+            sizes the line from the font bbox (~93pt at 60pt — Bricolage's
+            includeFontPadding box) and the active-member stack overflows the
+            fixed 200pt card; the multiplier cap protects the same fixed box
+            from large OS font scales. */}
+        <Text maxFontSizeMultiplier={1.2} style={{ position: 'absolute', top: 2, left: 0, fontSize: 60, lineHeight: 62, fontFamily: fonts.serifBlack, color: 'rgba(0,0,0,0.5)', letterSpacing: -2, ...tabular }}>{num}</Text>
+        <Text maxFontSizeMultiplier={1.2} style={{ fontSize: 60, lineHeight: 62, fontFamily: fonts.serifBlack, color: GOLD, letterSpacing: -2, ...tabular }}>{num}</Text>
       </View>
       <View style={{ marginBottom: 12, marginLeft: 9 }}>
         <Text style={{ color: colors.white, fontSize: 15, fontFamily: fonts.sansBold, letterSpacing: 2 }}>{lineOne}</Text>
@@ -601,7 +607,7 @@ export default function Vip() {
       ) : null}
 
       {/* Confirm wallet deduct for a paid month. */}
-      <Modal visible={showBuy} transparent statusBarTranslucent animationType="fade" onRequestClose={() => !buying && setShowBuy(false)}>
+      <SafeModal visible={showBuy} transparent statusBarTranslucent animationType="fade" onRequestClose={() => !buying && setShowBuy(false)}>
         <View style={{ flex: 1, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center', padding: spacing.lg }}>
           <View style={{ width: '100%', maxWidth: 360, backgroundColor: colors.white, borderRadius: radius.xl, overflow: 'hidden', ...shadow.card }}>
             <View style={{ backgroundColor: colors.flameDeep, padding: spacing.lg, alignItems: 'center', gap: 8 }}>
@@ -631,7 +637,7 @@ export default function Vip() {
             </View>
           </View>
         </View>
-      </Modal>
+      </SafeModal>
 
     </View>
   );

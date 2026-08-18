@@ -83,7 +83,12 @@ export async function setAddressCoords(addressId: string, c: Coords): Promise<vo
  * most recent saved-address coordinate, else the default region.
  */
 export async function getUserCoords(): Promise<Coords> {
-  const device = await getDeviceCoords();
+  // NEVER prompts. This feeds AUTOMATIC map centering (rider tracking mounts
+  // it from an effect), and the OS permission dialog may only ever follow the
+  // in-app LocationDisclosure plus an explicit user tap — the Play
+  // prominent-disclosure rule this app was previously enforced against. A
+  // granted permission is used; anything else falls to saved-address coords.
+  const device = await getDeviceCoordsIfGranted();
   if (device) return device;
   const uid = await getUserId();
   if (uid) {

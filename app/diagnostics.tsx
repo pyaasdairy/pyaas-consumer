@@ -8,7 +8,6 @@ import { colors, radius, spacing } from '../lib/theme';
 import { isBackendConfigured, tokenPresence } from '../lib/apiClient';
 import { getUserId } from '../lib/session';
 import { getSmsAppHash, hasNativeConvenience } from '../lib/nativeConvenience';
-import { isMsg91Configured } from '../lib/msg91';
 import { clearDiag, diagSeverity, getDiagEvents, subscribeDiag, type DiagEvent } from '../lib/diag';
 
 const SEV_COLOR: Record<'error' | 'warn' | 'info', string> = {
@@ -79,7 +78,7 @@ export default function DiagnosticsScreen() {
             {tokens ? (tokens.refresh ? 'present' : 'absent') : '…'}
           </TextBody>
           <TextBody style={{ fontSize: 12.5 }} color={colors.inkMute}>
-            OTP provider: {isBackendConfigured() ? 'backend' : isMsg91Configured() ? 'MSG91' : 'offline dev'} · Native login helpers: {hasNativeConvenience() ? 'present' : 'absent'}
+            OTP provider: {isBackendConfigured() ? 'backend' : 'offline dev'} · Native login helpers: {hasNativeConvenience() ? 'present' : 'absent'}
           </TextBody>
           {/* THE auto-read key: the OTP SMS template must END with this 11-char
               hash (and start with "<#>") or SMS Retriever silently ignores it.

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Modal, ActivityIndicator, TextInput, Keyboard } from 'react-native';
+import { View, ActivityIndicator, TextInput, Keyboard } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -204,20 +205,38 @@ export default function MapPicker({
   // Location prominent disclosure: the OS permission prompt may only follow
   // the in-app disclosure sheet with an affirmative "Agree and continue".
   const [locDiscOpen, setLocDiscOpen] = useState(false);
-  async function locateMe() {
+  // ONE-TAP "Use my current location & Confirm": disclosure gate → GPS fix →
+  // pin recenter → confirm, in a single press. The pin/placed state is set in
+  // JS (not just via the WebView round-trip) so the flow also completes when
+  // the map itself is dead (offline).
+  async function locateAndConfirm() {
     if (!(await hasAcceptedLocationDisclosure())) {
-      setLocDiscOpen(true);
+      setLocDiscOpen(true); // onAgree resumes with runLocate(true)
       return;
     }
-    await runLocate();
+    await runLocate(true);
   }
-  async function runLocate() {
+  async function runLocate(thenConfirm = false) {
+    if (locating) return;
     setLocating(true);
-    const c = await getDeviceCoords();
-    setLocating(false);
-    if (!c) return;
-    haptics.success();
-    webRef.current?.injectJavaScript(`window.__recenter(${c.lat},${c.lng}); true;`);
+    try {
+      const c = await getDeviceCoords();
+      if (!c) return; // permission denied / no fix — member can drag or search instead
+      haptics.success();
+      setPicked(c);
+      setUserPlaced(true);
+      webRef.current?.injectJavaScript(`window.__recenter(${c.lat},${c.lng}); true;`);
+      if (thenConfirm) {
+        // Fresh label for the fresh fix — the debounced pin-label effect won't
+        // have caught up yet, and confirming with the PREVIOUS pin's words
+        // would show the member one address while committing another.
+        const label = await placeLabelFromCoords(c).catch(() => null);
+        haptics.confirm();
+        onConfirm(c, label);
+      }
+    } finally {
+      setLocating(false);
+    }
   }
 
   /** Move the map + pin to a searched point (counts as a real placement). */
@@ -293,7 +312,7 @@ export default function MapPicker({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose} presentationStyle="fullScreen">
+    <SafeModal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose} presentationStyle="fullScreen">
       <View style={{ flex: 1, backgroundColor: colors.milk }}>
         {/* Header */}
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.line }}>
@@ -397,12 +416,18 @@ export default function MapPicker({
               </TextBody>
             </View>
           ) : null}
-          <Tap onPress={locateMe} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.flameDeep, backgroundColor: colors.white }}>
-            {locating ? <ActivityIndicator size="small" color={colors.flameDeep} /> : <Ionicons name="locate" size={18} color={colors.flameDeep} />}
-            <TextSemi color={colors.flameDeep} style={{ fontSize: 14.5 }}>{locating ? 'Finding you…' : 'Use my current location'}</TextSemi>
-          </Tap>
-          <Tap onPress={confirm} style={{ height: 52, borderRadius: radius.pill, backgroundColor: canConfirm ? colors.flameDeep : colors.line, alignItems: 'center', justifyContent: 'center', opacity: canConfirm ? 1 : 0.7, ...shadow.soft }}>
-            <TextSemi color={colors.white} style={{ fontSize: 16 }}>{canConfirm ? 'Confirm this location' : 'Drag the pin to your door'}</TextSemi>
+          {/* ONE button (not a locate + a confirm pair): before any real
+              placement it runs the one-tap GPS → confirm path; once the member
+              has placed the pin (drag / tap / search / GPS) it confirms exactly
+              that pin, so "move the pin to your exact door" still works. */}
+          <Tap
+            onPress={locating ? undefined : canConfirm ? confirm : () => { void locateAndConfirm(); }}
+            style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: locating ? 0.85 : 1, ...shadow.soft }}
+          >
+            {locating ? <ActivityIndicator size="small" color={colors.white} /> : <Ionicons name={canConfirm ? 'checkmark-circle' : 'locate'} size={18} color={colors.white} />}
+            <TextSemi color={colors.white} style={{ fontSize: 15.5 }}>
+              {locating ? 'Finding you…' : canConfirm ? 'Confirm this location' : 'Use my current location & Confirm'}
+            </TextSemi>
           </Tap>
         </View>
 
@@ -410,10 +435,10 @@ export default function MapPicker({
             open modal; the parent stays presented, so no iOS modal swallow). */}
         <LocationDisclosure
           visible={locDiscOpen}
-          onAgree={() => { setLocDiscOpen(false); void runLocate(); }}
+          onAgree={() => { setLocDiscOpen(false); void runLocate(true); }}
           onDecline={() => setLocDiscOpen(false)}
         />
       </View>
-    </Modal>
+    </SafeModal>
   );
 }

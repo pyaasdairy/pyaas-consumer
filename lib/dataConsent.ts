@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { getDiscLang, type DiscLang } from './i18n';
 
 /**
  * PROMINENT DISCLOSURE CONSENT — the record that we told the member what we
@@ -36,6 +37,12 @@ export type DataDisclosureRecord = {
   version: string;
   app_version: string;
   accepted_at: string; // ISO
+  /** Language the disclosure was ON SCREEN in when the member tapped Agree
+   *  ('en' | 'hi'). Optional on READ ONLY: records written before the
+   *  bilingual disclosure shipped lack it, and they must keep parsing —
+   *  their consent (to the same English copy) still stands, which is also
+   *  why shipping the Hindi copy did NOT bump DATA_DISCLOSURE_VERSION. */
+  lang?: DiscLang;
   /** Filled in once the member signs in, so consent is attributable. */
   uid?: string | null;
 };
@@ -60,12 +67,21 @@ export async function hasAcceptedDataDisclosure(): Promise<boolean> {
   return rec?.version === DATA_DISCLOSURE_VERSION;
 }
 
-/** Record acceptance. Called ONLY from an explicit tap on the disclosure's accept button. */
-export async function recordDataDisclosureAccepted(uid?: string | null): Promise<DataDisclosureRecord> {
+/** Record acceptance. Called ONLY from an explicit tap on the disclosure's
+ *  accept button. `lang` is the language the disclosure was showing at the
+ *  moment of that tap; it defaults to the shared disclosure-language store
+ *  (lib/i18n) read AT CALL TIME, so a caller that cannot thread the value
+ *  through (app/_layout.tsx's ConsentWelcome handler) still records the
+ *  language that was on screen. */
+export async function recordDataDisclosureAccepted(
+  uid?: string | null,
+  lang: DiscLang = getDiscLang(),
+): Promise<DataDisclosureRecord> {
   const rec: DataDisclosureRecord = {
     version: DATA_DISCLOSURE_VERSION,
     app_version: Constants.expoConfig?.version ?? 'unknown',
     accepted_at: new Date().toISOString(),
+    lang,
     uid: uid ?? null,
   };
   try {

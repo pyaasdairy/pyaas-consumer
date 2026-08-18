@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Modal, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow } from '../lib/theme';
@@ -15,7 +16,7 @@ export function OutOfZoneSheet({ visible, onClose }: { visible: boolean; onClose
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+    <SafeModal visible={visible} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'flex-end' }} onPress={onClose}>
         <Pressable onPress={() => { /* swallow taps inside the card */ }}>
           <View
@@ -48,6 +49,6 @@ export function OutOfZoneSheet({ visible, onClose }: { visible: boolean; onClose
           </View>
         </Pressable>
       </Pressable>
-    </Modal>
+    </SafeModal>
   );
 }

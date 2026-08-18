@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Modal, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, AppState } from 'react-native';
+import { View, TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, AppState } from 'react-native';
+import { SafeModal } from './SafeModal';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -137,7 +138,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
 
   return (
     <>
-    <Modal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
+    <SafeModal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg }}>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, overflow: 'hidden', maxHeight: '88%', ...shadow.card }}>
@@ -264,7 +265,7 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
           </View>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </SafeModal>
     </>
   );
 }

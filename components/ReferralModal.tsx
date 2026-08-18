@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Modal, TextInput } from 'react-native';
+import { View, TextInput } from 'react-native';
+import { SafeModal } from './SafeModal';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
@@ -29,7 +30,7 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <SafeModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Animated.View entering={FadeIn.duration(200)} style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' }}>
         <Animated.View entering={SlideInDown.duration(300)} style={{ backgroundColor: colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md, ...shadow.card }}>
           <View style={{ alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line }} />
@@ -62,7 +63,7 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
           </View>
         </Animated.View>
       </Animated.View>
-    </Modal>
+    </SafeModal>
   );
 }
 

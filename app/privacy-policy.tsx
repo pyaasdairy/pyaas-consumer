@@ -1,6 +1,6 @@
 import React from 'react';
 import { DocScreen } from '../components/DocScreen';
-import { CARE_EMAIL, GRIEVANCE_OFFICER } from '../lib/support';
+import { CARE_EMAIL, GRIEVANCE_OFFICER, GRIEVANCE_EMAIL } from '../lib/support';
 
 /**
  * PRIVACY POLICY — the in-app rendering of the published policy of
@@ -129,7 +129,7 @@ export default function PrivacyPolicy() {
         {
           heading: 'Grievance Officer',
           blocks: [
-            { kind: 'para', text: `${GRIEVANCE_OFFICER}, PYAAS DAIRY PRIVATE LIMITED. A-107, Omicron-II, Greater Noida, Gautam Buddha Nagar, Uttar Pradesh 201310, India. Email ${CARE_EMAIL}. Hours: Monday to Saturday, 9:00 a.m. to 6:00 p.m. IST. We respond within the timelines prescribed by law.` },
+            { kind: 'para', text: `${GRIEVANCE_OFFICER}, PYAAS DAIRY PRIVATE LIMITED. A-107, Omicron-II, Greater Noida, Gautam Buddha Nagar, Uttar Pradesh 201310, India. Email ${GRIEVANCE_EMAIL}. Hours: Monday to Saturday, 9:00 a.m. to 6:00 p.m. IST. We respond within the timelines prescribed by law.` },
           ],
         },
       ]}

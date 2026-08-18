@@ -43,5 +43,13 @@ yarn-error.*
 
 # server-side Edge Function secrets (never commit)
 supabase/functions.env
+
+# store credentials & signing material (never commit)
+play-service-account.json
+*.keystore
 supabase/.temp/
 parag-saathi-be/
+
+# build artifacts must never be committed
+*.apk
+*.aab

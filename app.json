@@ -14,10 +14,14 @@
       "supportsTablet": false,
       "bundleIdentifier": "in.pyaasdairy.app",
       "buildNumber": "1",
+      "associatedDomains": [
+        "applinks:pyaasdairy.com",
+        "applinks:www.pyaasdairy.com"
+      ],
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "PYAAS uses your location to set your delivery address and show your rider on the way.",
-        "NSPhotoLibraryUsageDescription": "PYAAS uses your photos so you can set a profile picture.",
-        "NSCameraUsageDescription": "PYAAS uses the camera to scan the QR on your pack and show you which dairy and quality tests it came from.",
+        "NSPhotoLibraryUsageDescription": "PYAAS uses your photos to set a profile picture or add an optional door photo to your delivery address.",
+        "NSCameraUsageDescription": "PYAAS uses the camera to scan the QR on your pack and to take an optional photo of your door so the rider finds it.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "privacyManifests": {
@@ -85,23 +89,7 @@
             ]
           },
           {
-            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePhotosorVideos",
-            "NSPrivacyCollectedDataTypeLinked": true,
-            "NSPrivacyCollectedDataTypeTracking": false,
-            "NSPrivacyCollectedDataTypePurposes": [
-              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
-            ]
-          },
-          {
             "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePurchaseHistory",
-            "NSPrivacyCollectedDataTypeLinked": true,
-            "NSPrivacyCollectedDataTypeTracking": false,
-            "NSPrivacyCollectedDataTypePurposes": [
-              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
-            ]
-          },
-          {
-            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePaymentInfo",
             "NSPrivacyCollectedDataTypeLinked": true,
             "NSPrivacyCollectedDataTypeTracking": false,
             "NSPrivacyCollectedDataTypePurposes": [
@@ -137,7 +125,7 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 29,
+      "versionCode": 30,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
@@ -155,8 +143,18 @@
       },
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
-      "usesCleartextTraffic": false,
-      "allowBackup": false
+      "allowBackup": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "pyaasdairy.com", "pathPrefix": "/trace" },
+            { "scheme": "https", "host": "www.pyaasdairy.com", "pathPrefix": "/trace" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -174,14 +172,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "PYAAS uses your photos so you can set a profile picture.",
+          "photosPermission": "PYAAS uses your photos to set a profile picture or add an optional door photo to your delivery address.",
           "microphonePermission": false
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "PYAAS uses the camera to scan the QR on your pack and show you which dairy and quality tests it came from.",
+          "cameraPermission": "PYAAS uses the camera to scan the QR on your pack and to take an optional photo of your door so the rider finds it.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -208,7 +206,17 @@
           "backgroundColor": "#F36CB5"
         }
       ],
-      "expo-image"
+      "expo-image",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class com.swmansion.worklets.** { *; }"
+          }
+        }
+      ]
     ]
   }
 }

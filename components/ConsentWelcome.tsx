@@ -22,7 +22,8 @@ import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { ShineSweep } from './Fx';
 import { haptics } from '../lib/haptics';
-import { FLOWS } from './DataDisclosure';
+import { DiscLangToggle, FLOWS } from './DataDisclosure';
+import { discStrings, useDiscLang } from '../lib/i18n';
 
 const LOGO = require('../assets/pyaas-logo.png');
 
@@ -52,6 +53,12 @@ const LOGO = require('../assets/pyaas-logo.png');
 export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Shared disclosure language (lib/i18n): the toggle below flips the same
+  // store every consent surface reads, and the acceptance record written by
+  // the onAgree handler captures the language showing at the tap.
+  const lang = useDiscLang();
+  const s = discStrings(lang);
+  const flows = FLOWS(lang);
   // One-shot guard: the tap records consent exactly once even if double-tapped
   // while the exit transition plays.
   const [agreed, setAgreed] = useState(false);
@@ -114,18 +121,21 @@ export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.duration(480).delay(120)} style={{ alignItems: 'center', gap: 8, marginTop: spacing.lg, marginBottom: spacing.xl }}>
-          <Serif style={{ fontSize: 30, textAlign: 'center', lineHeight: 36 }}>Fresh milk,{'\n'}nothing hidden</Serif>
+          <Serif style={{ fontSize: 30, textAlign: 'center', lineHeight: 36 }}>{s.data.welcomeHeadline}</Serif>
           <TextBody color={colors.inkMute} style={{ fontSize: 14.5, lineHeight: 21, textAlign: 'center', maxWidth: 330 }}>
-            Before you sign in, here is exactly what PYAAS collects, what we use it for, and who else sees it.
+            {s.data.welcomeIntro}
           </TextBody>
         </Animated.View>
 
         {/* The disclosure itself — the same seven flows as the modal, staggered
             in so the eye is walked down the list. */}
         <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: spacing.md, ...shadow.card }}>
-          {FLOWS.map((f, i) => (
+          {flows.map((f, i) => (
             <Animated.View
-              key={f.what}
+              // Icon (not text) as key: stable across the language toggle, so
+              // switching languages swaps the copy in place instead of
+              // re-mounting rows and replaying the staggered entrance.
+              key={f.icon}
               entering={FadeInDown.duration(420).delay(240 + i * 90)}
               style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}
             >
@@ -140,40 +150,48 @@ export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
           ))}
         </View>
 
-        <Animated.View entering={FadeInDown.duration(420).delay(240 + FLOWS.length * 90)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: spacing.md }}>
+        <Animated.View entering={FadeInDown.duration(420).delay(240 + flows.length * 90)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: spacing.md }}>
           <Ionicons name="shield-checkmark" size={15} color={colors.flameDeep} />
-          <TextBody color={colors.inkMute} style={{ fontSize: 12.5 }}>We never sell your data · delete your account anytime</TextBody>
+          <TextBody color={colors.inkMute} style={{ fontSize: 12.5 }}>{s.data.welcomeBadge}</TextBody>
         </Animated.View>
       </ScrollView>
+
+      {/* Language switch, pinned top-right above the scroll: a member who
+          cannot read the English disclosure must be able to reach the Hindi
+          one before anything asks them to agree. */}
+      <View style={{ position: 'absolute', top: insets.top + 6, right: spacing.lg, zIndex: 2 }}>
+        <DiscLangToggle />
+      </View>
 
       {/* Pinned CTA — the ONLY path that grants consent. No timer, no dismissal. */}
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: colors.milk, borderTopWidth: 1, borderTopColor: colors.line, gap: 10 }}>
         <Animated.View entering={FadeInDown.duration(460).delay(500)} style={[breathStyle, settleStyle]}>
-          <Tap onPress={agree} accessibilityRole="button" accessibilityLabel="Agree and continue to sign in">
+          <Tap onPress={agree} accessibilityRole="button" accessibilityLabel={s.data.agreeA11y}>
             <View style={{ height: 58, borderRadius: radius.pill, backgroundColor: colors.flameDeep, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.card }}>
               {/* Slow sheen — premium, not urgent. Clipped inside the pill. */}
               <ShineSweep dur={3600} delay={1400} travel={480} bandWidth={80} />
-              <TextSemi color={colors.white} style={{ fontSize: 17 }}>Agree and continue</TextSemi>
+              <TextSemi color={colors.white} style={{ fontSize: 17 }}>{s.agree}</TextSemi>
               <Ionicons name="arrow-forward" size={19} color={colors.white} />
             </View>
           </Tap>
         </Animated.View>
         <Tap haptic={false} onPress={() => setDeclined(true)} style={{ alignItems: 'center', paddingVertical: 2 }}>
-          <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Not now</TextMed>
+          <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>{s.notNow}</TextMed>
         </Tap>
         {declined ? (
           <TextBody style={{ fontSize: 12, textAlign: 'center', lineHeight: 17 }} color={colors.inkMute}>
-            No problem. Nothing is collected until you agree, and PYAAS can't sign you in without it. Agree whenever you're ready.
+            {s.data.declinedNote}
           </TextBody>
         ) : null}
         {/* Policy links are an ADDITION to the on-screen disclosure, never the
             substitute (rule 3). Both routes are public — readable signed out. */}
         <Animated.View entering={FadeIn.duration(420).delay(700)}>
           <TextBody style={{ fontSize: 12, textAlign: 'center' }} color={colors.inkMute}>
-            Full details in our{' '}
-            <TextMed color={colors.flameDeep} onPress={() => router.push('/privacy-policy')}>Privacy Policy</TextMed>
-            {' '}and{' '}
-            <TextMed color={colors.flameDeep} onPress={() => router.push('/terms')}>Terms</TextMed>.
+            {s.fullDetails.prefix}
+            <TextMed color={colors.flameDeep} onPress={() => router.push('/privacy-policy')}>{s.fullDetails.privacy}</TextMed>
+            {s.fullDetails.middle}
+            <TextMed color={colors.flameDeep} onPress={() => router.push('/terms')}>{s.fullDetails.terms}</TextMed>
+            {s.fullDetails.suffix}
           </TextBody>
         </Animated.View>
       </View>
