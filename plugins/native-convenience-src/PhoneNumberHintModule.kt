@@ -1,7 +1,6 @@
 package `in`.pyaasdairy.app.nativeconvenience
 
 import android.app.Activity
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -14,26 +13,14 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import com.google.android.gms.auth.api.credentials.Credential
-import com.google.android.gms.auth.api.credentials.Credentials
-import com.google.android.gms.auth.api.credentials.HintRequest
-import com.google.android.gms.auth.api.identity.GetPhoneNumberHintIntentRequest
-import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.auth.api.phone.SmsRetriever
 import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Status
 
 /**
- * RNPhoneNumberHint — the native "hyper-convenience" login seam the JS layer
+ * RNPhoneNumberHint — the native OTP auto-read seam the JS layer
  * (lib/nativeConvenience.ts) looks up on NativeModules.RNPhoneNumberHint.
  *
- *   requestHint()        the phone-number chooser. PREFERRED UI: the legacy
- *                        Smart Lock hint picker (Credentials.getHintPickerIntent,
- *                        the light centred "Continue with" dialog listing BOTH
- *                        SIM numbers — the reference UX). Deprecated upstream but
- *                        still functional with play-services-auth 20.7.0; any
- *                        failure falls back to the newer Identity Phone Number
- *                        Hint bottom sheet. Resolves the picked number, or null.
  *   startSmsRetriever()  arms BOTH SMS auto-read paths at once:
  *                        (a) SMS Retriever — zero-tap, but the SMS must end with
  *                            the 11-char app hash (getAppHash) or it never fires;
@@ -45,14 +32,21 @@ import com.google.android.gms.common.api.Status
  *                        for zero-tap Retriever delivery (put it in the DLT/MSG91
  *                        template).
  *
- * No runtime permission is requested by ANY of these — no READ_PHONE_NUMBERS,
- * no RECEIVE_SMS. Everything degrades to a null/false no-op when Play Services
- * is unavailable, so the JS callers treat that as "user will type".
+ * REMOVED — the phone-number chooser (requestHint). The Play Services phone-number
+ * hint (Credentials.getHintPickerIntent / Identity.getPhoneNumberHintIntent) READ
+ * THE SIM'S OWN NUMBER, and Google Play removed this app under the User Data policy
+ * for uploading the phone number without a prominent disclosure. The capability is
+ * gone from this module, from lib/nativeConvenience.ts, from the sign-in screen and
+ * from the build's dependencies — the member types their number, or uses ordinary OS
+ * autofill (autoComplete="tel"), which involves no SIM read by this app.
+ *
+ * No runtime permission is requested by anything here — no READ_PHONE_NUMBERS, no
+ * RECEIVE_SMS. Everything degrades to a null/false no-op when Play Services is
+ * unavailable, so the JS callers treat that as "user will type".
  */
 class PhoneNumberHintModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext), ActivityEventListener {
 
-  private var hintPromise: Promise? = null
   private var smsReceiver: BroadcastReceiver? = null
 
   /** True once an SMS body has been delivered this arming — stops the one-tap
@@ -66,78 +60,8 @@ class PhoneNumberHintModule(private val reactContext: ReactApplicationContext) :
 
   override fun getName() = "RNPhoneNumberHint"
 
-  // ── Phone number chooser ───────────────────────────────────────────────────
-
-  @ReactMethod
-  fun requestHint(promise: Promise) {
-    val activity = reactContext.currentActivity
-    if (activity == null || hintPromise != null) {
-      promise.resolve(null) // no activity, or a request already in flight
-      return
-    }
-    hintPromise = promise
-    // 1) Legacy Smart Lock hint picker — the light centred "Continue with"
-    //    dialog that lists every SIM number (the UX the product wants).
-    //    Throwable catch: if a future dep bump strips the Credentials class,
-    //    this NoClassDefFoundErrors into the Identity fallback below.
-    try {
-      val hintRequest = HintRequest.Builder().setPhoneNumberIdentifierSupported(true).build()
-      val pi: PendingIntent = Credentials.getClient(activity).getHintPickerIntent(hintRequest)
-      activity.startIntentSenderForResult(pi.intentSender, REQ_PHONE_HINT_LEGACY, null, 0, 0, 0)
-      return
-    } catch (e: Throwable) {
-      // fall through to the Identity bottom sheet
-    }
-    // 2) Fallback: the newer Identity Phone Number Hint (dark bottom sheet).
-    try {
-      val request = GetPhoneNumberHintIntentRequest.builder().build()
-      Identity.getSignInClient(activity)
-        .getPhoneNumberHintIntent(request)
-        .addOnSuccessListener { result ->
-          try {
-            activity.startIntentSenderForResult(result.intentSender, REQ_PHONE_HINT, null, 0, 0, 0)
-          } catch (e: Exception) {
-            resolveHint(null)
-          }
-        }
-        .addOnFailureListener { resolveHint(null) }
-    } catch (e: Throwable) {
-      resolveHint(null) // Play Services missing / any error
-    }
-  }
-
-  private fun resolveHint(value: String?) {
-    val p = hintPromise
-    hintPromise = null
-    p?.resolve(value)
-  }
-
   override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
     when (requestCode) {
-      REQ_PHONE_HINT_LEGACY -> {
-        if (resultCode == Activity.RESULT_OK && data != null) {
-          try {
-            @Suppress("DEPRECATION")
-            val credential: Credential? = data.getParcelableExtra(Credential.EXTRA_KEY)
-            resolveHint(credential?.id)
-          } catch (e: Throwable) {
-            resolveHint(null)
-          }
-        } else {
-          resolveHint(null) // cancelled / "None of the above"
-        }
-      }
-      REQ_PHONE_HINT -> {
-        if (resultCode == Activity.RESULT_OK && data != null) {
-          try {
-            resolveHint(Identity.getSignInClient(activity).getPhoneNumberFromIntent(data))
-          } catch (e: Exception) {
-            resolveHint(null)
-          }
-        } else {
-          resolveHint(null) // cancelled
-        }
-      }
       REQ_SMS_CONSENT -> {
         // User tapped "Allow" on the one-tap consent dialog → the SMS body.
         if (resultCode == Activity.RESULT_OK && data != null) {
@@ -263,8 +187,6 @@ class PhoneNumberHintModule(private val reactContext: ReactApplicationContext) :
   }
 
   companion object {
-    private const val REQ_PHONE_HINT = 71072
-    private const val REQ_PHONE_HINT_LEGACY = 71073
     private const val REQ_SMS_CONSENT = 71074
   }
 }

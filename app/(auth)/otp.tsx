@@ -4,13 +4,13 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withTiming, interpolate, Extrapolation } from 'react-native-reanimated';
+import Animated, { FadeInDown, useAnimatedKeyboard, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, fonts } from '../../lib/theme';
 import { TextBody, TextMed, TextSemi, Serif, Tap } from '../../components/ui';
 import { enterUp } from '../../lib/motion';
 import { signInWithPhone, saveProfile, getUserId, DEMO_OTP } from '../../lib/session';
 import { api, isBackendConfigured, setTokens } from '../../lib/apiClient';
-import { requestPhoneHint, startSmsRetriever, hasNativeConvenience } from '../../lib/nativeConvenience';
+import { startSmsRetriever } from '../../lib/nativeConvenience';
 import { hasAcceptedDataDisclosure, recordDataDisclosureAccepted, linkDisclosureToAccount } from '../../lib/dataConsent';
 import { DataDisclosure } from '../../components/DataDisclosure';
 import { discStrings, getDiscLang, useDiscLang } from '../../lib/i18n';
@@ -27,10 +27,12 @@ import { ConsentWelcome } from '../../components/ConsentWelcome';
  *      reads or sends the number. Until then the field is not editable, and
  *      THAT ACCEPTANCE is the consent to transmit — Google's affirmative in-app
  *      action, taken before any collection begins.
- *   2. After that one-time acceptance the zero-typing feel is back: focusing
- *      the field (or the explicit "Use the number on this phone" tap) opens the
- *      Play Services chooser. Picking FILLS THE FIELD — it does not itself send.
- *      Before acceptance, focus opens the disclosure instead.
+ *   2. The Play Services phone-number chooser is GONE. It read the SIM's own
+ *      number, which is the collection Google cited, so the capability has been
+ *      removed from this screen, from lib/nativeConvenience.ts, from the native
+ *      module and from the build's dependencies. The member types the number, or
+ *      fills it with ordinary OS autofill (autoComplete="tel"). Before
+ *      acceptance, focusing the field opens the disclosure instead.
  *   3. Once the field holds a complete 10-digit number the code is sent — either
  *      by auto-advance the moment the tenth digit lands, or by the explicit
  *      "Send verification code" tap. Both transmit only AFTER step 1's consent;
@@ -63,8 +65,6 @@ export default function OtpLogin() {
   const [error, setError] = useState('');
   // Seconds until "Resend code" re-enables (0 = ready).
   const [resendIn, setResendIn] = useState(0);
-  // In-flight guard so a burst of focus events doesn't launch the hint twice.
-  const hintBusy = useRef(false);
   // ULTRA-SMOOTH KEYBOARD. The old version flipped a boolean on
   // keyboardDidShow — which fires AFTER the OS animation completes on iOS —
   // and unmounted the whole hero in one frame: the visible "squash, then
@@ -118,38 +118,26 @@ export default function OtpLogin() {
   };
 
   /**
-   * ZERO-TYPING step 1: the phone-number chooser (the light "Continue with"
-   * picker listing the SIM numbers; no runtime permission).
+   * PHONE-NUMBER CHOOSER: REMOVED.
    *
-   * WHAT CHANGED FOR PLAY COMPLIANCE, and what came back:
+   * The Play Services number hint (Credentials.getHintPickerIntent / Identity
+   * getPhoneNumberHintIntent) READ THE SIM'S OWN NUMBER. It needs no Android
+   * permission, so the OS showed no dialog of its own — which is exactly why
+   * Google Play removed this app under the User Data policy for uploading the
+   * phone number without a prominent disclosure. The whole capability is gone:
+   * from this screen, from lib/nativeConvenience.ts, from the native module and
+   * from the build's dependencies (play-services-auth is no longer linked).
    *
-   * 1. Nothing fires before the disclosure is accepted — this API needs no
-   *    Android permission, so the OS shows no dialog of its own, and the
-   *    disclosure is the only consent moment that exists. Post-acceptance,
-   *    focus-launch returns (the zero-typing feel), because the read it
-   *    performs is exactly what the accepted disclosure describes.
-   * 2. NOTHING here transmits pre-consent. The removed violation read AND sent
-   *    the number with zero user action and zero disclosure. Post-consent, a
-   *    COMPLETE number the member actively produced (typed, or picked in the
-   *    chooser) auto-advances to the code step — see the auto-advance effect
-   *    below, which is gated on `consented` exactly like sendCodeFor itself.
+   * The member now types their number, or fills it with ordinary OS autofill via
+   * the field's autoComplete="tel" — neither of which is a SIM read by this app.
+   * Do not reintroduce the hint API.
    */
-  const [hintOpen, setHintOpen] = useState(false);
-  const hintDone = useRef(false); // resolved once (picked or dismissed) — don't relaunch
 
-  // The Play Services number chooser is a native sheet, not a keyboard, so the
-  // animated keyboard value never moves for it — fold it into the same smooth
-  // collapse with a timed 0→1 value instead of a hard layout swap.
-  const hintT = useSharedValue(0);
-  useEffect(() => {
-    hintT.value = withTiming(hintOpen ? 1 : 0, { duration: 220 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hintOpen]);
-  // Hero collapse, driven per-frame by whichever is up (keyboard px or the
-  // chooser). Fades out well before any clipping could show, with a gentle
-  // settle-scale so the departure reads as designed rather than squashed.
+  // Hero collapse, driven per-frame by the keyboard. Fades out well before any
+  // clipping could show, with a gentle settle-scale so the departure reads as
+  // designed rather than squashed.
   const heroStyle = useAnimatedStyle(() => {
-    const collapse = Math.max(kb.height.value, hintT.value * 320);
+    const collapse = kb.height.value;
     return {
       opacity: interpolate(collapse, [0, 140], [1, 0], Extrapolation.CLAMP),
       transform: [{ scale: interpolate(collapse, [0, 320], [1, 0.94], Extrapolation.CLAMP) }],
@@ -160,23 +148,6 @@ export default function OtpLogin() {
   const kbSpacerStyle = useAnimatedStyle(() => ({
     height: Platform.OS === 'ios' ? kb.height.value : 0,
   }));
-  const launchHint = async () => {
-    if (!consented) { setDiscloseOpen(true); return; } // never read the SIM un-consented
-    if (hintBusy.current || hintDone.current || digits().length >= 10) return;
-    hintBusy.current = true;
-    setHintOpen(true);
-    try {
-      const hinted = await requestPhoneHint();
-      hintDone.current = true;
-      if (hinted && hinted.length >= 10 && digits().length < 10) {
-        setPhone(hinted);
-        Keyboard.dismiss();
-      }
-    } finally {
-      hintBusy.current = false;
-      setHintOpen(false);
-    }
-  };
 
   /**
    * ZERO-TYPING step 2: while on the code step, auto-read the incoming OTP SMS
@@ -327,7 +298,7 @@ export default function OtpLogin() {
   // Until acceptance is resolved (null) nothing renders that could collect;
   // un-consented (false) renders ONLY the consent screen, so the phone field
   // does not exist yet (disclosure before any collection, by construction).
-  // The hard gates in launchHint()/sendCodeFor() stay as defence in depth.
+  // The hard gate in sendCodeFor() stays as defence in depth.
   if (consented === null) {
     return <View style={{ flex: 1, backgroundColor: colors.white }} />;
   }
@@ -369,7 +340,7 @@ export default function OtpLogin() {
                   // zero-typing feel — because the disclosure covering the SIM
                   // read has been accepted. Picking still only FILLS the field;
                   // nothing transmits until "Send verification code" is tapped.
-                  onFocus={() => { consented ? void launchHint() : setDiscloseOpen(true); }}
+                  onFocus={() => { if (!consented) setDiscloseOpen(true); }}
                   editable={consented === true}
                   keyboardType="phone-pad"
                   placeholder="Enter mobile number"
@@ -383,18 +354,6 @@ export default function OtpLogin() {
                   style={{ flex: 1, fontFamily: fonts.sans, fontSize: 16.5, color: colors.ink }}
                 />
               </View>
-
-              {/* One-tap SIM number, now behind an explicit labelled tap instead of
-                  firing on field focus. Android-only: the chooser is a Play
-                  Services API, so this row simply never renders on iOS. */}
-              {consented && hasNativeConvenience() && !hintDone.current ? (
-                <Tap haptic={false} onPress={() => { void launchHint(); }} style={{ alignSelf: 'flex-start' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="phone-portrait-outline" size={15} color={colors.flameDeep} />
-                    <TextMed color={colors.flameDeep} style={{ fontSize: 13.5 }}>Use the number on this phone</TextMed>
-                  </View>
-                </Tap>
-              ) : null}
 
               {error ? <TextBody color={colors.danger} style={{ fontSize: 13 }}>{error}</TextBody> : null}
 
@@ -467,7 +426,7 @@ export default function OtpLogin() {
       <Animated.View style={kbSpacerStyle} />
 
       {/* Mounted at the screen root so it covers the whole sign-in surface. The
-          gate is enforced in launchHint() and sendCodeFor() regardless of what is
+          gate is enforced in sendCodeFor() regardless of what is
           on screen — this modal is how the member grants consent, not the thing
           that enforces it. */}
       <DataDisclosure

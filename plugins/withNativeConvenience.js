@@ -18,9 +18,10 @@ const {
  *      app/build.gradle,
  *   3. the PyaasConveniencePackage registration in MainApplication.kt.
  *
- * NOTE: the phone-number hint uses Play Services `getPhoneNumberHintIntent`, which
- * needs NO runtime permission — so we DON'T request READ_PHONE_NUMBERS (that shows
- * the scary "make and manage phone calls" prompt). SMS Retriever is permission-free too.
+ * NOTE: the phone-number hint (`getPhoneNumberHintIntent`) has been REMOVED — it read
+ * the SIM's own number, which is what Google Play removed the app for under the User
+ * Data policy. Only SMS Retriever / SMS User Consent remain, and both are
+ * permission-free: no READ_PHONE_NUMBERS, no RECEIVE_SMS, no READ_SMS.
  *
  * Without this, the hand-added android/ files are dropped by a clean prebuild.
  * The JS side (lib/nativeConvenience.ts) looks the module up on
@@ -31,19 +32,19 @@ const SRC_DIR = path.join(__dirname, 'native-convenience-src');
 const KOTLIN_FILES = ['PhoneNumberHintModule.kt', 'AppSignatureHelper.kt', 'PyaasConveniencePackage.kt'];
 
 const GRADLE_DEPS = [
-  // 20.7.0 (NOT 21.x): the legacy Smart Lock hint picker (Credentials/
-  // HintRequest — the light "Continue with" dialog listing both SIM numbers)
-  // was REMOVED in play-services-auth 21.0. 20.7.0 carries BOTH that picker
-  // and the newer Identity Phone Number Hint we fall back to.
-  'implementation("com.google.android.gms:play-services-auth:20.7.0")',
+  // SMS Retriever / SMS User Consent ONLY. play-services-auth (the Smart Lock
+  // hint picker + Identity Phone Number Hint) was REMOVED: that API read the
+  // SIM's own number, which is what Google Play removed the app for under the
+  // User Data policy. Do not reintroduce it.
   'implementation("com.google.android.gms:play-services-auth-api-phone:18.2.0")',
 ];
 
 const REGISTER_LINE =
   '          add(`in`.pyaasdairy.app.nativeconvenience.PyaasConveniencePackage())';
 
-// No phone/SMS permission is requested: the number hint (getPhoneNumberHintIntent)
-// and SMS Retriever are both permission-free — so this plugin only injects native code.
+// No phone/SMS permission is requested: SMS Retriever / SMS User Consent are
+// permission-free — so this plugin only injects native code. The phone-number hint
+// was removed entirely (Play User Data policy); do not reintroduce it.
 
 // Play Services deps in app/build.gradle (idempotent).
 function withGradleDeps(config) {
