@@ -1,19 +1,13 @@
 import { Platform, NativeModules, NativeEventEmitter } from 'react-native';
 
 /**
- * Native OTP auto-read seam, backed by the native module `RNPhoneNumberHint`
- * (android/app/.../nativeconvenience/):
- *   SMS Retriever — auto-reads the incoming OTP SMS (no READ_SMS permission) via
- *   the native module's "pyaasSmsOtp" event and hands the code back so we can
- *   autofill it. This reads a message addressed to this app, not the member's
- *   inbox, and needs no permission.
- *
- * REMOVED — the Phone Number Hint (requestPhoneHint). That Play Services chooser
- * returned the SIM's OWN NUMBER, and Google Play removed this app under the User
- * Data policy for uploading the phone number without a prominent disclosure. The
- * number is now typed by the member, or filled by ordinary OS autofill via the
- * field's autoComplete="tel" — neither of which is a SIM read by this app. Do not
- * reintroduce it.
+ * Native "hyper-convenience" seams for the phone-OTP flow, backed by the native
+ * module `RNPhoneNumberHint` (android/app/.../nativeconvenience/):
+ *   1. Phone Number Hint  — a one-tap Play Services chooser that returns the SIM's
+ *      own number so the user never types it (requestPhoneHint).
+ *   2. SMS Retriever       — auto-reads the incoming OTP SMS (no READ_SMS
+ *      permission) via the native module's "pyaasSmsOtp" event and hands the code
+ *      back so we can autofill it.
  *
  * Every function degrades to a graceful no-op (never throws, resolves to null / a
  * cleanup fn) when the native module or Play Services is absent, so the app still
@@ -26,6 +20,31 @@ const Native: any = NativeModules?.RNPhoneNumberHint ?? null;
 /** True when the native phone-hint / SMS-retriever module is present in this build. */
 export function hasNativeConvenience(): boolean {
   return Platform.OS === 'android' && !!Native;
+}
+
+/**
+ * Ask Android to show the Phone Number Hint chooser and return the picked number
+ * (digits, best-effort last-10). Resolves to `null` when unavailable, declined, or
+ * on any error — the caller should treat null as "user will type".
+ *
+ * Call this on FOCUS of the phone field (not on mount) so the sheet appears in
+ * direct response to the user's intent to enter a number.
+ */
+export async function requestPhoneHint(): Promise<string | null> {
+  if (Platform.OS !== 'android' || !Native?.requestHint) return null;
+  try {
+    const raw = await Native.requestHint();
+    return normalizePhone(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Extract the last 10 digits from a hint like "+91 98765 43210". */
+function normalizePhone(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  return digits ? digits.slice(-10) : null;
 }
 
 export type SmsRetrieverStop = () => void;
