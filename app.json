@@ -125,7 +125,7 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 32,
+      "versionCode": 33,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
@@ -149,10 +149,21 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "pyaasdairy.com", "pathPrefix": "/trace" },
-            { "scheme": "https", "host": "www.pyaasdairy.com", "pathPrefix": "/trace" }
+            {
+              "scheme": "https",
+              "host": "pyaasdairy.com",
+              "pathPrefix": "/trace"
+            },
+            {
+              "scheme": "https",
+              "host": "www.pyaasdairy.com",
+              "pathPrefix": "/trace"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
