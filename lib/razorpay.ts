@@ -25,7 +25,12 @@ export const RAZORPAY_KEY_ID = process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID ?? '';
 
 /** True when a real gateway key is present. Checkout must not open without it. */
 export function isRazorpayConfigured(): boolean {
-  return RAZORPAY_KEY_ID.length > 0;
+  // The key id is PUBLIC and the backend serves it with every /wallet/order
+  // (keyId in the response — live-verified). So with a backend configured,
+  // checkout is available even when the build shipped no env key: the gate
+  // must not block before the order call that delivers the key. The env var
+  // remains the offline/no-backend fallback.
+  return RAZORPAY_KEY_ID.length > 0 || isBackendConfigured();
 }
 
 /**
@@ -114,6 +119,9 @@ export type CheckoutParams = {
   amountPaise: number;
   /** Razorpay order id from POST /wallet/order (binds the amount server-side). */
   orderId?: string;
+  /** PUBLIC key id — prefer the one the backend returned with the order
+   *  (topupOrderView.keyId); the build-time env key is only the fallback. */
+  keyId?: string;
   description?: string;
   prefill?: CheckoutPrefill;
   /** Optional method hint ('upi' | 'card' | 'netbanking' | 'wallet') to pre-focus. */
@@ -196,7 +204,7 @@ export async function openCheckout(params: CheckoutParams): Promise<CheckoutOutc
     return { status: 'failed', error: 'Payment sheet unavailable in this build.' };
   }
   const options: Record<string, unknown> = {
-    key: RAZORPAY_KEY_ID,
+    key: params.keyId || RAZORPAY_KEY_ID,
     amount: params.amountPaise,
     currency: 'INR',
     name: 'PYAAS',

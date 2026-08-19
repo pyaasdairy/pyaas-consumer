@@ -214,6 +214,7 @@ export default function Recharge() {
         const outcome = await openCheckout({
           amountPaise: order.amountPaise,
           orderId: order.orderId,
+          keyId: order.keyId, // backend-served public key (env is only fallback)
           description: 'PYAAS wallet recharge',
           prefill,
           themeColor: colors.flameDeep,
