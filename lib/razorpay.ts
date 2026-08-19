@@ -39,6 +39,12 @@ export function isRazorpayConfigured(): boolean {
  * payment gateway is wired. Backend-gated: only credits when the server runs in
  * dev mode (OTP_DEV_MODE). Flip this off + set real Razorpay keys for production.
  */
+// CACHE TRAP (learnt the hard way): Metro's transform cache is keyed on FILE
+// CONTENT, not env values — flipping EXPO_PUBLIC_WALLET_TEST_TOPUP in .env
+// does NOT re-inline this constant unless this file changes or the cache is
+// wiped. If you flip the env, `rm -rf node_modules/.cache $TMPDIR/metro-*`
+// before the release build, and verify the built bundle (the test-branch
+// string "Could not add test money" must be ABSENT in production bundles).
 export const WALLET_TEST_TOPUP = process.env.EXPO_PUBLIC_WALLET_TEST_TOPUP === 'true';
 
 /** TEST-ONLY: credit the wallet directly via the dev top-up endpoint. */
