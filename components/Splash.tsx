@@ -36,10 +36,21 @@ export function Splash({ ready, onDone }: { ready: boolean; onDone: () => void }
   useEffect(() => {
     reveal.value = withDelay(
       WRITE_DELAY_MS,
-      withTiming(1, { duration: WRITE_MS, easing: Easing.inOut(Easing.cubic) }, (finished) => {
-        if (finished) runOnJS(setWriteDone)(true);
+      // NOTE: no `if (finished)` guard. An interrupted timing reports
+      // finished=false — which happens routinely when iOS backgrounds the app
+      // during a cold start — and gating writeDone on it left the overlay
+      // mounted forever, i.e. a pink screen the app never came back from.
+      withTiming(1, { duration: WRITE_MS, easing: Easing.inOut(Easing.cubic) }, () => {
+        runOnJS(setWriteDone)(true);
       }),
     );
+    // Belt and braces: if the animation is cancelled outright its callback may
+    // never run at all, so writeDone must not depend solely on Reanimated.
+    const watchdog = setTimeout(
+      () => setWriteDone(true),
+      WRITE_DELAY_MS + WRITE_MS + 400,
+    );
+    return () => clearTimeout(watchdog);
   }, [reveal]);
 
   // The settle plays once, right as the last letter lands.
@@ -60,10 +71,24 @@ export function Splash({ ready, onDone }: { ready: boolean; onDone: () => void }
   useEffect(() => {
     if (!ready || !writeDone || started.current) return;
     started.current = true;
-    fade.value = withDelay(160, withTiming(0, { duration: 480, easing: Easing.inOut(Easing.ease) }, (finished) => {
-      if (finished) runOnJS(onDoneRef.current)();
+    // Same reasoning as the write-on: an interrupted fade must still hand the
+    // app back, otherwise the overlay outlives the animation that hides it.
+    fade.value = withDelay(160, withTiming(0, { duration: 480, easing: Easing.inOut(Easing.ease) }, () => {
+      runOnJS(onDoneRef.current)();
     }));
   }, [ready, writeDone, fade]);
+
+  // ABSOLUTE BACKSTOP. This overlay covers a fully working app, so no animation
+  // outcome may be allowed to strand the user on it. Whatever happens above,
+  // hand control back. Cheap insurance against a class of bug that presents to
+  // the user as "the app froze on launch".
+  useEffect(() => {
+    const bail = setTimeout(() => {
+      started.current = true;
+      onDoneRef.current();
+    }, WRITE_DELAY_MS + WRITE_MS + 2500);
+    return () => clearTimeout(bail);
+  }, []);
 
   const overlayStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const wipeStyle = useAnimatedStyle(() => ({ width: reveal.value * LOGO_W }));

@@ -1,0 +1,41 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
+const { withPodfileProperties } = require('@expo/config-plugins');
+
+/**
+ * Config plugin: opt this iOS build OUT of Hermes V1.
+ *
+ * WHY THIS EXISTS
+ * Expo SDK 56 ships React Native 0.85.3, which links Hermes V1
+ * 250829098.0.10. Every Hermes V1 up to and including 250829098.0.15 carries a
+ * memory regression that only bites RELEASE builds: the engine attaches roughly
+ * half a megabyte of debug metadata to each function it eval()s at runtime.
+ * `npx expo-doctor` fails this project on exactly that check.
+ *
+ * That hits THIS app unusually hard. Reanimated/Worklets in its default
+ * (non-bundle) mode ships every worklet as a source STRING and eval()s it on
+ * the UI runtime, and the app initialises well over a hundred worklets during
+ * cold start — the splash write-on, the tab bar, every screen transition. The
+ * result is a large, launch-time memory spike that presents to the user as the
+ * app hanging on the splash and recovering on relaunch.
+ *
+ * Bundle Mode in react-native-worklets would sidestep the eval() path, but it
+ * only became the stable default in worklets 0.10.0 and this project is pinned
+ * to 0.8.3 by SDK 56. So the surgical fix is to run the previous, unaffected
+ * engine (Hermes 0.16.0) until an SDK upgrade is scheduled on its own merits.
+ *
+ * `ios/Podfile` honours this at line 20:
+ *   ENV['RCT_HERMES_V1_ENABLED'] ||= '0' if podfile_properties['expo.useHermesV1'] == 'false'
+ *
+ * This must be a config plugin rather than a hand edit: ios/ is generated and
+ * gitignored, so a plain change to Podfile.properties.json is silently lost on
+ * the next `expo prebuild`. expo-build-properties exposes no Hermes toggle.
+ *
+ * REMOVE THIS when upgrading to Expo SDK 57 / React Native 0.86.2+, which ship
+ * Hermes V1 250829098.0.16 with the fix.
+ */
+module.exports = function withHermesV1Disabled(config) {
+  return withPodfileProperties(config, (cfg) => {
+    cfg.modResults['expo.useHermesV1'] = 'false';
+    return cfg;
+  });
+};

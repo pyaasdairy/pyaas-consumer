@@ -13,7 +13,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "in.pyaasdairy.app",
-      "buildNumber": "1",
+      "buildNumber": "4",
       "associatedDomains": [
         "applinks:pyaasdairy.com",
         "applinks:www.pyaasdairy.com"
@@ -22,6 +22,7 @@
         "NSLocationWhenInUseUsageDescription": "PYAAS uses your location to set your delivery address and show your rider on the way.",
         "NSPhotoLibraryUsageDescription": "PYAAS uses your photos to set a profile picture or add an optional door photo to your delivery address.",
         "NSCameraUsageDescription": "PYAAS uses the camera to scan the QR on your pack and to take an optional photo of your door so the rider finds it.",
+        "NSMotionUsageDescription": "PYAAS uses motion data only to keep delivery tracking and map animations smooth on your device. It is never stored or shared.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "privacyManifests": {
@@ -201,13 +202,14 @@
           "locationWhenInUsePermission": "PYAAS uses your location to set your delivery address and show your rider on the way.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
-          "motionUsagePermission": false,
+          "motionUsagePermission": "PYAAS uses motion data only to keep delivery tracking and map animations smooth on your device. It is never stored or shared.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }
       ],
       "expo-sharing",
       "./plugins/withNativeConvenience",
+      "./plugins/withHermesV1Disabled",
       [
         "expo-splash-screen",
         {

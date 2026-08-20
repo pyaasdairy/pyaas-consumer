@@ -175,6 +175,15 @@ function RootNavigator() {
   }, []);
   const onSplashDone = useCallback(() => setSplashDone(true), []);
 
+  // OUTER BACKSTOP for the splash overlay. maxWaited above only forces
+  // `appReady`, which is the Splash's `ready` PROP — it never guaranteed the
+  // overlay actually unmounts. If Splash fails to call onDone for any reason,
+  // clear it from here so a working app can never stay hidden behind it.
+  useEffect(() => {
+    const bail = setTimeout(() => setSplashDone(true), 8000);
+    return () => clearTimeout(bail);
+  }, []);
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.flameDeep }}>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.milk } }}>

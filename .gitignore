@@ -53,3 +53,6 @@ parag-saathi-be/
 # build artifacts must never be committed
 *.apk
 *.aab
+
+# Generated App Store assets (simulator captures)
+appstore-screenshots/
