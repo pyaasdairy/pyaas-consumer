@@ -30,7 +30,7 @@ import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
 import { freePackShowEligible, onFreePackChanged, snoozeFreePack, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
 import { PREPAID_TARGET, prepaidTier } from '../../lib/prepaid';
-import { listSubscriptions } from '../../lib/subscriptions';
+import { listSubscriptions, syncServerSubscriptions } from '../../lib/subscriptions';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
 import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
@@ -191,7 +191,8 @@ export default function Shop() {
   // the 2+2 is encoded in `claimEligible` (freePackShowEligible → false once the
   // pack is claimed), which gates the render sites alongside freshUser.
   const recheckFresh = useCallback(() => {
-    listSubscriptions()
+    syncServerSubscriptions()
+      .then(() => listSubscriptions())
       .then((subs) => {
         // A one-time order is NOT an ongoing subscription — exclude it so a single
         // instant buy never flips the member out of the "fresh" 2+2 funnel.

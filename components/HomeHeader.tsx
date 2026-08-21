@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, FadeIn } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
@@ -12,6 +12,7 @@ import { navHidden } from '../lib/navVisibility';
 import { useWallet } from '../store/wallet';
 import { useUserLocation } from '../lib/userLocation';
 import { useServiceability } from '../lib/serviceability';
+import { useCrmUnread, refreshCrmUnread } from '../lib/crm';
 
 /** Time-of-day greeting (incl. a playful late-night line). */
 function greetingFor(name: string): string {
@@ -85,12 +86,44 @@ export function HomeHeader({ firstName }: { firstName: string }) {
             <Serif style={{ fontSize: 18, lineHeight: 23, letterSpacing: -0.2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{greetingFor(firstName)}</Serif>
           </View>
         </View>
-        {/* Right side: ONLY the wallet chip — no cart button, no avatar. The
-            cart lives in the bottom bar and the profile on its own tab. */}
+        {/* Right side: the wallet chip — no cart button, no avatar. The cart
+            lives in the bottom bar and the profile on its own tab. The one
+            exception is the message bell, and ONLY while something is unread:
+            campaign messages (the Welcome Litre journey) must reach the member,
+            but a permanent bell would be dead weight for everyone else. */}
+        <InboxBell />
         <WalletChip />
 
       </Animated.View>
     </Animated.View>
+  );
+}
+
+/**
+ * Unread-messages bell — rendered ONLY when the CRM inbox has unread rows, so
+ * the header stays exactly as it was for every member with nothing to read.
+ * The count refreshes each time the home tab gains focus (lib/crm degrades to
+ * 0 on old backends / offline, which simply keeps the bell hidden).
+ */
+function InboxBell() {
+  const router = useRouter();
+  const unread = useCrmUnread();
+  useFocusEffect(
+    useCallback(() => {
+      refreshCrmUnread();
+    }, []),
+  );
+  if (unread <= 0) return null;
+  return (
+    <Tap
+      onPress={() => router.push('/inbox')}
+      scaleTo={0.94}
+      accessibilityLabel={`${unread} unread ${unread === 1 ? 'message' : 'messages'}`}
+      style={{ height: 34, width: 34, flexShrink: 0, marginRight: 8, borderRadius: radius.pill, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.flame, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <Ionicons name="notifications" size={15} color={colors.flameDeep} />
+      <View style={{ position: 'absolute', top: 5, right: 5, minWidth: 8, height: 8, borderRadius: 4, backgroundColor: colors.flameDeep }} />
+    </Tap>
   );
 }
 

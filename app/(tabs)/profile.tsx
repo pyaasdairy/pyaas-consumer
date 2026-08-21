@@ -132,6 +132,7 @@ export default function Profile() {
           tiles={[
             { icon: 'gift-outline', label: 'Refer', onPress: () => router.push('/refer') },
             { icon: 'pricetags-outline', label: 'Offer Zone', onPress: () => router.push('/coupons') },
+            { icon: 'mail-outline', label: 'Messages', onPress: () => router.push('/inbox') },
           ]}
         />
 

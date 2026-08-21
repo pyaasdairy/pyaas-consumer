@@ -13,6 +13,7 @@ import { useWallet } from '../../store/wallet';
 import { rechargeBonus, LOW_BALANCE_THRESHOLD } from '../../lib/pricing';
 import { getAutopay, setupAutopay, cancelAutopay, approveAutopay, getSpendSummary, type AutopayMandate } from '../../lib/walletApi';
 import { isBackendConfigured } from '../../lib/apiClient';
+import { getCrmOffer, type CrmOfferView } from '../../lib/crm';
 
 // Quick recharge packs surfaced on the dashboard (bonus resolved from pricing).
 const QUICK_PACKS = [500, 1000, 2000];
@@ -37,10 +38,14 @@ export default function Wallet() {
   const [topupAmt, setTopupAmt] = useState(TOPUP_AMOUNTS[1]);
   const [busy, setBusy] = useState(false);
   const [focused, setFocused] = useState(true);
+  const [crmOffer, setCrmOffer] = useState<CrmOfferView | null>(null);
   const onScroll = useHideTabBarOnScroll();
 
   const load = useCallback(async () => {
     await refresh();
+    // Campaign entitlement (Welcome Litre) — null everywhere except an
+    // enrolled household on a CRM-enabled backend, so this line costs nothing.
+    getCrmOffer().then(setCrmOffer);
     const [ap, spend] = await Promise.all([getAutopay(), getSpendSummary()]);
     setAutopay(ap && ap.status !== 'cancelled' ? ap : null);
     setDays(spend.daysRemaining);
@@ -132,6 +137,21 @@ export default function Wallet() {
               ) : (
                 <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5, marginTop: 8 }}>Every payment & cashback reflects here.</TextBody>
               )}
+
+              {/* Welcome Litre entitlement — an enrolled household with a free
+                  pack still owed sees it stated ON the money card: free means
+                  the wallet is untouched for that delivery. Hidden for everyone
+                  else (and on any backend without CRM). */}
+              {crmOffer?.enrolled && crmOffer.entitled_free_deliveries > 0 ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, alignSelf: 'flex-start', maxWidth: '100%', backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 5 }}>
+                  <Ionicons name="gift" size={13} color={colors.white} style={{ flexShrink: 0 }} />
+                  <TextMed color={colors.white} style={{ fontSize: 12, flexShrink: 1 }} numberOfLines={2}>
+                    {crmOffer.entitled_free_deliveries === 1
+                      ? '1 free delivery on us — nothing charged'
+                      : `${crmOffer.entitled_free_deliveries} free deliveries on us — nothing charged`}
+                  </TextMed>
+                </View>
+              ) : null}
             </View>
             {focused ? <ShineSweep dur={3400} travel={420} bandWidth={100} delay={500} /> : null}
           </View>

@@ -6,7 +6,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, radius, rupee, shadow, spacing, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Tap } from './ui';
 import { resolveProduct } from '../lib/catalog';
-import { listSubscriptions, listVacations, upcomingDeliveries, perDeliveryCost, type Subscription } from '../lib/subscriptions';
+import { listSubscriptions, syncServerSubscriptions, listVacations, upcomingDeliveries, perDeliveryCost, type Subscription } from '../lib/subscriptions';
 import { useTrial, trialLabel } from '../lib/trial';
 import { todayISO, formatWeekday } from '../lib/dates';
 
@@ -39,6 +39,7 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
       let on = true;
       (async () => {
         try {
+          await syncServerSubscriptions(); // server-created plans (Welcome Litre) become visible
           const list = await listSubscriptions();
           let next: string | null = null;
           const active = list.filter((s) => s.status === 'active' && s.frequency !== 'one_time');

@@ -11,6 +11,7 @@ import { getMergedProduct } from './catalog';
 import { getProduct } from '../constants/products';
 import { beginTrial, getTrial, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 import { minSubscriptionQty } from './subscriptionFloor';
+import { getCrmOffer } from './crm';
 
 // Re-exported so screens can pull the trial shape from one funnel-facing module.
 export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
@@ -361,6 +362,15 @@ type Snooze = { dismissals: number; snoozed_until: string };
 export async function freePackShowEligible(phone: string): Promise<boolean> {
   const uid = await requireUserId().catch(() => null);
   if (!uid) return false;
+  // A Welcome Litre household (CRM-enrolled server-side) already HAS its
+  // subscription and its free packs — pitching the 2+2 on top would stack a
+  // second daily plan against a deliberately-exhausted trial ledger and
+  // charge the days this banner promises free. getCrmOffer() is null for
+  // everyone else (old backend, CRM off, offline), so nothing changes for
+  // the normal funnel.
+  try {
+    if ((await getCrmOffer())?.enrolled) return false;
+  } catch { /* fall through — the subscription check below still guards */ }
   // COMPLETED (2 paid full-cream days delivered) → the funnel disappears from
   // the home page and everywhere else, permanently.
   if (await offerCompleted()) {

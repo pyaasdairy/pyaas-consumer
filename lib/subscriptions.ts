@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { parseISO, addDaysISO, todayISO } from './dates';
 import { requireUserId } from './session';
-import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore';
+import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 import { hasExactLocation } from './location';
 import { api, isBackendConfigured } from './apiClient';
 import { getProduct } from '../constants/products';
@@ -104,6 +104,49 @@ export function upcomingDeliveries(
     if (items.length) out.push({ date: iso, count: items.reduce((n, s) => n + s.qty, 0), items });
   }
   return out;
+}
+
+/**
+ * Pull server-CREATED subscriptions the local cache has never seen (today:
+ * the CRM Welcome Litre campaign plan, minted by the backend at enrolment —
+ * the first subscription in the product's life that this app did not create
+ * itself). ADD-ONLY by design: rows the app already holds are never touched,
+ * so no local pause/cancel state can be clobbered, and a backend outage
+ * changes nothing (error-soft, next call retries). Runs where subscription
+ * lists are actually read (home + status card), not on a timer.
+ */
+export async function syncServerSubscriptions(): Promise<void> {
+  if (!isBackendConfigured()) return;
+  let uid: string;
+  try { uid = await requireUserId(); } catch { return; }
+  try {
+    const remote = await api.get<Record<string, unknown>[]>('/subscriptions');
+    if (!Array.isArray(remote) || remote.length === 0) return;
+    const rows = await getRows<Subscription>('subscriptions', uid);
+    const known = new Set(rows.map((r) => r.backend_id ?? r.id));
+    let added = false;
+    for (const w of remote) {
+      const sid = (w.id as string) || '';
+      if (!sid || known.has(sid)) continue;
+      rows.push({
+        id: sid,
+        product_id: (w.product_id as string) || '',
+        variant: (w.variant as string) || null,
+        qty: typeof w.qty === 'number' && w.qty >= 1 ? (w.qty as number) : 1,
+        unit_price: typeof w.unit_price === 'number' ? (w.unit_price as number) : 0,
+        frequency: ((w.frequency as string) || 'daily') as Frequency,
+        delivery_slot: null,
+        pay_from_wallet: true,
+        status: ((w.status as string) || 'active') as Subscription['status'],
+        start_date: (w.start_date as string) || todayISO(),
+        next_delivery_date: (w.start_date as string) || null,
+        created_at: (w.created_at as string) || new Date().toISOString(),
+        backend_id: sid,
+      });
+      added = true;
+    }
+    if (added) await setRows<Subscription>('subscriptions', uid, rows);
+  } catch { /* offline / old backend — the next read retries */ }
 }
 
 export async function listSubscriptions(): Promise<Subscription[]> {
