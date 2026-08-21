@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { getUserId } from '../lib/session';
 import { getBalances, replayPendingPromos, reverseRetiredRechargeBonuses } from '../lib/walletApi';
 import { syncWalletUnlock } from '../lib/walletGate';
+import { replayParkedRestockLeads } from '../lib/leads';
 
 /**
  * PYAAS wallet balance store. Reads the DERIVED balances off the append-only
@@ -39,6 +40,10 @@ export const useWallet = create<WalletState>((set) => ({
       // reading the server balance, so a promo that failed at claim time shows
       // up the moment the wallet next refreshes. No-op offline / local mode.
       await replayPendingPromos().catch(() => { /* still offline — retried next refresh */ });
+      // Same boot/foreground beat: re-post restock leads parked on-device while
+      // the backend was unreachable (lib/leads). Fire-and-forget — lead replay
+      // must never delay the balance read. No-op offline / local / none parked.
+      void replayParkedRestockLeads();
       // Claw back any "Recharge bonus" a retired build granted — top-ups credit
       // exactly what was paid, nothing extra (idempotent, local mode only).
       await reverseRetiredRechargeBonuses().catch(() => { /* retried next refresh */ });

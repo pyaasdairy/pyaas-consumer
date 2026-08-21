@@ -20,6 +20,9 @@ import { setOnAuthExpired } from '../lib/apiClient';
 import { runOneTimeLocalReset } from '../lib/localReset';
 import { drainMirrorQueue } from '../lib/mirrorQueue';
 import { hydrateProfileFromServer } from '../lib/profileApi';
+// Importing consentSync also registers the 'consents' mirror handler at boot,
+// before any drain can encounter (and would otherwise drop) a queued consent op.
+import { hydrateConsentsFromServer } from '../lib/consentSync';
 import { colors } from '../lib/theme';
 import { Splash } from '../components/Splash';
 import { AppErrorBoundary } from '../components/AppErrorBoundary';
@@ -147,6 +150,11 @@ function RootNavigator() {
           // server truths a reinstall forgets (profile fields). Error-soft.
           void drainMirrorQueue().catch(() => undefined);
           void hydrateProfileFromServer();
+          // Fire-and-forget, never blocks session start: reinstall hydration
+          // of channel consents (GET /users/me/consents). Silent no-op against
+          // the deployed backend (404) and offline; skipped while a local
+          // consent mirror is still pending so local intent is never clobbered.
+          void hydrateConsentsFromServer();
         }
       })
       .catch(() => { if (on) setNeedsConsent(true); });
@@ -172,6 +180,11 @@ function RootNavigator() {
     setNeedsConsent(false);
     // Consent just granted → NOW it is safe to re-hydrate from the backend.
     void runOneTimeLocalReset();
+    // The [session] effect already ran (and skipped hydration) while the
+    // overlay was up, so pull the account's consent state here instead.
+    // Fire-and-forget; the pending disclosure mirror just queued means the
+    // server-wins merge will stand aside until local intent has landed.
+    void hydrateConsentsFromServer();
   }, []);
   const onSplashDone = useCallback(() => setSplashDone(true), []);
 

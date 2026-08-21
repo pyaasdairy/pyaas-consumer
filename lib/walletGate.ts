@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getUserId } from './session';
+import { getLedger } from './walletApi';
 
 /**
  * ₹100 WALLET GATE
@@ -29,7 +30,52 @@ export async function purchasesUnlocked(currentBalance?: number): Promise<boolea
   const uid = await getUserId();
   if (!uid) return false;
   if ((currentBalance ?? 0) >= WALLET_UNLOCK_TARGET) return true;
-  try { return (await AsyncStorage.getItem(UNLOCK_KEY_PREFIX + uid)) === '1'; } catch { return false; }
+  try {
+    if ((await AsyncStorage.getItem(UNLOCK_KEY_PREFIX + uid)) === '1') return true;
+  } catch { /* flag unreadable — fall through to the ledger */ }
+  // Flag ABSENT → ask the ledger (below). Never reached when the flag is set,
+  // so the unlocked hot path stays a single local read with no network.
+  if (ledgerProbe?.uid !== uid) {
+    const p = unlockProvenByLedger(uid).finally(() => {
+      if (ledgerProbe?.p === p) ledgerProbe = null;
+    });
+    ledgerProbe = { uid, p };
+  }
+  return ledgerProbe.p;
+}
+
+// SERVER-TRUTH FALLBACK (the freePack.offerQualified pattern): the unlock flag
+// is device-local — a reinstall or a new phone loses it even though the member
+// already funded the wallet past ₹100, and the balance they were left with may
+// have been spent back below the target (the ratchet means that must NOT
+// re-lock them). The wallet LEDGER is authoritative: any SINGLE successful
+// CASH credit of ≥ the unlock target proves the account crossed it. The seeded
+// opening balance, reward/promo credits, and small top-ups that merely SUM to
+// the target never do. On proof the local flag is re-cached so the next check
+// is flag-only again. ANY failure (offline, timeout, 5xx, or a 404 from an
+// older deployed backend) keeps today's answer: locked, fail-closed, zero UX
+// change. Single-flight per uid so the cart CTA and SubscribeSheet double-
+// checking at once share one GET /wallet/txns.
+let ledgerProbe: { uid: string; p: Promise<boolean> } | null = null;
+
+async function unlockProvenByLedger(uid: string): Promise<boolean> {
+  try {
+    const rows = await getLedger();
+    const proven = rows.some(
+      (r) =>
+        r.type === 'credit' &&
+        r.bucket === 'cash' &&
+        r.status === 'success' &&
+        r.amount >= WALLET_UNLOCK_TARGET &&
+        r.ref_type !== 'seed' &&
+        r.ref_type !== 'reward',
+    );
+    if (!proven) return false;
+    try { await AsyncStorage.setItem(UNLOCK_KEY_PREFIX + uid, '1'); } catch { /* cache only — the ledger answered */ }
+    return true;
+  } catch {
+    return false; // ledger unreachable — only the local flag can unlock (fail-closed)
+  }
 }
 
 // Unlock listeners: screens showing the gate (cart CTA, product page) subscribe

@@ -7,6 +7,7 @@ import { colors, radius, spacing } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Tap } from './ui';
 import { getUserId } from '../lib/session';
 import { getRows, insertRow } from '../lib/localStore';
+import { queueConsentMirror } from '../lib/consentSync';
 
 /**
  * Reusable consent capture for signup / onboarding.
@@ -33,6 +34,13 @@ export type ConsentRecord = {
   app_version: string;
   policy_version: string; // bump when the policy text materially changes
   recorded_at: string; // ISO
+  /** Server-hydration records only (lib/consentSync.ts): the LEGAL event time
+   *  per server consent type (e.g. marketing_sms → ISO). A hydration record's
+   *  recorded_at is the synthetic write moment, NOT when the human consented —
+   *  mirroring recorded_at as occurred_at would refresh the server's promo
+   *  TTL anchor with no human action (TCCCPR fail-open). Absent on genuine
+   *  user records, whose recorded_at IS the legal time. */
+  occurred_at_by_type?: Record<string, string>;
 };
 
 // Bump when Privacy/Terms copy materially changes so re-consent can be prompted.
@@ -65,7 +73,12 @@ export async function recordConsents(choices: ConsentChoices): Promise<ConsentRe
   };
   // Append-only so we keep the full consent history (never overwrite).
   await insertRow<ConsentRecord>('consents', uid, rec);
-  // apiClient seam: await api.post('/users/me/consents', rec) when backend is live.
+  // Durable server mirror (POST /users/me/consents): storage-only here — it
+  // parks a 'consents' op in lib/mirrorQueue.ts whose handler re-reads the
+  // LATEST local record at drain time (last-write-wins). The network flush is
+  // fire-and-forget inside the queue, and against the deployed pre-Phase-B
+  // backend (404) it degrades silently — this path never slows or fails.
+  await queueConsentMirror();
   return rec;
 }
 

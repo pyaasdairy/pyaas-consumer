@@ -13,7 +13,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "in.pyaasdairy.app",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "associatedDomains": [
         "applinks:pyaasdairy.com",
         "applinks:www.pyaasdairy.com"
@@ -126,7 +126,7 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 35,
+      "versionCode": 36,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"

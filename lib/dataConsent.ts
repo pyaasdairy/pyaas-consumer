@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { getDiscLang, type DiscLang } from './i18n';
+import { queueConsentMirror } from './consentSync';
 
 /**
  * PROMINENT DISCLOSURE CONSENT — the record that we told the member what we
@@ -86,6 +87,11 @@ export async function recordDataDisclosureAccepted(
   };
   try {
     await AsyncStorage.setItem(ACCEPT_KEY, JSON.stringify(rec));
+    // Backend mirror seam (disclosure_phone): storage-only + error-swallowed,
+    // so the Agree tap is exactly as fast as before. No-ops signed-out (the
+    // usual case — consent precedes the account); linkDisclosureToAccount
+    // re-arms the mirror once a uid exists.
+    await queueConsentMirror();
   } catch {
     /* best-effort: a failed write re-prompts next launch, which is the safe direction */
   }
@@ -98,6 +104,9 @@ export async function linkDisclosureToAccount(uid: string): Promise<void> {
   if (!rec || rec.uid) return;
   try {
     await AsyncStorage.setItem(ACCEPT_KEY, JSON.stringify({ ...rec, uid }));
+    // Now that the acceptance is attributable, mirror it to the account
+    // (POST /users/me/consents, type disclosure_phone) via the durable queue.
+    await queueConsentMirror();
   } catch {
     /* non-fatal */
   }

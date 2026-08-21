@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDiscLang, type DiscLang } from './i18n';
+import { queueConsentMirror } from './consentSync';
 
 /**
  * LOCATION PROMINENT DISCLOSURE — Play's Permissions & APIs policy requires
@@ -22,6 +23,10 @@ export type LocationDisclosureRecord = {
    *  bilingual disclosure shipped (stored as a bare version string) lack it
    *  and must keep counting as accepted — same English copy, no version bump. */
   lang?: DiscLang;
+  /** ISO moment of the Agree tap. Optional on READ ONLY: records written
+   *  before the backend mirror shipped lack it (the server then anchors the
+   *  mirrored consent on receive time instead). */
+  accepted_at?: string;
 };
 
 function parse(raw: string | null): LocationDisclosureRecord | null {
@@ -47,9 +52,16 @@ export async function hasAcceptedLocationDisclosure(): Promise<boolean> {
 /** Record acceptance. `lang` is the language showing at the moment of the
  *  Agree tap; defaults to the shared disclosure-language store at call time. */
 export async function recordLocationDisclosureAccepted(lang: DiscLang = getDiscLang()): Promise<void> {
-  const rec: LocationDisclosureRecord = { version: LOCATION_DISCLOSURE_VERSION, lang };
+  const rec: LocationDisclosureRecord = {
+    version: LOCATION_DISCLOSURE_VERSION,
+    lang,
+    accepted_at: new Date().toISOString(),
+  };
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(rec));
+    // Backend mirror seam (disclosure_location): durable-queue the push.
+    // Storage-only + error-swallowed — the Agree flow is unchanged.
+    await queueConsentMirror();
   } catch {
     // Storage blip: the sheet shows again next time. Never blocks the flow.
   }
