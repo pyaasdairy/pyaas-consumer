@@ -4,6 +4,7 @@ import { requireUserId } from './session';
 import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 import { hasExactLocation } from './location';
 import { api, isBackendConfigured } from './apiClient';
+import { registerMirrorHandler, enqueueMirror, drainMirrorQueue, mirrorPending, mirrorOutcomeFor, type MirrorOutcome } from './mirrorQueue';
 import { getProduct } from '../constants/products';
 
 /** Thrown by createSubscription when no exact delivery point is on file. */
@@ -119,33 +120,72 @@ export async function syncServerSubscriptions(): Promise<void> {
   if (!isBackendConfigured()) return;
   let uid: string;
   try { uid = await requireUserId(); } catch { return; }
+  // Local intents land FIRST — a pending pause must reach the server before
+  // the server's (older) status is allowed to refresh the local row.
+  await drainMirrorQueue().catch(() => undefined);
   try {
     const remote = await api.get<Record<string, unknown>[]>('/subscriptions');
-    if (!Array.isArray(remote) || remote.length === 0) return;
+    if (!Array.isArray(remote)) return;
     const rows = await getRows<Subscription>('subscriptions', uid);
-    const known = new Set(rows.map((r) => r.backend_id ?? r.id));
-    let added = false;
+    const byBackend = new Map(rows.map((r) => [r.backend_id ?? r.id, r]));
+    const queueEmpty = !(await mirrorPending('*'));
+    let changed = false;
     for (const w of remote) {
       const sid = (w.id as string) || '';
-      if (!sid || known.has(sid)) continue;
-      rows.push({
-        id: sid,
-        product_id: (w.product_id as string) || '',
-        variant: (w.variant as string) || null,
-        qty: typeof w.qty === 'number' && w.qty >= 1 ? (w.qty as number) : 1,
-        unit_price: typeof w.unit_price === 'number' ? (w.unit_price as number) : 0,
-        frequency: ((w.frequency as string) || 'daily') as Frequency,
-        delivery_slot: null,
-        pay_from_wallet: true,
-        status: ((w.status as string) || 'active') as Subscription['status'],
-        start_date: (w.start_date as string) || todayISO(),
-        next_delivery_date: (w.start_date as string) || null,
-        created_at: (w.created_at as string) || new Date().toISOString(),
-        backend_id: sid,
-      });
-      added = true;
+      if (!sid) continue;
+      const local = byBackend.get(sid);
+      if (!local) {
+        // Server-created plan (Welcome Litre campaign) — add it (ADD-ONLY).
+        rows.push({
+          id: sid,
+          product_id: (w.product_id as string) || '',
+          variant: (w.variant as string) || null,
+          qty: typeof w.qty === 'number' && w.qty >= 1 ? (w.qty as number) : 1,
+          unit_price: typeof w.unit_price === 'number' ? (w.unit_price as number) : 0,
+          frequency: ((w.frequency as string) || 'daily') as Frequency,
+          delivery_slot: null,
+          pay_from_wallet: true,
+          status: ((w.status as string) || 'active') as Subscription['status'],
+          start_date: (w.start_date as string) || todayISO(),
+          next_delivery_date: (w.start_date as string) || null,
+          created_at: (w.created_at as string) || new Date().toISOString(),
+          backend_id: sid,
+        });
+        changed = true;
+        continue;
+      }
+      // SERVER-WINS refresh for mirrored rows — but only once every queued
+      // local intent has drained, so a not-yet-landed pause is never clobbered
+      // back to active by the server's older truth.
+      if (queueEmpty && local.backend_id) {
+        const st = ((w.status as string) || local.status) as Subscription['status'];
+        const qty = typeof w.qty === 'number' && w.qty >= 1 ? (w.qty as number) : local.qty;
+        const price = typeof w.unit_price === 'number' ? (w.unit_price as number) : local.unit_price;
+        if (st !== local.status || qty !== local.qty || price !== local.unit_price) {
+          local.status = st;
+          local.qty = qty;
+          local.unit_price = price;
+          changed = true;
+        }
+      }
+      // Vacation READ-BACK: server ranges the device has never seen become
+      // local rows (add-only, keyed by exact range). Without this, a
+      // reinstall's first vacation edit wholesale-replaced the server's
+      // array with an empty one — silently erasing the customer's holiday.
+      const ranges = Array.isArray(w.vacations) ? (w.vacations as { start?: string; end?: string }[]) : [];
+      if (ranges.length) {
+        const vacs = await getRows<Vacation>('vacations', uid);
+        const have = new Set(vacs.map((v) => `${v.start_date}|${v.end_date}`));
+        const fresh = ranges.filter((r) => r.start && r.end && !have.has(`${r.start}|${r.end}`));
+        if (fresh.length) {
+          for (const r of fresh) {
+            vacs.push({ id: newId('vac'), subscription_id: local.id, start_date: r.start!, end_date: r.end!, reason: null });
+          }
+          await setRows<Vacation>('vacations', uid, vacs);
+        }
+      }
     }
-    if (added) await setRows<Subscription>('subscriptions', uid, rows);
+    if (changed) await setRows<Subscription>('subscriptions', uid, rows);
   } catch { /* offline / old backend — the next read retries */ }
 }
 
@@ -196,11 +236,12 @@ export async function createSubscription(params: {
     created_at: new Date().toISOString(),
   };
   await insertRow<Subscription>('subscriptions', uid, row);
-  // Best-effort backend mirror (fire-and-forget): the SERVER worker then owns
-  // the daily morning order, so it reaches the store even if this app never
-  // opens again. A failed mirror leaves the row local-only — the on-device
-  // sweep still covers it.
-  void mirrorSubscriptionCreate(uid, row);
+  // DURABLE backend mirror: the SERVER worker owns the daily morning order,
+  // so the plan must reach it even across crashes and dead networks. The
+  // queued op replays until the twin exists (see lib/mirrorQueue.ts) — a
+  // fire-and-forget here once meant a customer whose milk only shipped on
+  // days they happened to open the app.
+  await enqueueMirror('sub-create', id);
   return id;
 }
 
@@ -217,28 +258,93 @@ const STATUS_ACTION: Record<Subscription['status'], 'resume' | 'pause' | 'cancel
   cancelled: 'cancel',
 };
 
-async function mirrorSubscriptionCreate(uid: string, row: Subscription): Promise<void> {
-  // one_time/custom are fulfilled on-device immediately — never mirrored.
-  if (!isBackendConfigured() || !MIRRORED_FREQUENCIES.includes(row.frequency)) return;
-  try {
-    const product = getProduct(row.product_id);
-    const created = await api.post<{ id: string }>('/subscriptions', {
-      product_id: row.product_id,
-      name: product?.name ?? row.product_id,
-      variant: row.variant ?? product?.variant ?? '',
-      qty: row.qty,
-      unit_price: row.unit_price,
-      frequency: row.frequency,
-      delivery_slot: row.delivery_slot ?? '',
-      start_date: row.start_date,
-    });
-    if (created?.id) {
-      await updateRows<Subscription>('subscriptions', uid, (s) => s.id === row.id, { backend_id: created.id });
-    }
-  } catch {
-    /* local-only; the on-device sweep covers it */
-  }
+// ── Mirror-queue handlers ────────────────────────────────────────────────────
+// Each handler re-reads the CURRENT local row at drain time, so collapsed /
+// replayed ops always push the latest truth, never a stale captured body.
+
+async function currentRow(id: string): Promise<{ uid: string; row: Subscription | null }> {
+  const uid = await requireUserId();
+  const rows = await getRows<Subscription>('subscriptions', uid);
+  return { uid, row: rows.find((s) => s.id === id) ?? null };
 }
+
+registerMirrorHandler('sub-create', async (localId): Promise<MirrorOutcome> => {
+  const { uid, row } = await currentRow(localId);
+  // Row gone, twin already minted, or a never-mirrored cadence → nothing to do.
+  if (!row || row.backend_id || !MIRRORED_FREQUENCIES.includes(row.frequency)) return 'done';
+  const product = getProduct(row.product_id);
+  const vacations = await getRows<Vacation>('vacations', uid);
+  const created = await api.post<{ id: string }>('/subscriptions', {
+    product_id: row.product_id,
+    name: product?.name ?? row.product_id,
+    variant: row.variant ?? product?.variant ?? '',
+    qty: row.qty,
+    unit_price: row.unit_price,
+    frequency: row.frequency,
+    delivery_slot: row.delivery_slot ?? '',
+    start_date: row.start_date,
+    // The customer's standing holiday ranges ride along at birth — a twin
+    // created mid-vacation must not bill the very days the app shows skipped.
+    vacations: vacations
+      .filter((v) => v.subscription_id === null || v.subscription_id === row.id)
+      .map((v) => ({ start: v.start_date, end: v.end_date })),
+  });
+  if (created?.id) {
+    await updateRows<Subscription>('subscriptions', uid, (s) => s.id === localId, { backend_id: created.id });
+    // The row may have been paused/edited while the create was pending —
+    // replay its current status + plan onto the fresh twin.
+    await enqueueMirror('sub-status', localId);
+    await enqueueMirror('sub-edit', localId);
+  }
+  return 'done';
+});
+
+registerMirrorHandler('sub-status', async (localId): Promise<MirrorOutcome> => {
+  const { row } = await currentRow(localId);
+  if (!row || !row.backend_id) return 'done';
+  if (row.status === 'active') {
+    // Resume re-anchors the schedule first (harmless when unchanged).
+    await api.patch(`/subscriptions/${row.backend_id}`, { start_date: row.start_date });
+  }
+  await api.post(`/subscriptions/${row.backend_id}/${STATUS_ACTION[row.status]}`);
+  return 'done';
+});
+
+registerMirrorHandler('sub-edit', async (localId): Promise<MirrorOutcome> => {
+  const { row } = await currentRow(localId);
+  if (!row || !row.backend_id) return 'done';
+  if (!MIRRORED_FREQUENCIES.includes(row.frequency)) {
+    // Edited onto a cadence the server does not run (one-time/custom): the
+    // twin must STOP BILLING — cancel it and detach. Leaving it active was a
+    // silent double-truth that kept shipping daily milk.
+    await api.post(`/subscriptions/${row.backend_id}/cancel`);
+    const uid = await requireUserId();
+    await updateRows<Subscription>('subscriptions', uid, (s) => s.id === localId, { backend_id: null });
+    return 'done';
+  }
+  await api.patch(`/subscriptions/${row.backend_id}`, {
+    qty: row.qty,
+    delivery_slot: row.delivery_slot ?? '',
+    frequency: row.frequency,
+  });
+  return 'done';
+});
+
+registerMirrorHandler('vacations', async (): Promise<MirrorOutcome> => {
+  const uid = await requireUserId();
+  const [rows, vacations] = await Promise.all([
+    getRows<Subscription>('subscriptions', uid),
+    getRows<Vacation>('vacations', uid),
+  ]);
+  const targets = rows.filter((s) => s.backend_id && s.status !== 'cancelled');
+  for (const t of targets) {
+    const ranges = vacations
+      .filter((v) => v.subscription_id === null || v.subscription_id === t.id)
+      .map((v) => ({ start: v.start_date, end: v.end_date }));
+    await api.patch(`/subscriptions/${t.backend_id}`, { vacations: ranges });
+  }
+  return 'done';
+});
 
 /** The local row's backend twin id, if it was mirrored. */
 async function backendIdOf(uid: string, id: string): Promise<string | null> {
@@ -248,35 +354,12 @@ async function backendIdOf(uid: string, id: string): Promise<string | null> {
 
 /** Push the CURRENT vacation set onto every mirrored subscription (an
  *  account-wide vacation applies to all; a scoped one only to its own sub). */
-async function mirrorVacations(uid: string): Promise<void> {
-  if (!isBackendConfigured()) return;
-  try {
-    const [rows, vacations] = await Promise.all([
-      getRows<Subscription>('subscriptions', uid),
-      getRows<Vacation>('vacations', uid),
-    ]);
-    await Promise.all(
-      rows
-        .filter((s) => s.backend_id && s.status !== 'cancelled')
-        .map((s) => {
-          const ranges = vacations
-            .filter((v) => v.subscription_id === null || v.subscription_id === s.id)
-            .map((v) => ({ start: v.start_date, end: v.end_date }));
-          return api.patch(`/subscriptions/${s.backend_id}`, { vacations: ranges }).catch(() => undefined);
-        }),
-    );
-  } catch {
-    /* error-soft */
-  }
-}
+
 
 export async function setSubscriptionStatus(id: string, status: Subscription['status']): Promise<void> {
   const uid = await requireUserId();
   await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
-  const bid = await backendIdOf(uid, id);
-  if (bid && isBackendConfigured()) {
-    void api.post(`/subscriptions/${bid}/${STATUS_ACTION[status]}`).catch(() => undefined);
-  }
+  await enqueueMirror('sub-status', id); // durable — a lost pause once kept the backend billing
 }
 
 /** Edit a live subscription's plan (quantity / frequency / delivery slot). */
@@ -286,17 +369,7 @@ export async function updateSubscription(
 ): Promise<void> {
   const uid = await requireUserId();
   await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, patch);
-  const bid = await backendIdOf(uid, id);
-  if (bid && isBackendConfigured()) {
-    const body: Record<string, unknown> = {};
-    if (patch.qty != null) body.qty = patch.qty;
-    if (patch.delivery_slot !== undefined) body.delivery_slot = patch.delivery_slot ?? '';
-    // The backend only runs the recurring cadences.
-    if (patch.frequency && MIRRORED_FREQUENCIES.includes(patch.frequency)) body.frequency = patch.frequency;
-    if (Object.keys(body).length > 0) {
-      void api.patch(`/subscriptions/${bid}`, body).catch(() => undefined);
-    }
-  }
+  await enqueueMirror('sub-edit', id);
 }
 
 /**
@@ -311,14 +384,7 @@ export async function reactivateSubscription(id: string, startDate: string): Pro
     start_date: startDate,
     next_delivery_date: startDate,
   });
-  const bid = await backendIdOf(uid, id);
-  if (bid && isBackendConfigured()) {
-    // Re-anchor the schedule server-side too, then resume.
-    void api
-      .patch(`/subscriptions/${bid}`, { start_date: startDate })
-      .then(() => api.post(`/subscriptions/${bid}/resume`))
-      .catch(() => undefined);
-  }
+  await enqueueMirror('sub-status', id); // handler re-anchors start_date, then resumes
 }
 
 export async function listVacations(): Promise<Vacation[]> {
@@ -336,13 +402,13 @@ export async function addVacation(params: { startDate: string; endDate: string; 
     end_date: params.endDate,
     reason: params.reason ?? null,
   });
-  void mirrorVacations(uid); // the server worker must skip these days too
+  await enqueueMirror('vacations'); // the server worker must skip these days too
 }
 
 export async function deleteVacation(id: string): Promise<void> {
   const uid = await requireUserId();
   await deleteRows<Vacation>('vacations', uid, (v) => v.id === id);
-  void mirrorVacations(uid);
+  await enqueueMirror('vacations');
 }
 
 // ── Wallet gating ────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, AppState } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,6 +18,8 @@ import { hasAcceptedDataDisclosure, recordDataDisclosureAccepted, linkDisclosure
 import { getUserId } from '../lib/session';
 import { setOnAuthExpired } from '../lib/apiClient';
 import { runOneTimeLocalReset } from '../lib/localReset';
+import { drainMirrorQueue } from '../lib/mirrorQueue';
+import { hydrateProfileFromServer } from '../lib/profileApi';
 import { colors } from '../lib/theme';
 import { Splash } from '../components/Splash';
 import { AppErrorBoundary } from '../components/AppErrorBoundary';
@@ -139,11 +141,27 @@ function RootNavigator() {
         // Re-hydrate from the backend ONLY once the signed-in member has the
         // current disclosure accepted — never fetch their data while the
         // re-consent overlay is still up (GAP-3).
-        if (ok) void runOneTimeLocalReset();
+        if (ok) {
+          void runOneTimeLocalReset();
+          // Land any queued mirrors from previous sessions, then pull the
+          // server truths a reinstall forgets (profile fields). Error-soft.
+          void drainMirrorQueue().catch(() => undefined);
+          void hydrateProfileFromServer();
+        }
       })
       .catch(() => { if (on) setNeedsConsent(true); });
     return () => { on = false; };
   }, [session]);
+  // Foreground = a connective moment: replay any mirror the last session
+  // could not land (a pause queued on a dead network must reach the backend
+  // the instant the app breathes again — it is billing truth, not UI state).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') void drainMirrorQueue().catch(() => undefined);
+    });
+    return () => sub.remove();
+  }, []);
+
   const onPublicDocNow = PUBLIC_DOC_ROUTES.has(segments[0] as string);
   const acceptSignedInConsent = useCallback(async () => {
     await recordDataDisclosureAccepted();

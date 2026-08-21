@@ -6,6 +6,7 @@ import { debitWallet, autoSettleTopUp, refundToWallet } from './walletApi';
 import { isPlusActive, memberLinePrice } from './vip';
 import { getProduct } from '../constants/products';
 import { api, isBackendConfigured, HttpError } from './apiClient';
+import { registerMirrorHandler, enqueueMirror, type MirrorOutcome } from './mirrorQueue';
 import { instantEtaHHMM, INSTANT_ETA_MINUTES, MORNING_WINDOW } from './deliveryMode';
 import { getServiceabilitySnapshot } from './serviceability';
 
@@ -208,11 +209,50 @@ export async function addAddress(a: Omit<Address, 'id' | 'user_id' | 'created_at
   const saved = await insertRow<Address>('addresses', uid, row);
   // Mirror the COMPLETE address into the backend DB (consumer_addresses) —
   // awaited so anything that immediately follows (pin patch, a subscription
-  // mirror) finds it server-side. Error-soft: offline keeps the local row and
-  // the app behaves exactly as before.
+  // mirror) finds it server-side. If the attempt fails, the DURABLE queue op
+  // replays it until the twin exists — a silently local-only address once
+  // meant the backend sweep kept routing milk to the customer's OLD door.
   await mirrorAddressCreate(uid, saved);
+  const mirrored = (await getRows<Address>('addresses', uid)).find((r) => r.id === saved.id)?.backend_id;
+  if (!mirrored) await enqueueMirror('addr-create', saved.id);
   return saved;
 }
+
+// ── Address mirror-queue handlers (durable replays; see lib/mirrorQueue.ts) ──
+
+registerMirrorHandler('addr-create', async (localId): Promise<MirrorOutcome> => {
+  const uid = await requireUserId();
+  const row = (await getRows<Address>('addresses', uid)).find((r) => r.id === localId);
+  if (!row || row.backend_id) return 'done';
+  await mirrorAddressCreate(uid, row, /*throwOnFailure*/ true);
+  const bid = (await getRows<Address>('addresses', uid)).find((r) => r.id === localId)?.backend_id;
+  if (bid && row.is_default) await enqueueMirror('addr-default', localId);
+  return 'done';
+});
+
+registerMirrorHandler('addr-default', async (localId): Promise<MirrorOutcome> => {
+  const uid = await requireUserId();
+  const row = (await getRows<Address>('addresses', uid)).find((r) => r.id === localId);
+  if (!row || !row.is_default) return 'done'; // superseded by a later choice
+  if (!row.backend_id) return 'done'; // create replay will re-enqueue this
+  await api.post(`/addresses/${row.backend_id}/default`);
+  return 'done';
+});
+
+registerMirrorHandler('addr-delete', async (backendId): Promise<MirrorOutcome> => {
+  if (!backendId) return 'done';
+  await api.del(`/addresses/${backendId}`);
+  return 'done';
+});
+
+registerMirrorHandler('addr-coords', async (localId): Promise<MirrorOutcome> => {
+  const uid = await requireUserId();
+  const row = (await getRows<Address>('addresses', uid)).find((r) => r.id === localId);
+  const geo = row as unknown as { lat?: number | null; lng?: number | null } | undefined;
+  if (!row || !row.backend_id || geo?.lat == null || geo?.lng == null) return 'done';
+  await api.patch(`/addresses/${row.backend_id}`, { lat: geo.lat, lng: geo.lng });
+  return 'done';
+});
 
 /** Backend twin of a local address row, if it was mirrored. */
 async function addressBackendId(uid: string, id: string): Promise<string | null> {
@@ -220,7 +260,7 @@ async function addressBackendId(uid: string, id: string): Promise<string | null>
   return rows.find((r) => r.id === id)?.backend_id ?? null;
 }
 
-async function mirrorAddressCreate(uid: string, row: Address): Promise<void> {
+async function mirrorAddressCreate(uid: string, row: Address, throwOnFailure = false): Promise<void> {
   if (!isBackendConfigured()) return;
   try {
     const geo = row as unknown as { lat?: number | null; lng?: number | null };
@@ -243,8 +283,9 @@ async function mirrorAddressCreate(uid: string, row: Address): Promise<void> {
     if (created?.id) {
       await updateRows<Address>('addresses', uid, (r) => r.id === row.id, { backend_id: created.id });
     }
-  } catch {
-    /* local-only until the next save */
+  } catch (e) {
+    if (throwOnFailure) throw e; // queue path: classify + replay
+    /* interactive path: local-only for now — the queued op replays it */
   }
 }
 
@@ -252,19 +293,14 @@ export async function setDefaultAddress(id: string): Promise<void> {
   const uid = await requireUserId();
   await updateRows<Address>('addresses', uid, () => true, { is_default: false });
   await updateRows<Address>('addresses', uid, (r) => r.id === id, { is_default: true });
-  const bid = await addressBackendId(uid, id);
-  if (bid && isBackendConfigured()) {
-    void api.post(`/addresses/${bid}/default`).catch(() => undefined);
-  }
+  await enqueueMirror('addr-default', id); // durable — the sweep bills against the server's default
 }
 
 export async function deleteAddress(id: string): Promise<void> {
   const uid = await requireUserId();
   const bid = await addressBackendId(uid, id); // capture BEFORE the local delete
   await deleteRows<Address>('addresses', uid, (r) => r.id === id);
-  if (bid && isBackendConfigured()) {
-    void api.del(`/addresses/${bid}`).catch(() => undefined);
-  }
+  if (bid) await enqueueMirror('addr-delete', bid); // durable — else the twin resurrects on hydration
 }
 
 // ── Orders ───────────────────────────────────────────────────────────────────
@@ -414,6 +450,11 @@ export async function placeOrder(params: {
       consumer_name: prof?.full_name ?? undefined,
       phone: (prof as { phone?: string } | null)?.phone ?? undefined,
       geo: geo.lat != null && geo.lng != null ? { lat: geo.lat, lng: geo.lng } : undefined,
+      // The doorstep promises (ring-bell / call-before / drop note) — the
+      // backend copies these onto the store delivery task so the RIDER sees
+      // what the customer was told. Previously built by the cart and dropped
+      // here on the floor.
+      delivery_prefs: params.deliveryPrefs ?? undefined,
     });
     return created.id;
   }

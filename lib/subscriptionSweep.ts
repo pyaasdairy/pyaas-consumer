@@ -82,14 +82,29 @@ async function runSweep(): Promise<number> {
   if (!uid) return 0; // signed out — nothing to sweep
 
   const today = todayISO();
+  const backendOwned = isBackendConfigured();
+  if (backendOwned) {
+    // Land any pending mirrors FIRST: a subscription whose create/status is
+    // still queued becomes server-owned the moment the replay succeeds.
+    const { drainMirrorQueue } = await import('./mirrorQueue');
+    await drainMirrorQueue().catch(() => undefined);
+  }
   const [subs, vacations] = await Promise.all([listSubscriptions(), listVacations()]);
   // A subscription mirrored to the backend (backend_id) is ordered by the
   // SERVER's daily worker — sweeping it here too would place the same morning
-  // order twice. This sweep only covers local-only rows (offline mode, or a
-  // row whose mirror failed).
-  const backendOwned = isBackendConfigured();
+  // order twice. In backend mode the RECURRING cadences are exclusively the
+  // server's: an unmirrored recurring row waits for its queued mirror to land
+  // (placing it from the phone via POST /orders billed trial-free days at
+  // full price + fee, because those orders carry no subscription linkage).
+  // The local sweep still owns everything in offline/local mode, and the
+  // never-mirrored cadences (one_time/custom) everywhere.
   const due = subs.filter(
-    (s) => s.status === 'active' && !(backendOwned && s.backend_id) && subscriptionDueOn(s, today, vacations),
+    (s) =>
+      s.status === 'active' &&
+      (backendOwned
+        ? !s.backend_id && !['daily', 'alternate', 'weekly'].includes(s.frequency)
+        : true) &&
+      subscriptionDueOn(s, today, vacations),
   );
   if (due.length === 0) return 0;
 

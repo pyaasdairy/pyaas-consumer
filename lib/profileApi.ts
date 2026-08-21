@@ -119,6 +119,37 @@ export async function getFullProfile(): Promise<FullProfile | null> {
   return toFull(await getProfile());
 }
 
+/**
+ * Pull the server's profile into the local cache (reinstall / second device:
+ * the account remembered everything, the app just never asked). Merge is
+ * server-wins per field, but a non-empty local value never becomes empty —
+ * an offline edit that has not PATCHed yet must not be wiped by older truth.
+ */
+export async function hydrateProfileFromServer(): Promise<void> {
+  if (!isBackendConfigured()) return;
+  try {
+    const me = await api.get<Record<string, unknown>>('/me');
+    if (!me) return;
+    const patch: Partial<Profile> = {};
+    const take = (k: string) => {
+      const v = me[k];
+      if (typeof v === 'string' && v.trim() !== '') (patch as Record<string, unknown>)[k] = v;
+    };
+    take('full_name');
+    take('email');
+    take('alternate_phone');
+    take('milk_preference');
+    take('avatar_url');
+    take('delivery_slot');
+    if (typeof me.family_member_count === 'number' && me.family_member_count > 0) {
+      (patch as Record<string, unknown>).family_member_count = me.family_member_count;
+    }
+    if (Object.keys(patch).length) await saveProfile(patch);
+  } catch {
+    /* offline — the next session start retries */
+  }
+}
+
 export async function updateProfile(patch: Partial<Omit<FullProfile, 'id' | 'referral_code'>>): Promise<void> {
   // Push to the SERVER first (PATCH /me) so the profile — especially full_name —
   // survives reinstalls and new devices: OTP verify hydrates it back, and a

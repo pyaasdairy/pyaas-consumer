@@ -71,9 +71,16 @@ export async function setAddressCoords(addressId: string, c: Coords): Promise<vo
   if (isBackendConfigured()) {
     const bid = (await getRows<Address>('addresses', uid)).find((r) => r.id === addressId)?.backend_id;
     if (bid) {
-      // Awaited (error-soft): the pin must land server-side before a following
-      // subscription mirror asks the backend for an address WITH coordinates.
-      await api.patch(`/addresses/${bid}`, { lat: c.lat, lng: c.lng }).catch(() => undefined);
+      // Awaited first (the pin should land before a following subscription
+      // mirror asks the backend for an address WITH coordinates) — and queued
+      // durably if the attempt drops, because a server address without a pin
+      // blocks subscribing and breaks store routing.
+      try {
+        await api.patch(`/addresses/${bid}`, { lat: c.lat, lng: c.lng });
+      } catch {
+        const { enqueueMirror } = await import('./mirrorQueue');
+        await enqueueMirror('addr-coords', addressId);
+      }
     }
   }
 }

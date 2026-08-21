@@ -1,5 +1,7 @@
 import { requireUserId, getUserId } from './session';
 import { getSingle, putSingle } from './localStore';
+import { api } from './apiClient';
+import { registerMirrorHandler, enqueueMirror, type MirrorOutcome } from './mirrorQueue';
 
 export type DeliveryPrefs = {
   call_before: boolean;
@@ -30,4 +32,22 @@ export async function saveDeliveryPrefs(prefs: Partial<DeliveryPrefs>): Promise<
   const uid = await requireUserId();
   const current = (await getSingle<DeliveryPrefs>('delivery_prefs', uid)) ?? { ...DEFAULT_PREFS };
   await putSingle<DeliveryPrefs>('delivery_prefs', uid, { ...current, ...prefs });
+  // Durable server mirror: the RIDER reads these off the delivery task, so a
+  // preference that only lives in this phone was a promise the doorstep never
+  // received (call-before, ring-bell, drop notes).
+  await enqueueMirror('delivery-prefs');
 }
+
+registerMirrorHandler('delivery-prefs', async (): Promise<MirrorOutcome> => {
+  const uid = await getUserId();
+  if (!uid) return 'done';
+  const p = (await getSingle<DeliveryPrefs>('delivery_prefs', uid)) ?? DEFAULT_PREFS;
+  await api.patch('/me', {
+    delivery_prefs: {
+      call_before: p.call_before,
+      ring_bell: p.ring_bell,
+      notes: p.notes ?? '',
+    },
+  });
+  return 'done';
+});
