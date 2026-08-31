@@ -49,6 +49,39 @@ qty ≥ 1**), `SKU_UNAVAILABLE` (422 → catalog gap, show retry).
 Server enforces everything (one-per-phone **and per-address forever** — erase-and-resignup
 is refused server-side; zone; paid-history). The FE never pre-checks locally.
 
+## STATUS UPDATE — the LOGIC is already built and live-tested (do not rebuild it)
+
+Everything below marked ✅ exists on this branch and was walked on the emulator against a
+local CRM backend (fresh signup → home card → offer screen → consent grant verified in
+Mongo). **Your job is UI/UX polish only — the states, routing and copy structure are
+load-bearing compliance and must survive any redesign.**
+
+- ✅ `lib/crm.ts`: `getWelcomeFunnelState()` (server-truth, null against old backend) +
+  `startWelcomeLitre(plan)` (self-enrol + subscription sync + bell refresh).
+- ✅ `lib/apiClient.ts`: `HttpError.code` now carries the backend's machine code — route on
+  it, never parse messages.
+- ✅ `app/welcome-offer.tsx`: the funnel screen — §15.7 terms summary, 4-plan menu,
+  daily/alternate at equal weight, state-aware CTA (eligible → start; address_required →
+  address flow; not_serviceable → waitlist note), bilingual via the DiscLang toggle.
+- ✅ Home card in `app/(tabs)/index.tsx` (renders for eligible/address_required/
+  not_serviceable) + focus-time `recheckWelcome()`.
+- ✅ One-pitch invariant: `freePackShowEligible()` cedes whenever the backend speaks CRM,
+  and `SubscriptionStatusCard`'s empty state is gated the same way — exactly one
+  acquisition pitch can ever render.
+- ✅ Marketing opt-in: unticked checkbox on complete-profile + the Message-preferences
+  screen; a tick produces `marketing_sms`/`marketing_whatsapp` grants and an ACTIVE
+  server-side `promotional` aggregate (verified in Mongo).
+
+**Polish list for you (visual only):**
+1. `welcome-offer.tsx` — hero treatment, imagery, animation; keep every terms line and
+   the equal-weight frequency toggle.
+2. The home funnel card — match your revamp visual language; keep the FREE pill + copy.
+3. Recharge screen §6.4 is still yours end-to-end: ₹300 preset, "≈ N mornings"
+   day-equivalents, equal-weight tiles, gateway-honest failure copy.
+4. Offer progress card for `already_enrolled` (pack-1/pack-2 states from GET /crm/offer)
+   — today the plan card + wallet chip + bell carry it; a dedicated card would be nicer.
+5. Message-preferences screen styling.
+
 ## Screens (campaign doc §15, CCPA constraints in §16 — read both)
 
 1. **Offer terms summary — BEFORE registration** (§15.7 verbatim content, Hindi first).

@@ -11,7 +11,7 @@ import { getMergedProduct } from './catalog';
 import { getProduct } from '../constants/products';
 import { beginTrial, getTrial, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
 import { minSubscriptionQty } from './subscriptionFloor';
-import { getCrmOffer } from './crm';
+import { getCrmOffer, getWelcomeFunnelState } from './crm';
 
 // Re-exported so screens can pull the trial shape from one funnel-facing module.
 export { TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from './trial';
@@ -370,6 +370,11 @@ export async function freePackShowEligible(phone: string): Promise<boolean> {
   // the normal funnel.
   try {
     if ((await getCrmOffer())?.enrolled) return false;
+    // WHEREVER the backend speaks CRM, the Welcome Litre owns acquisition
+    // (the published offer terms replaced the pay-first 2+2 as the app's
+    // customer-facing offer). A null state = old backend / offline → the
+    // legacy pitch rules below stay in force unchanged.
+    if ((await getWelcomeFunnelState()) !== null) return false;
   } catch { /* fall through — the subscription check below still guards */ }
   // COMPLETED (2 paid full-cream days delivered) → the funnel disappears from
   // the home page and everywhere else, permanently.

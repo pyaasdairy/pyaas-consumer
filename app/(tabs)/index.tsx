@@ -28,6 +28,7 @@ import { useCart } from '../../store/cart';
 import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
+import { getWelcomeFunnelState, type WelcomeFunnelState } from '../../lib/crm';
 import { freePackShowEligible, onFreePackChanged, snoozeFreePack, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
 import { PREPAID_TARGET, prepaidTier } from '../../lib/prepaid';
 import { listSubscriptions, syncServerSubscriptions } from '../../lib/subscriptions';
@@ -174,6 +175,14 @@ export default function Shop() {
   const [hasSub, setHasSub] = useState(false);
   const phone = profile?.phone ?? '';
 
+  // SERVER-TRUTH Welcome Litre funnel state (null = backend doesn't speak CRM
+  // → the legacy 2+2 rules stay in force; freePackShowEligible cedes when
+  // non-null, so exactly ONE acquisition pitch can ever render).
+  const [wlState, setWlState] = useState<WelcomeFunnelState | null>(null);
+  const recheckWelcome = useCallback(() => {
+    getWelcomeFunnelState().then(setWlState).catch(() => setWlState(null));
+  }, []);
+
   const recheckClaim = useCallback(() => {
     if (!phone) { setClaimEligible(false); return; }
     // PER-USER show eligibility (not the device-capped claim gate) so a brand-new
@@ -264,13 +273,14 @@ export default function Shop() {
         })
         .catch(() => { /* error-soft — retried on next focus */ });
       recheckClaim();
+      recheckWelcome();
       recheckFresh();
       // The boot modal can claim while home stays focused (no focus change) —
       // subscribe so the claim card + fresh-user strip hide the moment ANY path
       // claims the pack / starts the subscription.
       const off = onFreePackChanged(() => { recheckClaim(); recheckFresh(); });
       return () => { on = false; off(); };
-    }, [recheckClaim, recheckFresh, refreshWallet, svcCheck])
+    }, [recheckClaim, recheckWelcome, recheckFresh, refreshWallet, svcCheck])
   );
   // On every Home focus, re-pull the live catalog and flag any cart line that
   // just went out of stock (or was hidden) so a stale cart can't be checked out.
@@ -477,6 +487,35 @@ export default function Shop() {
                 in the pill, the title and the gift disc. Fresh members only (no
                 active/paused subscription and the trial not yet redeemed) — an
                 existing subscriber is never nudged to "start". */}
+            {/* WELCOME LITRE funnel (server-truth; the published offer). Renders
+                for eligible / address_required / not_serviceable — the CTA
+                routes per state inside /welcome-offer. Mutually exclusive with
+                the legacy 2+2 card below by construction: wlState non-null
+                forces claimEligible=false (freePackShowEligible cedes). */}
+            {wlState === 'eligible' || wlState === 'address_required' || wlState === 'not_serviceable' ? (
+              <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
+                <Tap
+                  weight="medium"
+                  onPress={() => router.push('/welcome-offer')}
+                  style={{ borderRadius: radius.lg, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flame, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, ...shadow.card }}
+                >
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="gift" size={20} color={colors.flameDeep} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                    <View style={{ flexDirection: 'row' }}>
+                      <Pill small label="FREE — NO PAYMENT NOW" bg={colors.flameSoft} color={colors.flameDeep} />
+                    </View>
+                    <TextSemi color={colors.ink} style={{ fontSize: 15 }} numberOfLines={1}>Your first litre is on us</TextSemi>
+                    <TextBody color={colors.inkMute} style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
+                      500 ml free on your first morning · recharge ₹500 and the second pack is free too
+                    </TextBody>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.flameDeep} />
+                </Tap>
+              </Animated.View>
+            ) : null}
+
             {freshUser && claimEligible ? (
               <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
                 <Tap
@@ -504,7 +543,10 @@ export default function Shop() {
             {/* Subscription live-status · sits under the claim card position.
                 While the claim card is up it stays quiet unless a sub exists. */}
             <Animated.View entering={FadeInDown.duration(440).delay(60)} style={{ paddingHorizontal: spacing.lg }}>
-              <SubscriptionStatusCard showEmpty={!claimEligible} onClaim={() => setClaimOpen(true)} style={{ marginBottom: spacing.md }} />
+              {/* The status card's EMPTY state is a 2+2 pitch — it cedes both
+                  to the funnel card slot above (claimEligible) and to the
+                  Welcome Litre funnel (wlState non-null): one pitch, ever. */}
+              <SubscriptionStatusCard showEmpty={!claimEligible && wlState === null} onClaim={() => setClaimOpen(true)} style={{ marginBottom: spacing.md }} />
             </Animated.View>
 
 

@@ -148,3 +148,62 @@ export async function refreshCrmUnread(): Promise<void> {
     emit();
   }
 }
+
+// ── Welcome Litre funnel (SERVER-TRUTH — no local funnel state, ever) ────────
+
+/** The five funnel states GET /crm/eligibility can answer. */
+export type WelcomeFunnelState =
+  | 'eligible'          // show the offer funnel
+  | 'already_enrolled'  // show the offer progress card instead of any pitch
+  | 'not_eligible'      // existing/paying household — no funnel at all
+  | 'address_required'  // funnel visible; CTA routes to address capture first
+  | 'not_serviceable';  // funnel visible; CTA routes to the waitlist
+
+/**
+ * The single source of funnel truth. Returns null when the backend does not
+ * speak CRM (deployed pre-CRM backend → 404, offline, local mode) — null
+ * means "this build's Welcome Litre funnel does not exist here", and the
+ * legacy pitch rules apply unchanged. NEVER cached to storage: a reinstall,
+ * a second device and an existing customer all re-ask the server.
+ */
+export async function getWelcomeFunnelState(): Promise<WelcomeFunnelState | null> {
+  if (!isBackendConfigured()) return null;
+  try {
+    const r = await api.get<{ status: WelcomeFunnelState }>('/crm/eligibility');
+    return r?.status ?? null;
+  } catch {
+    return null; // 404 / offline / old backend — the funnel simply is not here
+  }
+}
+
+export type WelcomePlan = {
+  plan_product_id?: string; // gold-500ml | gold-1l | taaza-500ml | taaza-1l
+  plan_qty?: number;
+  plan_frequency?: 'daily' | 'alternate';
+};
+
+/**
+ * Start the Welcome Litre (offer terms §3.1 — no payment, no wallet balance).
+ * The server creates the subscription + the ₹0 first-pack order and sends
+ * W-01 to the inbox; the caller only needs to refresh its views. Errors
+ * bubble typed codes (ADDRESS_REQUIRED / NOT_SERVICEABLE / NOT_ELIGIBLE /
+ * ALREADY_ENROLLED / BELOW_MILK_FLOOR) for the screen to route on.
+ */
+export async function startWelcomeLitre(plan: WelcomePlan = {}): Promise<{
+  subscription_id: string;
+  pack1_order_id: string;
+  pack1_scheduled_for: string;
+}> {
+  const res = await api.post<{
+    subscription_id: string;
+    pack1_order_id: string;
+    pack1_scheduled_for: string;
+  }>('/crm/enrol/self', plan);
+  // Pull the server-created plan into the local cache and light the bell.
+  try {
+    const { syncServerSubscriptions } = await import('./subscriptions');
+    await syncServerSubscriptions();
+  } catch { /* the next home focus syncs anyway */ }
+  void refreshCrmUnread();
+  return res;
+}

@@ -51,11 +51,15 @@ export function resolveMediaUrl(u: string | undefined | null): string | undefine
 export class HttpError extends Error {
   status: number;
   path?: string;
-  constructor(status: number, message: string, path?: string) {
+  /** The backend's machine code (e.g. ADDRESS_REQUIRED, NOT_ELIGIBLE) — the
+   *  screens route on this, never on parsing the human message. */
+  code?: string;
+  constructor(status: number, message: string, path?: string, code?: string) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
     this.path = path;
+    this.code = code;
   }
 }
 
@@ -229,7 +233,7 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
         ? 'Session expired, please sign in again.'
         : 'Could not verify your session. Check your connection and try again.';
     }
-    throw new HttpError(res.status, message, path);
+    throw new HttpError(res.status, message, path, code);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
