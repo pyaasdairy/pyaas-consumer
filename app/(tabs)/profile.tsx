@@ -133,6 +133,7 @@ export default function Profile() {
             { icon: 'gift-outline', label: 'Refer', onPress: () => router.push('/refer') },
             { icon: 'pricetags-outline', label: 'Offer Zone', onPress: () => router.push('/coupons') },
             { icon: 'mail-outline', label: 'Messages', onPress: () => router.push('/inbox') },
+            { icon: 'notifications-outline', label: 'Message preferences', onPress: () => router.push('/message-preferences') },
           ]}
         />
 

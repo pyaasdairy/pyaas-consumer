@@ -132,6 +132,11 @@ registerMirrorHandler(CONSENTS_MIRROR_KIND, async (): Promise<MirrorOutcome> => 
     // record stays the visible source of truth, and the next consent event
     // re-arms this key once the Phase B backend is live.
     if (e instanceof HttpError && e.status === 404) return 'drop';
+    // 401/403 are AUTH states, not payload rejections: a drain racing a token
+    // refresh (or a stale app key) must never discard the one consent batch a
+    // member ever produces — it is DPDP evidence. Park it; the next signed-in
+    // drain replays it.
+    if (e instanceof HttpError && (e.status === 401 || e.status === 403)) return 'retry';
     throw e; // 400 → drop, 5xx/network/timeout → retry (mirrorOutcomeFor)
   }
   return 'done';

@@ -181,6 +181,7 @@ function isAuthoritativeRejection(e: unknown): boolean {
     e.status >= 400 &&
     e.status < 500 &&
     e.status !== 401 &&
+    e.status !== 403 && // wrong CONSUMER_APP_KEY — a misconfig this project HAS shipped; parked data must survive it
     e.status !== 404 &&
     e.status !== 408 &&
     e.status !== 429

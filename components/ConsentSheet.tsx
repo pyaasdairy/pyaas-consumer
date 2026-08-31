@@ -48,7 +48,7 @@ export const POLICY_VERSION = '2026-07';
 
 const REQUIRED: ConsentKey[] = ['privacy', 'terms'];
 
-const CONSENT_META: { key: ConsentKey; label: string; sub: string; required: boolean; route?: string }[] = [
+export const CONSENT_META: { key: ConsentKey; label: string; sub: string; required: boolean; route?: string }[] = [
   { key: 'privacy', label: 'I agree to the Privacy Policy', sub: 'How PYAAS collects and protects your data', required: true, route: '/privacy-policy' },
   { key: 'terms', label: 'I accept the Terms of Service', sub: 'The rules for using the PYAAS app', required: true, route: '/terms' },
   { key: 'marketing', label: 'Offers and updates', sub: 'Occasional news about products and prices', required: false },

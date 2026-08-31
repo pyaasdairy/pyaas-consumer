@@ -24,6 +24,8 @@ export default function CompleteProfile() {
   const router = useRouter();
   const { profile, refreshProfile } = useAuth();
   const [name, setName] = useState(profile?.full_name ?? '');
+  // OPTIONAL marketing opt-in — starts UNTICKED (CCPA forbids pre-ticking).
+  const [offersOptIn, setOffersOptIn] = useState(false);
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -44,10 +46,14 @@ export default function CompleteProfile() {
         full_name: name.trim(),
         phone: phone.trim() || null,
       });
-      // Required consents only. sms is optional in ConsentSheet and no checkbox
-      // is ever shown for it, so recording it as granted invented a marketing
-      // consent the member never gave — and contradicted our own privacy policy.
-      await recordConsents({ ...defaultChoices(), privacy: true, terms: true });
+      // Required consents + the OPTIONAL offers opt-in exactly as the member
+      // left the checkbox (unticked by default — CCPA forbids pre-ticking; a
+      // tick grants the marketing channels, and Settings → Message
+      // preferences can change it any time).
+      await recordConsents({
+        ...defaultChoices(), privacy: true, terms: true,
+        marketing: offersOptIn, whatsapp: offersOptIn, sms: offersOptIn,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await refreshProfile(); // navigator sees full_name and enters the app
     } catch (e: any) {
@@ -79,6 +85,22 @@ export default function CompleteProfile() {
           >
             <Field label="Full name" value={name} onChangeText={setName} placeholder="Your name" autoFocus autoComplete="name" textContentType="name" />
             <Field label="Mobile number (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10-digit mobile" autoComplete="tel" textContentType="telephoneNumber" />
+
+            {/* The one surface that can GRANT marketing consent — without it
+                every promotional message (and the whole SMS/WhatsApp channel)
+                stays correctly suppressed at the consent guard forever.
+                Optional, unticked, changeable later in Message preferences. */}
+            <Tap onPress={() => setOffersOptIn((v) => !v)} style={{ marginTop: spacing.lg }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: offersOptIn ? colors.flameDeep : colors.line, backgroundColor: offersOptIn ? colors.flameDeep : colors.white, alignItems: 'center', justifyContent: 'center' }}>
+                  {offersOptIn ? <Ionicons name="checkmark" size={15} color={colors.white} /> : null}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <TextMed style={{ fontSize: 13.5 }}>Send me offers and updates</TextMed>
+                  <TextBody color={colors.inkMute} style={{ fontSize: 11.5 }}>Occasional deals on WhatsApp/SMS · opt out any time</TextBody>
+                </View>
+              </View>
+            </Tap>
 
             {error ? <TextBody color={colors.danger} style={{ fontSize: 13.5, marginTop: 10 }}>{error}</TextBody> : null}
 
