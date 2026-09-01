@@ -31,10 +31,20 @@ import {
   type CheckoutResult,
 } from '../lib/razorpay';
 
-// The recharge grid. ₹500 leads (and is preselected); the ₹100 floor stays
-// available through the custom field but is never advertised — only a typed
-// amount below it gets told.
-const PACKS = [500, 1000, 5000, 10000];
+// The recharge grid (§6.4): ₹300 through ₹10,000, every tile at EQUAL visual
+// weight — no badge, no louder border (CCPA Interface Interference; the offer
+// terms promise the app never visually steers the recharge choice). ₹500 stays
+// the opening selection; the ₹100 floor remains available through the custom
+// field but is never advertised — only a typed amount below it gets told.
+const PACKS = [300, 500, 1000, 5000, 10000];
+
+// §6.4 day-equivalents ("₹500 ≈ 8 mornings"): an illustrative conversion on a
+// typical 1 L/day plan (~₹62/morning), footnoted under the grid. Always "≈",
+// never a promise — plans differ, and the estimate must undersell rather than
+// oversell (Math.floor would promise fewer; round matches the published
+// example ₹500 ≈ 8).
+const MORNING_RATE = 62;
+const morningsFor = (amt: number) => Math.max(1, Math.round(amt / MORNING_RATE));
 
 /** Snap a required minimum up to a clean amount the grid can preselect. */
 function snapUp(min: number): number {
@@ -256,7 +266,10 @@ export default function Recharge() {
   function confirmCancelPayment() {
     Alert.alert(
       'Cancel this payment?',
-      'Your recharge is not complete yet. If you cancel now, no money will be deducted.',
+      // §6.4 gateway-honest copy: never assert "no money was deducted" — only
+      // the gateway knows. If a debit did land on an incomplete payment, the
+      // bank/gateway auto-reverses it.
+      'Your recharge is not complete yet. If any amount was debited by your bank, it is refunded automatically.',
       [
         { text: 'Keep paying', style: 'cancel' },
         { text: 'Cancel payment', style: 'destructive', onPress: () => { setCheckout(null); setBusy(false); lastFail.current = ''; } },
@@ -339,9 +352,7 @@ export default function Recharge() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             {PACKS.map((p) => {
               const on = !custom.trim() && selected === p;
-              const b = rechargeBonus(p);
               const disabled = min > 0 && p < min;
-              const recommended = p === PREPAID_TARGET;
               return (
                 <Tap
                   key={p}
@@ -353,28 +364,22 @@ export default function Recharge() {
                     backgroundColor: on ? colors.flameSoft : colors.white,
                     borderRadius: radius.md,
                     borderWidth: 1.5,
-                    borderColor: on || recommended ? colors.flameDeep : colors.line,
+                    borderColor: on ? colors.flameDeep : colors.line,
                     paddingVertical: 16,
                     paddingHorizontal: 14,
                     gap: 2,
                     ...shadow.soft,
                   }}
                 >
-                  {recommended ? (
-                    <View style={{ position: 'absolute', top: -9, right: 10, backgroundColor: colors.flameDeep, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
-                      <TextSemi color={colors.white} style={{ fontSize: 9, letterSpacing: 0.6 }}>RECOMMENDED</TextSemi>
-                    </View>
-                  ) : null}
                   <TextSemi style={{ fontSize: 20, ...tabular }} color={on ? colors.flameDeep : colors.ink}>{rupee(p)}</TextSemi>
-                  {b ? (
-                    <TextBody style={{ fontSize: 11.5, ...tabular }} color={colors.blue}>+{rupee(b.bonus)} {b.kind === 'cashback' ? 'cashback' : 'free'}</TextBody>
-                  ) : (
-                    <TextBody style={{ fontSize: 11.5 }} color={colors.inkMute}>Top up</TextBody>
-                  )}
+                  <TextBody style={{ fontSize: 11.5, ...tabular }} color={colors.inkMute}>≈ {morningsFor(p)} mornings</TextBody>
                 </Tap>
               );
             })}
           </View>
+          <TextBody color={colors.inkMute} style={{ fontSize: 11, lineHeight: 15 }}>
+            Mornings are an estimate on a typical 1 L/day plan (~{rupee(MORNING_RATE)}/morning) — your own plan may differ.
+          </TextBody>
 
           {/* Custom amount */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1.5, borderColor: custom.trim() ? colors.flameDeep : colors.line, paddingHorizontal: 14, height: 54 }}>
@@ -390,10 +395,10 @@ export default function Recharge() {
           </View>
           {belowMin ? (
             <TextMed color={colors.danger} style={{ fontSize: 12.5 }}>Enter at least {rupee(min)} {reason || 'to continue'}.</TextMed>
-          ) : bonus ? (
+          ) : custom.trim() && value > 0 ? (
             <Animated.View entering={FadeIn.duration(220)}>
-              <TextMed color={colors.blue} style={{ fontSize: 12.5 }}>
-                You will get {rupee(bonus.bonus)} {bonus.kind === 'cashback' ? 'cashback' : 'free'} on this recharge.
+              <TextMed color={colors.blue} style={{ fontSize: 12.5, ...tabular }}>
+                {rupee(value)} ≈ {morningsFor(value)} mornings of milk.
               </TextMed>
             </Animated.View>
           ) : null}

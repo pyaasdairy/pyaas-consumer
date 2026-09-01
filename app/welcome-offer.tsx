@@ -1,13 +1,18 @@
 import React, { useCallback, useState } from 'react';
 import { View, ScrollView, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../components/ui';
 import { getWelcomeFunnelState, startWelcomeLitre, type WelcomeFunnelState, type WelcomePlan } from '../lib/crm';
 import { useDiscLang } from '../lib/i18n';
+
+// The pack every funnel surface shows: PYAAS Gold FULL CREAM 500 ml.
+const PACK_IMG = require('../assets/products/gold.png');
 
 /**
  * The Welcome Litre offer screen — terms summary BEFORE any commitment
@@ -75,8 +80,24 @@ export default function WelcomeOffer() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + 24 }} showsVerticalScrollIndicator={false}>
+        {/* Hero — the litre itself: two 500 ml packs on the soft flame wash.
+            Pure imagery; every material term stays in the §15.7 card below. */}
+        <Animated.View entering={FadeInDown.duration(440)}>
+          <View style={{ borderRadius: radius.lg, backgroundColor: colors.flameSoft, paddingVertical: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+              <Image source={PACK_IMG} style={{ width: 92, height: 92, transform: [{ rotate: '-7deg' }], marginRight: -14 }} contentFit="contain" />
+              <Image source={PACK_IMG} style={{ width: 104, height: 104, transform: [{ rotate: '5deg' }] }} contentFit="contain" />
+            </View>
+            <View style={{ marginTop: 10, backgroundColor: colors.white, borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 5, ...shadow.soft }}>
+              <TextSemi color={colors.flameDeep} style={{ fontSize: 13 }}>
+                {t('2 × 500 ml Full Cream = 1 litre, free', '2 × 500 मि.ली. फुल क्रीम = 1 लीटर, मुफ़्त')}
+              </TextSemi>
+            </View>
+          </View>
+        </Animated.View>
+
         {/* §15.7 — the offer terms summary, before any commitment. */}
-        <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flame, padding: spacing.md, gap: 8, ...shadow.card }}>
+        <Animated.View entering={FadeInDown.duration(440).delay(50)} style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flame, padding: spacing.md, gap: 8, ...shadow.card }}>
           <Pill small label={t('FREE — NOTHING TO PAY NOW', 'मुफ़्त — अभी कोई भुगतान नहीं')} bg={colors.flameSoft} color={colors.flameDeep} />
           {[
             t('Who: new PYAAS households in our delivery area, one offer per mobile number and address.',
@@ -100,7 +121,7 @@ export default function WelcomeOffer() {
           <Tap onPress={() => router.push('/terms')}>
             <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }}>{t('Full offer terms', 'पूरी शर्तें देखें')}</TextMed>
           </Tap>
-        </View>
+        </Animated.View>
 
         {state === 'not_serviceable' ? (
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>

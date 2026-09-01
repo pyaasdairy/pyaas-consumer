@@ -65,6 +65,13 @@ export default function MessagePreferences() {
               key={m.key}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: spacing.md, paddingVertical: 14, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line }}
             >
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons
+                  name={m.key === 'whatsapp' ? 'logo-whatsapp' : m.key === 'sms' ? 'chatbubble-ellipses-outline' : 'megaphone-outline'}
+                  size={17}
+                  color={colors.flameDeep}
+                />
+              </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <TextMed style={{ fontSize: 14.5 }}>{m.label}</TextMed>
                 <TextBody color={colors.inkMute} style={{ fontSize: 12 }}>{m.sub}</TextBody>

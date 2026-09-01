@@ -13,7 +13,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "in.pyaasdairy.app",
-      "buildNumber": "6",
+      "buildNumber": "11",
       "associatedDomains": [
         "applinks:pyaasdairy.com",
         "applinks:www.pyaasdairy.com"

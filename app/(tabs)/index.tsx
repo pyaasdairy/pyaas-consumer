@@ -10,6 +10,7 @@ import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../../components/
 import { ProductCard } from '../../components/ProductCard';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
 import { WelcomeOffer, welcomeOfferSeen, markWelcomeOfferSeen } from '../../components/WelcomeOffer';
+import { WelcomeProgressCard } from '../../components/WelcomeProgressCard';
 import { ClaimPackFlow, claimFlowOnScreen } from '../../components/ClaimPackFlow';
 import { ShopSkeleton } from '../../components/Skeleton';
 import { HomeHeader, useHomeHeaderHeight } from '../../components/HomeHeader';
@@ -179,8 +180,17 @@ export default function Shop() {
   // → the legacy 2+2 rules stay in force; freePackShowEligible cedes when
   // non-null, so exactly ONE acquisition pitch can ever render).
   const [wlState, setWlState] = useState<WelcomeFunnelState | null>(null);
+  // `null` is ambiguous until the first answer lands: it means BOTH "not asked
+  // yet" and "backend has no CRM". The legacy 2+2 pitch (popup + card) may only
+  // fire on an ANSWERED null — pitching the pay-first 2+2 while the Welcome
+  // Litre probe is still in flight put the retired offer in front of a CRM
+  // household (caught live on the sim: first sign-in raced the token write,
+  // the probe 401'd, and the ₹140 popup fired on a Welcome Litre backend).
+  const [wlAnswered, setWlAnswered] = useState(false);
   const recheckWelcome = useCallback(() => {
-    getWelcomeFunnelState().then(setWlState).catch(() => setWlState(null));
+    getWelcomeFunnelState()
+      .then((s) => { setWlState(s); setWlAnswered(true); })
+      .catch(() => { setWlState(null); setWlAnswered(true); });
   }, []);
 
   const recheckClaim = useCallback(() => {
@@ -229,6 +239,11 @@ export default function Shop() {
   const autoOpenedClaim = React.useRef(false);
   useEffect(() => {
     if (autoOpenedClaim.current || !freshUser || !claimEligible) return;
+    // ONE-PITCH INVARIANT, popup half: the 2+2 modal fires only once the
+    // Welcome Litre probe has ANSWERED "no CRM here" (wlState === null after
+    // wlAnswered). claimEligible's own cede inside freePackShowEligible is the
+    // second, independent gate — both must agree before the retired pitch shows.
+    if (!wlAnswered || wlState !== null) return;
     // The tabs-level ClaimPackGate may already be showing the flow — never
     // stack this screen's own instance (or the welcome offer) on top of it.
     if (claimFlowOnScreen()) return;
@@ -245,7 +260,7 @@ export default function Shop() {
       void markWelcomeOfferSeen(uid);
       setWelcomeOpen(true);
     });
-  }, [freshUser, claimEligible, profile?.id]);
+  }, [freshUser, claimEligible, profile?.id, wlAnswered, wlState]);
 
   // Active orders drive the "Track your order" strip. Refetched whenever the
   // home tab regains focus; renders nothing gracefully when there are none.
@@ -308,8 +323,16 @@ export default function Shop() {
     refreshFavs();
     // Resolve serviceability for the member's delivery point (cached + fail-open).
     void svcCheck();
-    refreshWallet().finally(() => active && setReady(true));
-    return () => { active = false; };
+    // The wallet refresh used to gate `ready` on its own: fine on a warm network
+    // (the balance chip lands before first paint), but a COLD backend (Render
+    // free tier boots for ~30s) held the whole shop on the skeleton for the full
+    // request timeout while the catalog sat in memory ready to render. Cap the
+    // wait at 400ms: warm networks keep the exact old sequencing, cold ones show
+    // the bundled/cached catalog instantly and the chip hydrates when it lands.
+    const markReady = () => { if (active) setReady(true); };
+    const cap = setTimeout(markReady, 400);
+    refreshWallet().finally(() => { clearTimeout(cap); markReady(); });
+    return () => { active = false; clearTimeout(cap); };
   }, [refreshWallet, refreshFavs, svcCheck]);
 
   // One card per base: the grid is grouped (500 ml · 1 L collapse into a single
@@ -497,10 +520,13 @@ export default function Shop() {
                 <Tap
                   weight="medium"
                   onPress={() => router.push('/welcome-offer')}
-                  style={{ borderRadius: radius.lg, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flame, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, ...shadow.card }}
+                  style={{ borderRadius: radius.lg, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flame, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, overflow: 'hidden', ...shadow.card }}
                 >
-                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="gift" size={20} color={colors.flameDeep} />
+                  {/* Revamp language: the actual pack, not an icon disc — the
+                      same FCM pack shot every funnel surface uses, on the soft
+                      flame wash. Pill + copy are load-bearing (§15.6): keep. */}
+                  <View style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Image source={FREE_PACK_IMG} style={{ width: 46, height: 46 }} contentFit="contain" />
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                     <View style={{ flexDirection: 'row' }}>
@@ -514,9 +540,13 @@ export default function Shop() {
                   <Ionicons name="chevron-forward" size={18} color={colors.flameDeep} />
                 </Tap>
               </Animated.View>
+            ) : wlState === 'already_enrolled' ? (
+              <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
+                <WelcomeProgressCard />
+              </Animated.View>
             ) : null}
 
-            {freshUser && claimEligible ? (
+            {wlAnswered && wlState === null && freshUser && claimEligible ? (
               <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
                 <Tap
                   weight="medium"
