@@ -11,6 +11,7 @@ import { ProductCard } from '../../components/ProductCard';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
 import { WelcomeOffer, welcomeOfferSeen, markWelcomeOfferSeen } from '../../components/WelcomeOffer';
 import { WelcomeProgressCard } from '../../components/WelcomeProgressCard';
+import { WelcomeLitrePopup } from '../../components/WelcomeLitrePopup';
 import { ClaimPackFlow, claimFlowOnScreen } from '../../components/ClaimPackFlow';
 import { ShopSkeleton } from '../../components/Skeleton';
 import { HomeHeader, useHomeHeaderHeight } from '../../components/HomeHeader';
@@ -237,6 +238,18 @@ export default function Shop() {
   usePopupSlot(welcomeOpen);
   usePopupSlot(claimOpen);
   const autoOpenedClaim = React.useRef(false);
+  // Welcome Litre popup — the offer's own modal (the old 2+2 modal's structure,
+  // the published offer's words). Server-gated (`eligible` only), once per app
+  // LAUNCH via this in-memory ref — deliberately NO stored seen/snooze state.
+  const [wlPopupOpen, setWlPopupOpen] = useState(false);
+  usePopupSlot(wlPopupOpen);
+  const wlPopupShown = React.useRef(false);
+  useEffect(() => {
+    if (wlPopupShown.current || wlState !== 'eligible') return;
+    if (claimFlowOnScreen()) return; // never stack over another modal
+    wlPopupShown.current = true;
+    setWlPopupOpen(true);
+  }, [wlState]);
   useEffect(() => {
     if (autoOpenedClaim.current || !freshUser || !claimEligible) return;
     // ONE-PITCH INVARIANT, popup half: the 2+2 modal fires only once the
@@ -696,6 +709,11 @@ export default function Shop() {
           Dismissal SNOOZES like the tabs-level gate does — without it the gate
           re-opened the same sheet on the next focus and "Maybe later" did
           nothing. */}
+      <WelcomeLitrePopup
+        visible={wlPopupOpen}
+        onStart={() => { setWlPopupOpen(false); router.push('/welcome-offer'); }}
+        onClose={() => setWlPopupOpen(false)}
+      />
       <ClaimPackFlow
         visible={claimOpen}
         onClose={() => { void snoozeFreePack(); setClaimOpen(false); }}
