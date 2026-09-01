@@ -114,7 +114,7 @@ export default function WalletStatement() {
         })}
       </Animated.ScrollView>
 
-      <Animated.ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xxl }} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView automaticallyAdjustKeyboardInsets style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xxl }} showsVerticalScrollIndicator={false}>
         {shown.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
             <Ionicons name="receipt-outline" size={40} color={colors.inkMute} />

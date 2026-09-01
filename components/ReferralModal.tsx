@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput } from 'react-native';
+import { View, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeModal } from './SafeModal';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -31,6 +31,7 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
 
   return (
     <SafeModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <Animated.View entering={FadeIn.duration(200)} style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' }}>
         <Animated.View entering={SlideInDown.duration(300)} style={{ backgroundColor: colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md, ...shadow.card }}>
           <View style={{ alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line }} />
@@ -63,6 +64,7 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
           </View>
         </Animated.View>
       </Animated.View>
+      </KeyboardAvoidingView>
     </SafeModal>
   );
 }

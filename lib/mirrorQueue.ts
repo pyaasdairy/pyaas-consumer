@@ -101,11 +101,11 @@ export function drainMirrorQueue(): Promise<void> {
         if (outcome === 'retry') {
           const bumped = (op.attempts ?? 0) + 1;
           await setRows<MirrorOp>(TABLE, uid, [{ ...op, attempts: bumped }, ...rows.slice(1)]);
-          logDiag({ kind: 'event', method: op.kind, path: op.target, message: `mirror retry — attempt ${bumped}, will replay` });
+          logDiag({ kind: 'event', method: op.kind, path: op.target, message: `mirror retry, attempt ${bumped}, will replay` });
           return; // stop: order matters, connectivity will re-trigger us
         }
         if (outcome === 'drop') {
-          logDiag({ kind: 'event', method: op.kind, path: op.target, message: 'mirror dropped — permanent rejection' });
+          logDiag({ kind: 'event', method: op.kind, path: op.target, message: 'mirror dropped: permanent rejection' });
         }
         const after = await getRows<MirrorOp>(TABLE, uid);
         await setRows<MirrorOp>(TABLE, uid, after.filter((r) => r.id !== op.id));

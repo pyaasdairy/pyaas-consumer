@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, TextInput, Keyboard, Linking } from 'react-native';
+import { View, StyleSheet, Dimensions, TextInput, Keyboard, Linking, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeModal } from '../../components/SafeModal';
 import { CameraView, useCameraPermissions, type BarcodeType } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -76,7 +76,7 @@ export default function Traceability() {
 
   const enterModal = (
     <SafeModal visible={manual} transparent animationType="fade" onRequestClose={() => setManual(false)}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'center', padding: spacing.xl }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'center', padding: spacing.xl }}>
         <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: spacing.md }}>
           <Serif style={{ fontSize: 22 }}>Enter batch code</Serif>
           <TextBody color={colors.inkMute} style={{ fontSize: 13 }}>It is printed on your pack near the MFG and best-before date.</TextBody>
@@ -96,7 +96,7 @@ export default function Traceability() {
             <TextMed color={colors.inkMute} style={{ fontSize: 14 }}>Cancel</TextMed>
           </Tap>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeModal>
   );
 

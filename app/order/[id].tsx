@@ -299,7 +299,7 @@ export default function OrderTracking() {
         </View>
       )}
 
-      <Animated.ScrollView onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingTop: liveInstant ? MAP_MAX + spacing.md : spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView automaticallyAdjustKeyboardInsets onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingTop: liveInstant ? MAP_MAX + spacing.md : spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
         {/* THE ARRIVAL CARD — first card under the map hero; the countdown leads. */}
         {liveInstant ? (
           <Animated.View entering={FadeIn.duration(420)} style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 6, ...shadow.card }}>

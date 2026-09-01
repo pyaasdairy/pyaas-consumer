@@ -355,7 +355,7 @@ export default function Cart() {
           <TextBody style={{ textAlign: 'center' }}>
             {lane === 'instant'
               ? 'Add fresh milk and more from the Instant shop, delivered in ~20 minutes.'
-              : 'Add one-time items from the Morning shop, delivered tomorrow with the 5–7:30 AM run.'}
+              : 'Add one-time items from the Morning shop, delivered tomorrow with the 5-7:30 AM run.'}
           </TextBody>
           <Button title="Start shopping" onPress={() => router.replace('/(tabs)')} style={{ alignSelf: 'stretch', marginTop: 8 }} />
         </View>
@@ -692,7 +692,7 @@ function Header({ insetsTop, lane }: { insetsTop: number; lane: 'instant' | 'mor
       <View style={{ flex: 1 }}>
         <Serif style={{ fontSize: 22 }}>Your cart</Serif>
         <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>
-          {lane === 'instant' ? 'Delivered in ~20 min' : 'Delivered tomorrow 5–7:30 AM'}
+          {lane === 'instant' ? 'Delivered in ~20 min' : 'Delivered tomorrow 5-7:30 AM'}
         </TextBody>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: lane === 'instant' ? colors.flameSoft : colors.blueSoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 5 }}>

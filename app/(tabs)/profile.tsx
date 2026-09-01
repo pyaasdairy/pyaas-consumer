@@ -209,7 +209,7 @@ export default function Profile() {
             haptic={false}
             onPress={() => Alert.alert(
               'Delete account?',
-              `Active subscriptions and any AutoPay mandate are cancelled, and your personal details are permanently erased; only records the law requires us to keep (tax/financial) are retained. Any remaining wallet balance is FORFEITED when the account is deleted — email ${SUPPORT_EMAIL} to settle it BEFORE deleting. This cannot be undone.`,
+              `Active subscriptions and any AutoPay mandate are cancelled, and your personal details are permanently erased; only records the law requires us to keep (tax/financial) are retained. Any remaining wallet balance is FORFEITED when the account is deleted. Email ${SUPPORT_EMAIL} to settle it BEFORE deleting. This cannot be undone.`,
               [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete', style: 'destructive', onPress: async () => {

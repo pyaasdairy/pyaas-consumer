@@ -2,7 +2,7 @@
   "expo": {
     "name": "PYAAS",
     "slug": "pyaas-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "scheme": [
       "pyaas",
       "parag"
@@ -13,7 +13,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "in.pyaasdairy.app",
-      "buildNumber": "11",
+      "buildNumber": "12",
       "associatedDomains": [
         "applinks:pyaasdairy.com",
         "applinks:www.pyaasdairy.com"
@@ -126,7 +126,7 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 36,
+      "versionCode": 37,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"

@@ -463,7 +463,7 @@ export default function ProductDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 210 }}>
+      <ScrollView automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 210 }}>
         <DeliveryBanner topInset={insets.top} />
 
         {/* Image header */}
@@ -623,7 +623,7 @@ export default function ProductDetail() {
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {([
                   { key: 'instant', label: 'Instant', sub: '~20 min' },
-                  { key: 'morning', label: 'Morning slot', sub: '5–7:30 AM' },
+                  { key: 'morning', label: 'Morning slot', sub: '5-7:30 AM' },
                   { key: 'scheduled', label: 'Pick a date', sub: formatShort(pickedDate) },
                 ] as const).map((opt) => {
                   const active = deliverBy === opt.key;
@@ -686,8 +686,8 @@ export default function ProductDetail() {
                   {deliverBy === 'instant'
                     ? `Arriving by ${instantEta} · Instant express from your nearest PYAAS store.${monsoonFee > 0 ? ` A ₹${monsoonFee} monsoon fee applies.` : ''}`
                     : deliverBy === 'scheduled'
-                      ? `Delivered ${formatShort(pickedDate)}, in the 5–7:30 AM morning slot.`
-                      : 'Delivered tomorrow morning, 5–7:30 AM. Fresh off the dawn route.'}
+                      ? `Delivered ${formatShort(pickedDate)}, in the 5-7:30 AM morning slot.`
+                      : 'Delivered tomorrow morning, 5-7:30 AM. Fresh off the dawn route.'}
                 </TextMed>
               </View>
             </Animated.View>

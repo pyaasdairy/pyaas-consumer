@@ -85,7 +85,7 @@ export default function Autopay() {
       {loading ? (
         <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 40 }} />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 120 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 120 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <Animated.View entering={enterUp()}>
             <View style={{ backgroundColor: colors.flameDeep, borderRadius: radius.xl, padding: spacing.lg, gap: 8, ...shadow.card }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
