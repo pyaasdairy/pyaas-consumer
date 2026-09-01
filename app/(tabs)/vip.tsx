@@ -309,7 +309,7 @@ export default function Vip() {
     // the confirm sheet there could only dead-end in an error (exactly what an
     // App Review reads as a broken purchase), so say the honest thing instead.
     if (isBackendConfigured()) {
-      setMsg('Joining opens soon — member prices above are a preview.');
+      setMsg('Joining opens soon. Member prices above are a preview.');
       return;
     }
     setBuyErr('');
@@ -342,7 +342,7 @@ export default function Vip() {
       } else if (e instanceof Error && /coming soon/i.test(e.message)) {
         // purchaseMembership's backend-mode guard: not a retryable failure.
         setShowBuy(false);
-        setMsg('Joining opens soon — member prices above are a preview.');
+        setMsg('Joining opens soon. Member prices above are a preview.');
       } else {
         setBuyErr('Could not complete the purchase. Please try again.');
       }
@@ -555,7 +555,7 @@ export default function Vip() {
           <TextSemi style={{ fontSize: 18 }} color={INK}>How Plus works</TextSemi>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', ...shadow.card }}>
             {[
-              { n: '1', icon: 'card' as const, title: 'Join for ' + rupee(PLUS_PRICE_MONTH) + '/mo', body: 'Pay securely via Razorpay through your PYAAS Wallet. That is the only way in — nothing is free.' },
+              { n: '1', icon: 'card' as const, title: 'Join for ' + rupee(PLUS_PRICE_MONTH) + '/mo', body: 'Pay securely via Razorpay through your PYAAS Wallet. That is the only way in. Nothing is free.' },
               { n: '2', icon: 'flash' as const, title: 'Enjoy the perks', body: 'Priority morning slots, free delivery and member price on milk, from day one.' },
               { n: '3', icon: 'refresh' as const, title: 'Renew or cancel', body: 'It never auto-renews. Cancel whenever you like; perks stop when you do, and there is no lock-in.' },
             ].map((row, i) => (

@@ -20,6 +20,7 @@ import { setOnAuthExpired } from '../lib/apiClient';
 import { runOneTimeLocalReset } from '../lib/localReset';
 import { drainMirrorQueue } from '../lib/mirrorQueue';
 import { warmBackend } from '../lib/warmup';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hydrateProfileFromServer } from '../lib/profileApi';
 // Importing consentSync also registers the 'consents' mirror handler at boot,
 // before any drain can encounter (and would otherwise drop) a queued consent op.
@@ -39,6 +40,9 @@ const PUBLIC_DOC_ROUTES = new Set([
   'terms',
   'privacy-policy',
   'refund-policy',
+  // Welcome Litre §15.7 terms summary — MUST be reachable before registration
+  // (campaign A-2; §6.2 "offer disclosed before registration begins").
+  'offer-terms',
   'shipping-policy',
   'cancellation-policy',
   'legal',
@@ -75,6 +79,21 @@ function RootNavigator() {
   // the re-consent overlay (Play prominent-disclosure: no collection before the
   // current disclosure is accepted). See the consent effect.
   const [maxWaited, setMaxWaited] = useState(false);
+  // Per-account "been through profile setup" flag (written by complete-profile
+  // on save). null = still reading — the gate waits, so a nameless member is
+  // neither bounced into the app nor back to the form on a coin flip. No
+  // session (or no profile id yet) resolves to false so the gate can proceed.
+  const [setupDone, setSetupDone] = useState<boolean | null>(null);
+  useEffect(() => {
+    let on = true;
+    const uid = profile?.id;
+    if (!session) { setSetupDone(false); return; }
+    if (!uid) { setSetupDone(profileLoaded ? false : null); return; }
+    AsyncStorage.getItem(`pyaas_setup_done:${uid}`)
+      .then((v) => { if (on) setSetupDone(v === '1'); })
+      .catch(() => { if (on) setSetupDone(false); });
+    return () => { on = false; };
+  }, [session, profile?.id, profileLoaded]);
   // Premium type identity (Hanken Grotesk + Bricolage Grotesque), loaded at
   // runtime from bundled assets - no network, no native rebuild.
   const [fontsLoaded] = useFonts({
@@ -110,16 +129,19 @@ function RootNavigator() {
     if (session) {
       // Wait until we actually know the profile before deciding the gate, so we
       // never flash the tabs and bounce. New phone-OTP / metadata-less signups
-      // land with no name → send them to complete their profile first.
-      if (!profileLoaded) return;
-      const needsProfile = !(profile?.full_name && profile.full_name.trim());
+      // still visit complete-profile once — but the NAME is optional there
+      // (§6.2 / CCPA Forced Action), so the gate also accepts the per-account
+      // SETUP_DONE flag the screen writes: a member who chose not to give a
+      // name must never be bounced back.
+      if (!profileLoaded || setupDone === null) return;
+      const needsProfile = !(profile?.full_name && profile.full_name.trim()) && !setupDone;
       if (needsProfile && !onComplete) {
         router.replace('/complete-profile');
       } else if (!needsProfile && (inAuthGroup || onSplash || onComplete)) {
         router.replace('/(tabs)');
       }
     }
-  }, [session, profile, profileLoaded, loading, segments, router]);
+  }, [session, profile, profileLoaded, setupDone, loading, segments, router]);
 
   // The app renders underneath; the Splash overlays it and fades out once we
   // actually know where to land (so there's no flash of the wrong screen, and

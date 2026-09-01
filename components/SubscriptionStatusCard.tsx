@@ -74,11 +74,13 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
         style={[{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, ...shadow.soft }, style]}
       >
         <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="gift" size={19} color={colors.flameDeep} />
+          <Ionicons name="repeat" size={19} color={colors.flameDeep} />
         </View>
         <View style={{ flex: 1, gap: 1 }}>
-          <TextSemi style={{ fontSize: 14 }}>Start your subscription</TextSemi>
-          <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>2 days of milk on us · fresh every morning</TextBody>
+          <TextSemi style={{ fontSize: 14 }}>Start a subscription</TextSemi>
+          {/* Neutral copy — the retired 2+2 promise ("2 days on us") must never
+              be pitched again; the Welcome Litre owns acquisition. */}
+          <TextBody style={{ fontSize: 12 }} color={colors.inkSoft}>Fresh milk at your door, every morning · pause anytime</TextBody>
         </View>
         <Ionicons name="chevron-forward" size={16} color={colors.flameDeep} />
       </Tap>

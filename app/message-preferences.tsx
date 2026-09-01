@@ -54,7 +54,7 @@ export default function MessagePreferences() {
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }} showsVerticalScrollIndicator={false}>
         <TextBody color={colors.inkSoft} style={{ fontSize: 13, lineHeight: 18 }}>
-          Delivery, wallet and account messages always arrive — they are part of the
+          Delivery, wallet and account messages always arrive. They are part of the
           service. Offers and updates are up to you, and saying no never affects
           your milk or any offer you have already started.
         </TextBody>

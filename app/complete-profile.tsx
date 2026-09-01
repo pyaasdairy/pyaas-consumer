@@ -10,6 +10,7 @@ import { Serif, TextBody, TextMed, TextSemi, Field, Tap } from '../components/ui
 import { enterUp } from '../lib/motion';
 import { useAuth } from '../lib/auth';
 import { updateProfile } from '../lib/profileApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { recordConsents, defaultChoices } from '../components/ConsentSheet';
 
 /**
@@ -39,13 +40,20 @@ export default function CompleteProfile() {
   }, []);
 
   async function save() {
-    if (!name.trim()) { setError('Please tell us your name.'); return; }
+    // §6.2 / CCPA Forced Action: name is OPTIONAL — mobile+OTP+address are the
+    // only required onboarding fields. An empty name is simply not sent, and
+    // the SETUP_DONE flag (read by the root gate) records that this member has
+    // been through this step, so a nameless profile is never bounced back here.
     setSaving(true); setError('');
     try {
       await updateProfile({
-        full_name: name.trim(),
+        ...(name.trim() ? { full_name: name.trim() } : {}),
         phone: phone.trim() || null,
       });
+      try {
+        const uid = profile?.id;
+        if (uid) await AsyncStorage.setItem(`pyaas_setup_done:${uid}`, '1');
+      } catch { /* flag is a convenience — the gate also accepts a saved name */ }
       // Required consents + the OPTIONAL offers opt-in exactly as the member
       // left the checkbox (unticked by default — CCPA forbids pre-ticking; a
       // tick grants the marketing channels, and Settings → Message
@@ -83,7 +91,7 @@ export default function CompleteProfile() {
             entering={enterUp()}
             style={{ flex: kbUp ? undefined : 1, backgroundColor: colors.white, borderTopLeftRadius: 34, borderTopRightRadius: 34, paddingHorizontal: spacing.lg, paddingTop: kbUp ? spacing.lg : spacing.xl, paddingBottom: insets.bottom + spacing.lg, ...shadow.card }}
           >
-            <Field label="Full name" value={name} onChangeText={setName} placeholder="Your name" autoFocus autoComplete="name" textContentType="name" />
+            <Field label="Full name (optional)" value={name} onChangeText={setName} placeholder="Your name (you can skip this)" autoFocus autoComplete="name" textContentType="name" />
             <Field label="Mobile number (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10-digit mobile" autoComplete="tel" textContentType="telephoneNumber" />
 
             {/* The one surface that can GRANT marketing consent — without it

@@ -9,9 +9,8 @@ import { colors, radius, spacing, shadow, rupee } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../../components/ui';
 import { ProductCard } from '../../components/ProductCard';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
-import { WelcomeOffer, welcomeOfferSeen, markWelcomeOfferSeen } from '../../components/WelcomeOffer';
 import { WelcomeProgressCard } from '../../components/WelcomeProgressCard';
-import { ClaimPackFlow, claimFlowOnScreen } from '../../components/ClaimPackFlow';
+import { WelcomeLitrePopup } from '../../components/WelcomeLitrePopup';
 import { ShopSkeleton } from '../../components/Skeleton';
 import { HomeHeader, useHomeHeaderHeight } from '../../components/HomeHeader';
 import { BottomBar, useBottomBarClearance } from '../../components/BottomBar';
@@ -30,7 +29,6 @@ import { listOrders, type Order } from '../../lib/api';
 import { STATUS_LABEL } from '../../lib/orderStatus';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
 import { getWelcomeFunnelState, type WelcomeFunnelState } from '../../lib/crm';
-import { freePackShowEligible, onFreePackChanged, snoozeFreePack, FREE_PACK_PRODUCT_ID, TRIAL_PAID_DAYS, TRIAL_FREE_DAYS } from '../../lib/freePack';
 import { PREPAID_TARGET, prepaidTier } from '../../lib/prepaid';
 import { listSubscriptions, syncServerSubscriptions } from '../../lib/subscriptions';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
@@ -164,17 +162,9 @@ export default function Shop() {
     () => activeOrders.filter((o) => (instant ? isInstantOrder(o) : !isInstantOrder(o))),
     [activeOrders, instant, isInstantOrder],
   );
-  // Free-pack funnel: the punchy claim card shows while this phone/device is
-  // still eligible (the selling point stays visible even after a snooze).
-  const [claimEligible, setClaimEligible] = useState(false);
-  const [claimOpen, setClaimOpen] = useState(false);
-  // FRESH user = no active/paused subscription AND has never redeemed the 2+2
-  // trial. Only these members see the middle "start your subscription" strip.
-  const [freshUser, setFreshUser] = useState(false);
   // Whether the member has an active/paused subscription — gates the low-wallet
   // "tomorrow's delivery may pause" nudge (never nag a fresh 0-wallet user).
   const [hasSub, setHasSub] = useState(false);
-  const phone = profile?.phone ?? '';
 
   // SERVER-TRUTH Welcome Litre funnel state (null = backend doesn't speak CRM
   // → the legacy 2+2 rules stay in force; freePackShowEligible cedes when
@@ -193,74 +183,23 @@ export default function Shop() {
       .catch(() => { setWlState(null); setWlAnswered(true); });
   }, []);
 
-  const recheckClaim = useCallback(() => {
-    if (!phone) { setClaimEligible(false); return; }
-    // PER-USER show eligibility (not the device-capped claim gate) so a brand-new
-    // sign-in on any device sees the trial banner/card until THEY claim it.
-    freePackShowEligible(phone)
-      .then((show) => setClaimEligible(show))
-      .catch(() => setClaimEligible(false));
-  }, [phone]);
-
-  // A member is "fresh" (a candidate for the 2+2 subscription starter) when they
-  // hold NO active/paused subscription. We deliberately do NOT read the backend
-  // trial ledger here: GET /consumer/trial/me upserts phase='paid' for EVERY
-  // consumer on first read, so keying "redeemed" off it made freshUser always
-  // false and hid the whole Home trial funnel. Whether they've actually redeemed
-  // the 2+2 is encoded in `claimEligible` (freePackShowEligible → false once the
-  // pack is claimed), which gates the render sites alongside freshUser.
+  // Subscription presence (server-synced) — the low-wallet delivery nudge keys
+  // off ANY ongoing subscription; a one-time order is not an ongoing plan.
   const recheckFresh = useCallback(() => {
     syncServerSubscriptions()
       .then(() => listSubscriptions())
       .then((subs) => {
-        // A one-time order is NOT an ongoing subscription — exclude it so a single
-        // instant buy never flips the member out of the "fresh" 2+2 funnel.
         const anySub = subs.some((s) => (s.status === 'active' || s.status === 'paused') && s.frequency !== 'one_time');
-        // The 2+2 offer applies ONLY to SUBSCRIBING the full cream (the offer
-        // SKU). A Taaza (or any other SKU) subscriber is still a candidate, and
-        // a PAUSED full-cream sub still owes its paid day(s) — only an ACTIVE
-        // full-cream subscription ends the "fresh" funnel (its progress card
-        // owns the home screen; claimEligible closes it for good on completion).
-        const goldActive = subs.some(
-          (s) => s.product_id === FREE_PACK_PRODUCT_ID && s.status === 'active' && s.frequency !== 'one_time',
-        );
-        setHasSub(anySub); // the low-wallet delivery nudge still keys off ANY sub
-        setFreshUser(!goldActive);
+        setHasSub(anySub);
       })
-      .catch(() => { setHasSub(false); setFreshUser(false); });
+      .catch(() => setHasSub(false));
   }, []);
 
-  // WELCOME OFFER: the very first time a member lands signed-in, greet them with
-  // the animated confetti offer (once per account). On later launches an eligible
-  // fresh member goes straight to the 2-day-free claim popup, once per app launch.
-  const [welcomeOpen, setWelcomeOpen] = useState(false);
-  usePopupSlot(welcomeOpen);
-  usePopupSlot(claimOpen);
-  const autoOpenedClaim = React.useRef(false);
-  useEffect(() => {
-    if (autoOpenedClaim.current || !freshUser || !claimEligible) return;
-    // ONE-PITCH INVARIANT, popup half: the 2+2 modal fires only once the
-    // Welcome Litre probe has ANSWERED "no CRM here" (wlState === null after
-    // wlAnswered). claimEligible's own cede inside freePackShowEligible is the
-    // second, independent gate — both must agree before the retired pitch shows.
-    if (!wlAnswered || wlState !== null) return;
-    // The tabs-level ClaimPackGate may already be showing the flow — never
-    // stack this screen's own instance (or the welcome offer) on top of it.
-    if (claimFlowOnScreen()) return;
-    const uid = profile?.id;
-    if (!uid) return;
-    if (anyPopupOpen()) return; // one popup at a time — retry next focus
-    void welcomeOfferSeen(uid).then((seen) => {
-      // Latch ONLY when something actually opens — latching before this async
-      // check meant a popup-blocked attempt burned the one shot per launch.
-      if (autoOpenedClaim.current) return;
-      if (anyPopupOpen() || claimFlowOnScreen()) return;
-      autoOpenedClaim.current = true;
-      if (seen) { setClaimOpen(true); return; }
-      void markWelcomeOfferSeen(uid);
-      setWelcomeOpen(true);
-    });
-  }, [freshUser, claimEligible, profile?.id, wlAnswered, wlState]);
+  // The retired 2+2 pitch surfaces (confetti welcome modal, claim popup, claim
+  // card) are GONE — the Welcome Litre is the app's one published acquisition
+  // offer (campaign §15; work order 5347/LMU). Its popup renders below via
+  // WelcomeLitrePopup on the SERVER's eligibility say-so; members mid-2+2 keep
+  // their running trial (lib/trial accounting untouched) — only the pitch died.
 
   // Active orders drive the "Track your order" strip. Refetched whenever the
   // home tab regains focus; renders nothing gracefully when there are none.
@@ -287,15 +226,10 @@ export default function Shop() {
           if (placed > 0 && on) { void refreshWallet(); loadOrders(); }
         })
         .catch(() => { /* error-soft — retried on next focus */ });
-      recheckClaim();
       recheckWelcome();
       recheckFresh();
-      // The boot modal can claim while home stays focused (no focus change) —
-      // subscribe so the claim card + fresh-user strip hide the moment ANY path
-      // claims the pack / starts the subscription.
-      const off = onFreePackChanged(() => { recheckClaim(); recheckFresh(); });
-      return () => { on = false; off(); };
-    }, [recheckClaim, recheckWelcome, recheckFresh, refreshWallet, svcCheck])
+      return () => { on = false; };
+    }, [recheckWelcome, recheckFresh, refreshWallet, svcCheck])
   );
   // On every Home focus, re-pull the live catalog and flag any cart line that
   // just went out of stock (or was hidden) so a stale cart can't be checked out.
@@ -512,9 +446,8 @@ export default function Shop() {
                 existing subscriber is never nudged to "start". */}
             {/* WELCOME LITRE funnel (server-truth; the published offer). Renders
                 for eligible / address_required / not_serviceable — the CTA
-                routes per state inside /welcome-offer. Mutually exclusive with
-                the legacy 2+2 card below by construction: wlState non-null
-                forces claimEligible=false (freePackShowEligible cedes). */}
+                routes per state inside /welcome-offer. The retired 2+2 pitch
+                surfaces are gone; this is the app's one acquisition offer. */}
             {wlState === 'eligible' || wlState === 'address_required' || wlState === 'not_serviceable' ? (
               <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
                 <Tap
@@ -530,7 +463,7 @@ export default function Shop() {
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                     <View style={{ flexDirection: 'row' }}>
-                      <Pill small label="FREE — NO PAYMENT NOW" bg={colors.flameSoft} color={colors.flameDeep} />
+                      <Pill small label="FREE · NO PAYMENT NOW" bg={colors.flameSoft} color={colors.flameDeep} />
                     </View>
                     <TextSemi color={colors.ink} style={{ fontSize: 15 }} numberOfLines={1}>Your first litre is on us</TextSemi>
                     <TextBody color={colors.inkMute} style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
@@ -546,37 +479,13 @@ export default function Shop() {
               </Animated.View>
             ) : null}
 
-            {wlAnswered && wlState === null && freshUser && claimEligible ? (
-              <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-                <Tap
-                  weight="medium"
-                  onPress={() => setClaimOpen(true)}
-                  style={{ borderRadius: radius.lg, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.flame, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, ...shadow.card }}
-                >
-                  <Image source={FREE_PACK_IMG} style={{ width: 58, height: 58 }} contentFit="contain" />
-                  <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                    <View style={{ flexDirection: 'row' }}>
-                      <Pill small label="FREE TRIAL" bg={colors.flameSoft} color={colors.flameDeep} />
-                    </View>
-                    <TextSemi color={colors.ink} style={{ fontSize: 15 }} numberOfLines={1}>Start your subscription</TextSemi>
-                    <TextBody color={colors.inkMute} style={{ fontSize: 11.5, lineHeight: 15 }} numberOfLines={2}>
-                      {TRIAL_FREE_DAYS} days worth of free milk · 1 L every morning · pause anytime
-                    </TextBody>
-                  </View>
-                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="gift" size={17} color={colors.flameDeep} />
-                  </View>
-                </Tap>
-              </Animated.View>
-            ) : null}
-
-            {/* Subscription live-status · sits under the claim card position.
-                While the claim card is up it stays quiet unless a sub exists. */}
+            {/* Subscription live-status. Its EMPTY state cedes to the Welcome
+                Litre funnel card above — one acquisition pitch, ever. */}
             <Animated.View entering={FadeInDown.duration(440).delay(60)} style={{ paddingHorizontal: spacing.lg }}>
-              {/* The status card's EMPTY state is a 2+2 pitch — it cedes both
-                  to the funnel card slot above (claimEligible) and to the
-                  Welcome Litre funnel (wlState non-null): one pitch, ever. */}
-              <SubscriptionStatusCard showEmpty={!claimEligible && wlState === null} onClaim={() => setClaimOpen(true)} style={{ marginBottom: spacing.md }} />
+              <SubscriptionStatusCard
+                showEmpty={!(wlState === 'eligible' || wlState === 'address_required' || wlState === 'not_serviceable')}
+                style={{ marginBottom: spacing.md }}
+              />
             </Animated.View>
 
 
@@ -684,24 +593,9 @@ export default function Shop() {
       <PromoGate />
       <OutOfZoneSheet visible={oozOpen} onClose={dismissOoz} />
 
-      {/* Animated welcome offer: first signed-in landing only. Claiming hands
-          straight into the subscription claim flow below. */}
-      <WelcomeOffer
-        visible={welcomeOpen}
-        onClaim={() => { setWelcomeOpen(false); setClaimOpen(true); }}
-        onClose={() => setWelcomeOpen(false)}
-      />
-
-      {/* Free-pack funnel sheet, opened from the claim card / status card.
-          Dismissal SNOOZES like the tabs-level gate does — without it the gate
-          re-opened the same sheet on the next focus and "Maybe later" did
-          nothing. */}
-      <ClaimPackFlow
-        visible={claimOpen}
-        onClose={() => { void snoozeFreePack(); setClaimOpen(false); }}
-        onClaimed={() => { recheckClaim(); void refreshWallet(); }}
-        onStartShopping={() => { void snoozeFreePack(); setClaimOpen(false); }}
-      />
+      {/* Welcome Litre first-landing popup — the campaign's ONE self-presenting
+          acquisition surface (§15.6), once per launch, on the server's say-so. */}
+      <WelcomeLitrePopup state={wlState} />
     </View>
   );
 }
@@ -750,7 +644,7 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
           onPress={() => setDeliveryMode('morning')}
           icon="sunny"
           label="Morning"
-          sub="5–7:30 AM"
+          sub="5-7:30 AM"
           a11yLabel="Morning delivery, 5 to 7:30 AM slot"
         />
         <ModeSegment

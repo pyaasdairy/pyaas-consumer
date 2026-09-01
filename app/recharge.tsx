@@ -31,19 +31,17 @@ import {
   type CheckoutResult,
 } from '../lib/razorpay';
 
-// The recharge grid (§6.4): ₹300 through ₹10,000, every tile at EQUAL visual
-// weight — no badge, no louder border (CCPA Interface Interference; the offer
-// terms promise the app never visually steers the recharge choice). ₹500 stays
-// the opening selection; the ₹100 floor remains available through the custom
-// field but is never advertised — only a typed amount below it gets told.
-const PACKS = [300, 500, 1000, 5000, 10000];
+// The recharge grid — the campaign §6.4 preset table VERBATIM: ₹300 / ₹500 /
+// ₹1,000 / ₹2,000, every tile at EQUAL visual weight — no badge, no louder
+// border (Interface Interference is named in the CCPA's June 2026 enforcement).
+// ₹500 stays the opening selection; the ₹100 floor remains available through
+// the custom field but is never advertised.
+const PACKS = [300, 500, 1000, 2000];
 
-// §6.4 day-equivalents ("₹500 ≈ 8 mornings"): an illustrative conversion on a
-// typical 1 L/day plan (~₹62/morning), footnoted under the grid. Always "≈",
-// never a promise — plans differ, and the estimate must undersell rather than
-// oversell (Math.floor would promise fewer; round matches the published
-// example ₹500 ≈ 8).
-const MORNING_RATE = 62;
+// §6.4 day-equivalents, matching the published table exactly (toned 1 L/day at
+// ₹59: ₹300 ≈ 5 · ₹500 ≈ 8 · ₹1,000 ≈ 17 · ₹2,000 ≈ 34). Always "≈", never a
+// promise — the footnote under the grid names the basis.
+const MORNING_RATE = 59;
 const morningsFor = (amt: number) => Math.max(1, Math.round(amt / MORNING_RATE));
 
 /** Snap a required minimum up to a clean amount the grid can preselect. */
@@ -331,7 +329,7 @@ export default function Recharge() {
         <Serif style={{ fontSize: 22, flex: 1 }}>Recharge wallet</Serif>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: insets.bottom + 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: insets.bottom + 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Current balance + why we're here */}
         <Animated.View entering={FadeInDown.duration(420)}>
           <View style={{ backgroundColor: colors.flameDeep, borderRadius: radius.xl, overflow: 'hidden', padding: spacing.lg, gap: 4, ...shadow.card }}>
@@ -372,13 +370,22 @@ export default function Recharge() {
                   }}
                 >
                   <TextSemi style={{ fontSize: 20, ...tabular }} color={on ? colors.flameDeep : colors.ink}>{rupee(p)}</TextSemi>
-                  <TextBody style={{ fontSize: 11.5, ...tabular }} color={colors.inkMute}>≈ {morningsFor(p)} mornings</TextBody>
+                  <TextBody style={{ fontSize: 11.5, ...tabular }} color={colors.inkMute}>
+                    {p === 500 && /second pack/i.test(reason) ? 'Unlocks your free 2nd pack' : `≈ ${morningsFor(p)} mornings`}
+                  </TextBody>
                 </Tap>
               );
             })}
           </View>
           <TextBody color={colors.inkMute} style={{ fontSize: 11, lineHeight: 15 }}>
-            Mornings are an estimate on a typical 1 L/day plan (~{rupee(MORNING_RATE)}/morning) — your own plan may differ.
+            Mornings are an estimate on a 1 L/day toned-milk plan ({rupee(MORNING_RATE)}/morning). Your own plan may differ.
+          </TextBody>
+          {/* §6.4 disclosures BEFORE payment: what the balance is for, that
+              promotional credit is not cash-refundable, how closure refunds
+              work. The wording must match /terms — never promise more here. */}
+          <TextBody color={colors.inkMute} style={{ fontSize: 11, lineHeight: 15 }}>
+            Wallet money pays for milk and delivery at MRP. Promotional credit is not refundable in cash. If you close your account, refunds follow the published terms, net of amounts due and non-refundable promotional credits.{' '}
+            <TextMed color={colors.flameDeep} style={{ fontSize: 11 }} onPress={() => router.push('/terms')}>Terms</TextMed>
           </TextBody>
 
           {/* Custom amount */}

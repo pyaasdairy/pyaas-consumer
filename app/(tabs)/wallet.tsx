@@ -106,7 +106,7 @@ export default function Wallet() {
         </Tap>
       </View>
 
-      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: tabClearance }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <Animated.ScrollView automaticallyAdjustKeyboardInsets onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: tabClearance }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Balance · solid card, motion does the work: count-up + sparks + shine.
             Effects stay INSIDE the clipped card (no glow halo bleeding outside). */}
         <Animated.View entering={FadeInDown.duration(460)}>
@@ -121,14 +121,14 @@ export default function Wallet() {
               </View>
               <Serif color={colors.white} style={{ fontFamily: fonts.serifBlack, fontSize: 44, letterSpacing: -0.5, ...tabular }}>{rupee(shownBalance)}</Serif>
 
-              {/* Cash vs promo split — only when a promo balance exists; with
-                  ₹0 rewards the Cash chip just repeated the headline number. */}
-              {promo > 0 ? (
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                  <SplitChip label="Cash" value={cash} />
-                  <SplitChip label="Rewards" value={promo} />
-                </View>
-              ) : null}
+              {/* A-5 ledger split, ALWAYS shown as two lines: the refundable
+                  balance vs non-refundable promotional credit — a single
+                  headline number that silently mixes the two is the
+                  "misleading balance" the campaign's terms forbid. */}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <SplitChip label="Balance (refundable)" value={cash} />
+                <SplitChip label="Promo credit (non-refundable)" value={promo} />
+              </View>
 
               {days != null ? (
                 <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 12.5, marginTop: 8 }}>
@@ -147,8 +147,8 @@ export default function Wallet() {
                   <Ionicons name="gift" size={13} color={colors.white} style={{ flexShrink: 0 }} />
                   <TextMed color={colors.white} style={{ fontSize: 12, flexShrink: 1 }} numberOfLines={2}>
                     {crmOffer.entitled_free_deliveries === 1
-                      ? '1 free delivery on us — nothing charged'
-                      : `${crmOffer.entitled_free_deliveries} free deliveries on us — nothing charged`}
+                      ? '1 free delivery on us · nothing charged'
+                      : `${crmOffer.entitled_free_deliveries} free deliveries on us · nothing charged`}
                   </TextMed>
                 </View>
               ) : null}

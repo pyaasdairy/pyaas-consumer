@@ -31,7 +31,7 @@ function rows(o: NonNullable<CrmOfferView['offer']>): PackRow[] | null {
 
   const p1: PackRow =
     o.pack1_state === 'delivered'
-      ? { ...done, title: 'Pack 1 delivered', sub: '500 ml Full Cream — enjoyed on us' }
+      ? { ...done, title: 'Pack 1 delivered', sub: '500 ml Full Cream, enjoyed on us' }
       : { ...wait, title: 'Pack 1 · on its way', sub: 'Arrives free with your first delivery' };
 
   switch (o.pack2_state) {
@@ -40,7 +40,7 @@ function rows(o: NonNullable<CrmOfferView['offer']>): PackRow[] | null {
     case 'pending':
       return [p1, { ...wait, title: 'Pack 2 unlocked', sub: 'It rides along free with your next delivery' }];
     case 'delivered':
-      return [p1, { ...done, title: 'Pack 2 delivered', sub: 'Your full free litre is complete — thank you for choosing PYAAS' }];
+      return [p1, { ...done, title: 'Pack 2 delivered', sub: 'Your full free litre is complete. Thank you for choosing PYAAS' }];
     default:
       // expired / unknown / pack1 forfeited → the offer is settled; no pitch.
       return null;
@@ -90,7 +90,7 @@ export function WelcomeProgressCard() {
           onPress={() => router.push('/recharge?amount=500&reason=to unlock your free second pack')}
           style={{ height: 46, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}
         >
-          <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>Recharge — second pack free</TextSemi>
+          <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>Recharge · second pack free</TextSemi>
           <Ionicons name="arrow-forward" size={16} color={colors.white} />
         </Tap>
       ) : null}

@@ -12,7 +12,6 @@ import { useAuth } from '../lib/auth';
 import { getVip, vipActive, vipDaysLeft, vipOnTrial, vipUpsellSnoozed, snoozeVipUpsell, PLUS_PRICE_MONTH, VIP_EXPIRY_WARN_DAYS, type VipMembership } from '../lib/vip';
 import { LOW_BALANCE_THRESHOLD } from '../lib/pricing';
 import { PREPAID_TARGET, prepaidTier, shouldShowPrepaidFunnel } from '../lib/prepaid';
-import { freePackShowEligible } from '../lib/freePack';
 import { getLedger } from '../lib/walletApi';
 import { listSubscriptions } from '../lib/subscriptions';
 import { useAutoPopup } from '../lib/popupGate';
@@ -32,7 +31,7 @@ import { useAutoPopup } from '../lib/popupGate';
  *   3. Become VIP — a WELL-FUNDED active subscriber who isn't a member (soft upsell).
  *
  * A brand-new ₹0 / not-yet-claimed member sees NONE of these — they get the 2+2
- * trial funnel instead (every gate is guarded by !trialShowable). Dismissing the
+ * Welcome Litre funnel instead (its surfaces own acquisition). Dismissing the
  * shown sheet sets ONE per-visit flag (dismissedMoney) that stands the rest down
  * for the visit, and RESETS on the next focus so the right sheet re-arms.
  */
@@ -43,10 +42,6 @@ export function PromoGate() {
   const balance = useWallet((s) => s.balance);
   const refreshWallet = useWallet((s) => s.refresh);
   const [vip, setVip] = useState<VipMembership | null>(null);
-  // True while the 2+2 TRIAL funnel is still on offer to this member — the prepaid
-  // funnel must stand down then, so a not-yet-claimed member is never double-nagged
-  // (trial pop-up + prepaid modal) on the same Home visit.
-  const [trialShowable, setTrialShowable] = useState(false);
   // Persistent account signals that decide whether a low-wallet / VIP nag is even
   // appropriate: whether the member holds an ACTIVE subscription, and whether the
   // wallet has EVER been funded (a recharge / promo / refund credit ever landed).
@@ -92,9 +87,6 @@ export function PromoGate() {
           .catch(() => { if (active) setEverFunded(false); }),
         // Is the 2+2 trial still on offer? If so, this member gets the trial funnel,
         // not the prepaid one.
-        freePackShowEligible(phone)
-          .then((s) => { if (active) setTrialShowable(s); })
-          .catch(() => { if (active) setTrialShowable(false); }),
         vipUpsellSnoozed()
           .then((v) => { if (active) setVipUpsellOff(v); })
           .catch(() => { if (active) setVipUpsellOff(true); }),
@@ -107,17 +99,16 @@ export function PromoGate() {
   // PREPAID FUNNEL — the existing-member money funnel (Country-Delight style):
   // members with skin in the game (an active subscription OR an ever-funded
   // wallet) whose prepaid balance is below the target are nudged to top up and
-  // collect the bonus. Brand-new ₹0 accounts are never nagged here — they get the
-  // 2+2 trial funnel instead. This SUPERSEDES the old plain "low balance" nag
+  // collect it. Brand-new ₹0 accounts are never nagged here (shouldShowPrepaidFunnel
+  // requires skin in the game). This SUPERSEDES the old plain "low balance" nag
   // (balance < ₹200 ⊂ balance < target), folding urgency into the same modal.
   // Money-first, one sheet at a time (priority: prepaid → Plus-expiring → become-VIP).
-  // Every one stands down while the 2+2 trial is still on offer (trial owns the
-  // not-yet-claimed member) and once ANY money sheet is dismissed this visit.
+  // Every one stands down once ANY money sheet is dismissed this visit.
   // ONE POPUP AT A TIME: the money nudges are the lowest-priority popups —
   // they stand down whenever anything else (out-of-zone, welcome, claim) is up.
   // Claim-based (useAutoPopup): the old read-then-register pattern saw its OWN
   // slot as "another popup" and cancelled itself in an open/close loop.
-  const wantPrepaid = ready && !trialShowable && !dismissedMoney && shouldShowPrepaidFunnel({ balance, hasActiveSub, everFunded });
+  const wantPrepaid = ready && !dismissedMoney && shouldShowPrepaidFunnel({ balance, hasActiveSub, everFunded });
   const tier = prepaidTier();
   const critical = lowEligible; // balance so low tomorrow's delivery could pause
   const daysLeft = vipDaysLeft(vip);
@@ -125,12 +116,12 @@ export function PromoGate() {
   // window. Push a recharge so it renews (keeps free delivery + member prices)
   // instead of silently lapsing.
   const wantVipExpiring =
-    ready && !trialShowable && !dismissedMoney && !wantPrepaid && vipActive(vip) && daysLeft <= VIP_EXPIRY_WARN_DAYS;
+    ready && !dismissedMoney && !wantPrepaid && vipActive(vip) && daysLeft <= VIP_EXPIRY_WARN_DAYS;
   // Become-VIP is a soft UPSELL for a WELL-FUNDED active subscriber who isn't a
   // member — NOT a low-balance case (that gets the prepaid recharge modal, which
   // would always out-prioritise it and left this permanently unreachable before).
   const wantVip =
-    ready && !trialShowable && !dismissedMoney && !wantPrepaid && !wantVipExpiring && !vipUpsellOff &&
+    ready && !dismissedMoney && !wantPrepaid && !wantVipExpiring && !vipUpsellOff &&
     !vipActive(vip) && hasActiveSub && balance >= PREPAID_TARGET;
   // A LAPSED member (Plus record exists but expired/cancelled) is asked to RENEW,
   // not re-sold membership copy meant for a never-joined user.

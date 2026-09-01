@@ -10,6 +10,7 @@ import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../components/ui';
 import { getWelcomeFunnelState, startWelcomeLitre, type WelcomeFunnelState, type WelcomePlan } from '../lib/crm';
 import { useDiscLang } from '../lib/i18n';
+import { OfferTermsSummary } from '../components/OfferTermsSummary';
 
 // The pack every funnel surface shows: PYAAS Gold FULL CREAM 500 ml.
 const PACK_IMG = require('../assets/products/gold.png');
@@ -96,39 +97,19 @@ export default function WelcomeOffer() {
           </View>
         </Animated.View>
 
-        {/* §15.7 — the offer terms summary, before any commitment. */}
-        <Animated.View entering={FadeInDown.duration(440).delay(50)} style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flame, padding: spacing.md, gap: 8, ...shadow.card }}>
-          <Pill small label={t('FREE — NOTHING TO PAY NOW', 'मुफ़्त — अभी कोई भुगतान नहीं')} bg={colors.flameSoft} color={colors.flameDeep} />
-          {[
-            t('Who: new PYAAS households in our delivery area, one offer per mobile number and address.',
-              'कौन: हमारे डिलीवरी क्षेत्र के नए ग्राहक। एक मोबाइल नंबर और एक पते पर एक ऑफ़र।'),
-            t('Free: 2 packs of 500 ml Parag Full Cream — 1 litre in total.',
-              'क्या मुफ़्त: पराग फुल क्रीम दूध के 2 × 500 मि.ली. पैक — कुल 1 लीटर।'),
-            t('Pack 1 arrives with your first delivery. No payment or wallet balance needed to start.',
-              'पहला पैक: पहली डिलीवरी के साथ। शुरू करने के लिए किसी भुगतान या वॉलेट बैलेंस की ज़रूरत नहीं।'),
-            t('Pack 2: add ₹500 or more in ONE recharge within 7 days of the first delivery — it comes free with your next delivery.',
-              'दूसरा पैक: पहली डिलीवरी के 7 दिन के भीतर एक बार में ₹500 या उससे अधिक का रिचार्ज — अगली डिलीवरी के साथ मुफ़्त।'),
-            t('No minimum period. Pause, change or cancel any time, in two taps.',
-              'कोई न्यूनतम अवधि नहीं। कभी भी रोकें, बदलें या बंद करें।'),
-            t('This is additional quantity, not a discount — milk MRP does not change.',
-              'यह अतिरिक्त मात्रा है, छूट नहीं — दूध की MRP में कोई बदलाव नहीं।'),
-          ].map((line, i) => (
-            <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
-              <Ionicons name="checkmark-circle" size={15} color={colors.flameDeep} style={{ marginTop: 2 }} />
-              <TextBody style={{ fontSize: 12.5, lineHeight: 18, flex: 1 }}>{line}</TextBody>
-            </View>
-          ))}
-          <Tap onPress={() => router.push('/terms')}>
-            <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }}>{t('Full offer terms', 'पूरी शर्तें देखें')}</TextMed>
-          </Tap>
+        {/* §15.7 — the offer terms summary, before any commitment — the SAME
+            component the public pre-registration /offer-terms screen renders
+            (A-2), so the two can never drift. */}
+        <Animated.View entering={FadeInDown.duration(440).delay(50)}>
+          <OfferTermsSummary hi={hi} />
         </Animated.View>
 
         {state === 'not_serviceable' ? (
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10 }}>
             <TextSemi style={{ fontSize: 14.5 }}>{t("We don't deliver to your area yet", 'हम अभी आपके क्षेत्र में डिलीवर नहीं करते')}</TextSemi>
             <TextBody color={colors.inkSoft} style={{ fontSize: 12.5 }}>
-              {t('Join the waitlist from your cart or address screen — your offer stays available, and we will tell you the day we reach you.',
-                 'प्रतीक्षा-सूची से जुड़िए — आपका ऑफ़र बना रहेगा, और जिस दिन हम पहुँचेंगे, हम आपको बताएँगे।')}
+              {t('Join the waitlist from your cart or address screen. Your offer stays available, and we will tell you the day we reach you.',
+                 'प्रतीक्षा-सूची से जुड़िए। आपका ऑफ़र बना रहेगा, और जिस दिन हम पहुँचेंगे, हम आपको बताएँगे।')}
             </TextBody>
           </View>
         ) : (
@@ -165,7 +146,7 @@ export default function WelcomeOffer() {
                     <TextSemi color={colors.white} style={{ fontSize: 16 }}>
                       {state === 'address_required'
                         ? t('Add my address to start', 'शुरू करने के लिए पता जोड़ें')
-                        : t('Start — first pack is free', 'शुरू कीजिए — पहला पैक मुफ़्त')}
+                        : t('Start · first pack is free', 'शुरू कीजिए · पहला पैक मुफ़्त')}
                     </TextSemi>
                     <Ionicons name="arrow-forward" size={17} color={colors.white} />
                   </>

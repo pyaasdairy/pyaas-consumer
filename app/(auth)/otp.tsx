@@ -357,6 +357,20 @@ export default function OtpLogin() {
             >
               <Serif style={{ fontSize: 22 }}>Get started</Serif>
 
+              {/* §15.6 / A-2: the Welcome Litre disclosed BEFORE registration —
+                  headline terms + a link to the full §15.7 summary, on the
+                  landing screen, before the customer invests any effort. The
+                  offer-terms route is PUBLIC (no sign-in bounce). */}
+              <View style={{ backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 12, gap: 6 }}>
+                <TextSemi color={colors.flameDeep} style={{ fontSize: 13.5 }}>पहला लीटर हमारी ओर से · Your first litre is on us</TextSemi>
+                <TextBody color={colors.ink} style={{ fontSize: 12, lineHeight: 17 }}>
+                  First morning: 500 ml Full Cream free · first ₹500 recharge → second pack free too. New households in our delivery area; no payment to start.
+                </TextBody>
+                <Tap haptic={false} onPress={() => router.push('/offer-terms')} style={{ alignSelf: 'flex-start' }}>
+                  <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }}>शर्तें देखें · Offer terms</TextMed>
+                </Tap>
+              </View>
+
               {/* Flag + number field. Tapping it opens the one-tap number chooser. */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 14, height: 56, backgroundColor: colors.white }}>
                 <Text style={{ fontSize: 22 }}>🇮🇳</Text>
