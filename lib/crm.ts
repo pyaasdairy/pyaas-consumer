@@ -37,6 +37,10 @@ export type CrmOfferView = {
     enrolled_at: string;
     pack1_state: string;
     pack2_state: string;
+    /** Server-computed REAL deadline while pack 2 is locked (§16: real urgency
+     *  only): the last recharge day and whole days remaining. Absent otherwise. */
+    pack2_recharge_by?: string;
+    pack2_days_left?: number;
     subscription_id?: string;
   };
 };

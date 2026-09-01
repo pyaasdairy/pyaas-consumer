@@ -35,8 +35,18 @@ function rows(o: NonNullable<CrmOfferView['offer']>): PackRow[] | null {
       : { ...wait, title: 'Pack 1 · on its way', sub: 'Arrives free with your first delivery' };
 
   switch (o.pack2_state) {
-    case 'locked':
-      return [p1, { ...lock, title: 'Pack 2 · unlock it free', sub: 'Add ₹500 or more in one recharge within 7 days of your first delivery' }];
+    case 'locked': {
+      // The REAL deadline from the server — never client-computed, never
+      // invented (§16). Falls back to the terms line when the window has not
+      // started (pack 1 still on its way).
+      const days = o.pack2_days_left;
+      const by = o.pack2_recharge_by;
+      const sub =
+        days != null && by
+          ? `Add ₹500 or more in one recharge by ${by}${days > 0 ? ` — ${days} day${days === 1 ? '' : 's'} left` : ' — today is the last day'}`
+          : 'Add ₹500 or more in one recharge within 7 days of your first delivery';
+      return [p1, { ...lock, title: 'Pack 2 · unlock it free', sub }];
+    }
     case 'pending':
       return [p1, { ...wait, title: 'Pack 2 unlocked', sub: 'It rides along free with your next delivery' }];
     case 'delivered':
