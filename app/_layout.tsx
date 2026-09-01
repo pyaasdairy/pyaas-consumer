@@ -19,6 +19,7 @@ import { getUserId } from '../lib/session';
 import { setOnAuthExpired } from '../lib/apiClient';
 import { runOneTimeLocalReset } from '../lib/localReset';
 import { drainMirrorQueue } from '../lib/mirrorQueue';
+import { warmBackend } from '../lib/warmup';
 import { hydrateProfileFromServer } from '../lib/profileApi';
 // Importing consentSync also registers the 'consents' mirror handler at boot,
 // before any drain can encounter (and would otherwise drop) a queued consent op.
@@ -85,6 +86,7 @@ function RootNavigator() {
   // padding the perceived load time, but never longer than ~5s even if
   // auth/session hangs (so it can't wedge).
   useEffect(() => {
+    warmBackend(); // wake the sleeping backend NOW, while the splash/consent plays
     const min = setTimeout(() => setMinSplash(true), 700);
     const max = setTimeout(() => setMaxWaited(true), 5000);
     return () => { clearTimeout(min); clearTimeout(max); };
@@ -165,7 +167,10 @@ function RootNavigator() {
   // the instant the app breathes again — it is billing truth, not UI state).
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
-      if (st === 'active') void drainMirrorQueue().catch(() => undefined);
+      if (st === 'active') {
+        warmBackend(); // returning after long background = likely-cold backend
+        void drainMirrorQueue().catch(() => undefined);
+      }
     });
     return () => sub.remove();
   }, []);

@@ -41,8 +41,11 @@ export default function Traceability() {
       // the instant the tab is opened gives the member no context for the ask
       // (Guideline 5.1.1), and a reflexive "Don't Allow" permanently bricks the
       // scanner for the rest of the session — including for an App Review tester.
-      // The "Allow camera" button further down this screen is the trigger, and it
-      // explains why we need it first.
+      // The "Continue" button further down this screen is the trigger, and the
+      // copy above it explains why we need the camera first. The button label
+      // MUST stay neutral ("Continue"/"Next", never "Allow"): App Review rejected
+      // build 9 under 5.1.1(iv) for an "Allow camera" label on this exact screen —
+      // pre-prompt buttons must not pre-commit the user before the OS alert.
       return () => { setFocused(false); setTorch(false); cancelAnimation(scan); };
     }, [permission?.granted, requestPermission, scan])
   );
@@ -107,9 +110,9 @@ export default function Traceability() {
         <TextBody style={{ textAlign: 'center' }}>Scan the QR or barcode on your pack, or type the batch code printed on it, to see the member dairy union and the quality tests behind it.</TextBody>
         {permission && !permission.granted && permission.canAskAgain === false ? (
           // Permanently denied — requestPermission() would no-op, so send them to Settings.
-          <Button title="Open settings to allow camera" onPress={() => Linking.openSettings()} style={{ alignSelf: 'stretch' }} />
+          <Button title="Open Settings" onPress={() => Linking.openSettings()} style={{ alignSelf: 'stretch' }} />
         ) : (
-          <Button title="Allow camera" onPress={requestPermission} style={{ alignSelf: 'stretch' }} />
+          <Button title="Continue" onPress={requestPermission} style={{ alignSelf: 'stretch' }} />
         )}
         <Tap haptic={false} onPress={() => setManual(true)}>
           <TextMed color={colors.flameDeep} style={{ fontSize: 14 }}>Enter the batch code instead</TextMed>

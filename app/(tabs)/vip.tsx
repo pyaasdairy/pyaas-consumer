@@ -261,7 +261,8 @@ export default function Vip() {
     if (resume !== 'plus' || resumedRef.current) return;
     resumedRef.current = true;
     router.setParams({ resume: undefined });
-    if (!vipActive(m)) setShowBuy(true);
+    // Same gate as openBuy(): backend builds can't complete a join yet.
+    if (!vipActive(m) && !isBackendConfigured()) setShowBuy(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume, m]);
 
@@ -303,6 +304,14 @@ export default function Vip() {
     // wallet (Razorpay-funded, server-side ledger). KNOWN GAP owned by the
     // backend: the membership FLAG is still device-local until Daaku persists
     // memberships server-side — flagged in the handoff, accepted for launch.
+    // In BACKEND builds that gap pauses joining outright: purchaseMembership()
+    // refuses rather than take a real ₹99 debit for a device-local flag. Opening
+    // the confirm sheet there could only dead-end in an error (exactly what an
+    // App Review reads as a broken purchase), so say the honest thing instead.
+    if (isBackendConfigured()) {
+      setMsg('Joining opens soon — member prices above are a preview.');
+      return;
+    }
     setBuyErr('');
     setShowBuy(true);
   }
@@ -330,6 +339,10 @@ export default function Vip() {
           reason: 'to join Plus',
         }).toString();
         router.push(`/recharge?${qs}`);
+      } else if (e instanceof Error && /coming soon/i.test(e.message)) {
+        // purchaseMembership's backend-mode guard: not a retryable failure.
+        setShowBuy(false);
+        setMsg('Joining opens soon — member prices above are a preview.');
       } else {
         setBuyErr('Could not complete the purchase. Please try again.');
       }
