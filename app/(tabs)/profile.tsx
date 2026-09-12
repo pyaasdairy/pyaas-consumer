@@ -77,7 +77,7 @@ export default function Profile() {
                   <GlowPulse color={colors.white} radius={37} run={focused} />
                   <Tap haptic={false} onPress={() => router.push('/profile-edit')}>
                     {full?.avatar_url ? (
-                      <Image source={{ uri: full.avatar_url }} style={{ width: 66, height: 66, borderRadius: 33, borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)' }} contentFit="cover" />
+                      <Image transition={220} source={{ uri: full.avatar_url }} style={{ width: 66, height: 66, borderRadius: 33, borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)' }} contentFit="cover" />
                     ) : (
                       <View style={{ width: 66, height: 66, borderRadius: 33, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.card }}>
                         <Serif color={colors.flameDeep} style={{ fontSize: 30 }}>{name.charAt(0).toUpperCase()}</Serif>
@@ -87,7 +87,7 @@ export default function Profile() {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Serif color={colors.white} style={{ fontSize: 21 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{name}</Serif>
-                  {full?.phone ? <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 13 }}>{full.phone}</TextBody> : null}
+                  {full?.phone ? <TextBody color="rgba(255,255,255,0.9)" style={{ fontSize: 13 }} numberOfLines={1}>{full.phone}</TextBody> : null}
                   {email ? <TextBody color="rgba(255,255,255,0.8)" style={{ fontSize: 12.5 }} numberOfLines={1}>{email}</TextBody> : null}
                 </View>
                 <Tap onPress={() => router.push('/profile-edit')} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.28)', borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 7 }}>
@@ -220,12 +220,12 @@ export default function Profile() {
             )}
             style={{ paddingVertical: 6 }}
           >
-            <TextMed color="#C0344D" style={{ fontSize: 14 }}>Delete account</TextMed>
+            <TextMed color={colors.dangerDeep} style={{ fontSize: 14 }}>Delete account</TextMed>
           </Tap>
           <Tap haptic={false} onPress={() => Linking.openURL(SITE)} style={{ paddingVertical: 2 }}>
             <TextBody style={{ fontSize: 12.5 }} color={colors.flameDeep}>pyaasdairy.com</TextBody>
           </Tap>
-          <Image source={require('../../assets/parag-logo.png')} style={{ width: 84, height: 84, opacity: 0.85 }} contentFit="contain" />
+          <Image transition={220} source={require('../../assets/parag-logo.png')} style={{ width: 84, height: 84, opacity: 0.85 }} contentFit="contain" />
           <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>Version : {Constants.expoConfig?.version ?? '1.0.0'}</TextBody>
         </Animated.View>
       </Animated.ScrollView>
@@ -264,7 +264,7 @@ function GridSection({ title, tiles, delay }: { title: string; tiles: GridTileDe
             <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name={t.icon} size={20} color={colors.flameDeep} />
             </View>
-            <TextMed style={{ fontSize: 12, textAlign: 'center' }} numberOfLines={2}>{t.label}</TextMed>
+            <TextMed style={{ fontSize: 12, textAlign: 'center' }} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}>{t.label}</TextMed>
           </Tap>
         ))}
         {/* Pad short rows so 2 tiles keep the 3-column rhythm */}

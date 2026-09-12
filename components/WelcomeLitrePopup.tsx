@@ -40,9 +40,10 @@ export function WelcomeLitrePopup({ state }: { state: WelcomeFunnelState | null 
     <SafeModal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={close}>
       <View style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'flex-end' }}>
         <View style={{ backgroundColor: colors.white, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: spacing.xl, gap: 12 }}>
-          <View style={{ alignItems: 'center', marginTop: -64 }}>
+          <View style={{ alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line, marginTop: -8 }} />
+          <View style={{ alignItems: 'center', marginTop: -60 }}>
             <View style={{ width: 104, height: 104, borderRadius: 52, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.white, ...shadow.card }}>
-              <Image source={PACK_IMG} style={{ width: 78, height: 78 }} contentFit="contain" />
+              <Image transition={220} source={PACK_IMG} style={{ width: 78, height: 78 }} contentFit="contain" />
             </View>
           </View>
           <View style={{ alignItems: 'center', gap: 6 }}>
@@ -56,7 +57,7 @@ export function WelcomeLitrePopup({ state }: { state: WelcomeFunnelState | null 
           ].map((line, i) => (
             <View key={i} style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 4 }}>
               <Ionicons name="checkmark-circle" size={16} color={colors.flameDeep} style={{ marginTop: 1.5 }} />
-              <TextBody style={{ fontSize: 13, lineHeight: 18, flex: 1 }}>{line}</TextBody>
+              <TextBody style={{ fontSize: 13, lineHeight: 18, flex: 1, textAlign: 'justify' }}>{line}</TextBody>
             </View>
           ))}
           <Tap

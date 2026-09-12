@@ -139,18 +139,18 @@ export function ClaimPackFlow({ visible, onClose, onClaimed, onStartShopping }: 
   return (
     <>
     <SafeModal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg }}>
           <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, overflow: 'hidden', maxHeight: '88%', ...shadow.card }}>
           {/* White header: the transparent Taaza pack shot merges into the sheet,
               so only the blue packet reads as an image (no pink block behind it). */}
           <View style={{ backgroundColor: colors.white, alignItems: 'center', paddingTop: spacing.lg, paddingBottom: spacing.md, overflow: 'hidden' }}>
             <View style={{ position: 'absolute', top: 12, right: 12, zIndex: 2 }}>
-              <Tap haptic={false} onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+              <Tap haptic={false} onPress={onClose} accessibilityLabel="Close" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="close" size={18} color={colors.inkSoft} />
               </Tap>
             </View>
-            <Image source={FREE_PACK_IMG} style={{ width: 130, height: 130 }} contentFit="contain" />
+            <Image transition={220} source={FREE_PACK_IMG} style={{ width: 130, height: 130 }} contentFit="contain" />
             <Serif color={colors.ink} style={{ fontSize: 23, lineHeight: 29, textAlign: 'center', marginTop: 4 }}>
               {step === 'subscribed'
                 ? 'Already subscribed'

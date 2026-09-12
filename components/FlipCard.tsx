@@ -210,8 +210,8 @@ function BackRow({ label, value, lines }: { label: string; value: string; lines:
 /** FSSAI green-dot vegetarian mark (statutory colours, like the black QR viewport). */
 function VegMark() {
   return (
-    <View style={{ width: 14, height: 14, borderWidth: 1.5, borderColor: '#1B8A3A', borderRadius: 2, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#1B8A3A' }} />
+    <View style={{ width: 14, height: 14, borderWidth: 1.5, borderColor: colors.live, borderRadius: 2, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.live }} />
     </View>
   );
 }

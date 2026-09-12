@@ -100,7 +100,7 @@ export default function ProfileEdit() {
         <View style={{ alignItems: 'center', gap: 8 }}>
           <Tap haptic={false} onPress={changeAvatar}>
             {form.avatar_url ? (
-              <Image source={{ uri: form.avatar_url }} style={{ width: 88, height: 88, borderRadius: 44 }} contentFit="cover" />
+              <Image transition={220} source={{ uri: form.avatar_url }} style={{ width: 88, height: 88, borderRadius: 44 }} contentFit="cover" />
             ) : (
               <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
                 <Serif color={colors.white} style={{ fontSize: 34 }}>{name.charAt(0).toUpperCase()}</Serif>

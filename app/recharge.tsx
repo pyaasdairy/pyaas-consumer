@@ -1,15 +1,17 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { KeyboardSafe } from '../components/KeyboardSafe';
 import { View, ScrollView, ActivityIndicator, TextInput, Alert, BackHandler } from 'react-native';
 import { SafeModal } from '../components/SafeModal';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, ZoomIn, ReduceMotion } from 'react-native-reanimated';
 import { haptics } from '../lib/haptics';
 import { colors, radius, spacing, shadow, tabular, rupee, fonts } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, BackButton } from '../components/ui';
-import { ShineSweep } from '../components/Fx';
+import { ShineSweep, FloatingParticles } from '../components/Fx';
+import { useBottomChrome } from '../components/Toast';
 import { useWallet } from '../store/wallet';
 import { useAuth } from '../lib/auth';
 import { rechargeBonus } from '../lib/pricing';
@@ -94,7 +96,17 @@ export default function Recharge() {
 
   // `amount` is the string the custom field holds; `selected` is the committed value.
   const [selected, setSelected] = useState<number>(initial);
-  const [custom, setCustom] = useState('');
+  // Custom amount opens PRE-FILLED at ₹250 (founder call, 9 Sep) unless the caller
+  // pinned an amount (offer card / nudges) or the required minimum is above it.
+  const [custom, setCustom] = useState(() => {
+    // Founder call (9 Sep): the custom box always OPENS at ₹250. A caller that
+    // passes a preset amount (offer card → ₹500) keeps its tile selected; any
+    // other passed amount (the wallet tab's own box) lands in the custom box.
+    const a = Math.round(Number(params.amount) || 0);
+    if (a > 0 && PACKS.includes(a)) return '';
+    if (a > 0 && a >= min) return String(a);
+    return min <= 250 ? '250' : '';
+  });
   const value = custom.trim() ? Math.max(0, Math.round(Number(custom) || 0)) : selected;
   const bonus = rechargeBonus(value);
   const credited = value + (bonus?.bonus ?? 0);
@@ -114,6 +126,8 @@ export default function Recharge() {
   // Reason of the last in-sheet payment failure, surfaced only if the member then
   // backs out (we keep the sheet open so Razorpay's own retry screen can be used).
   const lastFail = React.useRef('');
+  const [ctaH, setCtaH] = useState(0);
+  useBottomChrome(ctaH, 'screen', ctaH > 0);
 
   useEffect(() => {
     mounted.current = true;
@@ -307,8 +321,11 @@ export default function Recharge() {
   // ── Success ────────────────────────────────────────────────────────────────
   if (done) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: 12 }}>
-        <Ionicons name="checkmark-circle" size={72} color={colors.blue} />
+      <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: 12, overflow: 'hidden' }}>
+        <FloatingParticles count={14} height={520} />
+        <Animated.View entering={ZoomIn.springify().damping(14).stiffness(180).reduceMotion(ReduceMotion.System)}>
+          <Ionicons name="checkmark-circle" size={72} color={colors.blue} />
+        </Animated.View>
         <Serif style={{ fontSize: 24, ...tabular }}>{rupee(credited)} added</Serif>
         <TextBody style={{ textAlign: 'center' }}>
           {bonus ? `Includes ${rupee(bonus.bonus)} ${bonus.kind === 'cashback' ? 'cashback' : 'bonus'}. ` : ''}It is in your PYAAS Wallet and logged in your statement.
@@ -329,7 +346,8 @@ export default function Recharge() {
         <Serif style={{ fontSize: 22, flex: 1 }}>Recharge wallet</Serif>
       </View>
 
-      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: insets.bottom + 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+<KeyboardSafe>
+            <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: insets.bottom + 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Current balance + why we're here */}
         <Animated.View entering={FadeInDown.duration(420)}>
           <View style={{ backgroundColor: colors.flameDeep, borderRadius: radius.xl, overflow: 'hidden', padding: spacing.lg, gap: 4, ...shadow.card }}>
@@ -377,13 +395,13 @@ export default function Recharge() {
               );
             })}
           </View>
-          <TextBody color={colors.inkMute} style={{ fontSize: 11, lineHeight: 15 }}>
+          <TextBody color={colors.inkMute} style={{ fontSize: 11, lineHeight: 15, textAlign: 'justify' }}>
             Mornings are an estimate on a 1 L/day toned-milk plan ({rupee(MORNING_RATE)}/morning). Your own plan may differ.
           </TextBody>
           {/* §6.4 disclosures BEFORE payment: what the balance is for, that
               promotional credit is not cash-refundable, how closure refunds
               work. The wording must match /terms — never promise more here. */}
-          <TextBody color={colors.inkMute} style={{ fontSize: 11, lineHeight: 15 }}>
+          <TextBody color={colors.inkMute} style={{ fontSize: 11, lineHeight: 15, textAlign: 'justify' }}>
             Wallet money pays for milk and delivery at MRP. Promotional credit is not refundable in cash. If you close your account, refunds follow the published terms, net of amounts due and non-refundable promotional credits.{' '}
             <TextMed color={colors.flameDeep} style={{ fontSize: 11 }} onPress={() => router.push('/terms')}>Terms</TextMed>
           </TextBody>
@@ -439,9 +457,10 @@ export default function Recharge() {
           </TextBody>
         </View>
       </ScrollView>
+      </KeyboardSafe>
 
       {/* Sticky recharge CTA */}
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: 1, borderTopColor: colors.line }}>
+      <View onLayout={(e) => setCtaH(e.nativeEvent.layout.height)} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: 1, borderTopColor: colors.line }}>
         <Tap onPress={recharge} disabled={busy || value <= 0 || belowMin}>
           <View style={{ borderRadius: radius.pill, overflow: 'hidden', backgroundColor: colors.flameDeep, height: 54, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: value <= 0 || belowMin ? 0.5 : 1, ...shadow.card }}>
             {busy ? <ActivityIndicator color={colors.white} /> : null}
@@ -459,7 +478,7 @@ export default function Recharge() {
         <View style={{ flex: 1, backgroundColor: colors.cream, paddingBottom: insets.bottom }}>
           <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.milk, borderBottomWidth: 1, borderBottomColor: colors.line }}>
             {/* Back = cancel (with confirm), top-left. */}
-            <Tap onPress={confirmCancelPayment} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+            <Tap accessibilityLabel="Back" onPress={confirmCancelPayment} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
               <Ionicons name="arrow-back" size={22} color={colors.ink} />
             </Tap>
             <Serif style={{ fontSize: 20, flex: 1 }}>Secure payment</Serif>

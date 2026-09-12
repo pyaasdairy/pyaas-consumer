@@ -35,7 +35,7 @@ export default function Transactions() {
             ))}
           </View>
         ) : txns.length === 0 ? (
-          <TextBody style={{ marginTop: 16 }}>No transactions yet.</TextBody>
+          <TextBody style={{ marginTop: 16 }}>No transactions yet</TextBody>
         ) : (
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, ...shadow.soft }}>
             {txns.map((t, i) => (

@@ -40,7 +40,7 @@ export function OfferTermsSummary({ hi }: { hi: boolean }) {
       ].map((line, i) => (
         <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
           <Ionicons name="checkmark-circle" size={15} color={colors.flameDeep} style={{ marginTop: 2 }} />
-          <TextBody style={{ fontSize: 12.5, lineHeight: 18, flex: 1 }}>{line}</TextBody>
+          <TextBody style={{ fontSize: 12.5, lineHeight: 18, flex: 1, textAlign: 'justify' }}>{line}</TextBody>
         </View>
       ))}
       <Tap onPress={() => router.push('/terms')}>

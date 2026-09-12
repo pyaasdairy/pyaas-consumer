@@ -20,6 +20,7 @@ import { setOnAuthExpired } from '../lib/apiClient';
 import { runOneTimeLocalReset } from '../lib/localReset';
 import { drainMirrorQueue } from '../lib/mirrorQueue';
 import { warmBackend } from '../lib/warmup';
+import { ToastHost } from '../components/Toast';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hydrateProfileFromServer } from '../lib/profileApi';
 // Importing consentSync also registers the 'consents' mirror handler at boot,
@@ -238,6 +239,8 @@ function RootNavigator() {
         <Stack.Screen name="address" options={{ presentation: 'modal' }} />
         <Stack.Screen name="order/[id]" options={{ presentation: 'card' }} />
       </Stack>
+      {/* App-wide quiet confirmations ("Added · Toned Milk"); presentation only. */}
+      <ToastHost />
       {session && needsConsent && !onPublicDocNow && splashDone ? (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
           <ConsentWelcome onAgree={() => { void acceptSignedInConsent(); }} />

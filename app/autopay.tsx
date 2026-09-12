@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { KeyboardSafe } from '../components/KeyboardSafe';
 import { View, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, Redirect } from 'expo-router';
@@ -85,7 +86,8 @@ export default function Autopay() {
       {loading ? (
         <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 40 }} />
       ) : (
-        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 120 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+<KeyboardSafe>
+              <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 120 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <Animated.View entering={enterUp()}>
             <View style={{ backgroundColor: colors.flameDeep, borderRadius: radius.xl, padding: spacing.lg, gap: 8, ...shadow.card }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -148,6 +150,7 @@ export default function Autopay() {
             </Animated.View>
           )}
         </ScrollView>
+      </KeyboardSafe>
       )}
     </View>
   );

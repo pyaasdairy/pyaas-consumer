@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { KeyboardSafe } from '../../components/KeyboardSafe';
 import { View, ScrollView, Text, TextInput, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
+import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming, Easing, useAnimatedScrollHandler, interpolate, Extrapolation } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts, tabular, joinDistinct } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Pill, Tap, Stepper, Divider } from '../../components/ui';
 import { Stars } from '../../components/Stars';
@@ -27,6 +28,7 @@ import { todayISO, tomorrowISO, addDaysISO, parseISO, formatShort } from '../../
 import { useDeliveryMode, getDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12, type DeliveryMode } from '../../lib/deliveryMode';
 import { useWallet } from '../../store/wallet';
 import { useCart } from '../../store/cart';
+import { showToast, useBottomChrome } from '../../components/Toast';
 
 const GOLD = '#C9A24B';
 const GOLD_BRIGHT = '#F4D061';
@@ -173,6 +175,18 @@ export default function ProductDetail() {
   const [instantPayChoice, setInstantPayChoice] = useState<'wallet' | 'cod' | null>(null);
   const addToCart = useCart((s) => s.add);
   const setCartQty = useCart((s) => s.setQty);
+  const [ctaH, setCtaH] = useState(0);
+  useBottomChrome(ctaH, 'screen', ctaH > 0);
+  // Hero parallax (presentation only): the pack shot drifts at ~40% of scroll
+  // and stretches on over-scroll, the quick-commerce product-page feel.
+  const heroScrollY = useSharedValue(0);
+  const onHeroScroll = useAnimatedScrollHandler((e) => { heroScrollY.value = e.contentOffset.y; });
+  const heroStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(heroScrollY.value, [-300, 0, 300], [-150, 0, 120], Extrapolation.CLAMP) },
+      { scale: interpolate(heroScrollY.value, [-300, 0], [1.4, 1], Extrapolation.CLAMP) },
+    ],
+  }));
   // Monsoon surcharge (₹) the serving store charges on INSTANT orders (0 = none).
   const monsoonRupees = useServiceability((s) => s.monsoonRupees);
   // Out-of-zone: the member is browsing the catalogue but we don't deliver to
@@ -443,6 +457,7 @@ export default function ProductDetail() {
       setCartQty(product.id, qty, cartLane);
     } else {
       addToCart(product, qty, cartLane);
+      showToast(`Added · ${product.name}`, { icon: 'bag-add', action: { label: 'View cart', onPress: () => router.push('/cart') } });
     }
     router.push('/cart');
   }
@@ -463,11 +478,15 @@ export default function ProductDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
-      <ScrollView automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 210 }}>
+<KeyboardSafe>
+            <Animated.ScrollView onScroll={onHeroScroll} scrollEventThrottle={16} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 210 }}>
         <DeliveryBanner topInset={insets.top} />
 
-        {/* Image header */}
-        <View style={{ backgroundColor: colors.cream, paddingBottom: spacing.lg }}>
+        {/* Image header. The clipping wrapper is what makes the parallax read as
+            parallax: the pack shot drifts INSIDE its own box, and never over the
+            title, badges or pager dots of the sheet below it. */}
+        <View style={{ overflow: 'hidden', backgroundColor: colors.cream }}>
+        <Animated.View style={[{ backgroundColor: colors.cream, paddingBottom: spacing.lg }, heroStyle]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: 12 }}>
             <Tap onPress={() => router.back()} style={iconBtn}>
               <Ionicons name="chevron-back" size={22} color={colors.ink} />
@@ -480,6 +499,7 @@ export default function ProductDetail() {
               <Serif style={{ fontSize: 26, textAlign: 'center' }} color={colors.flameDeep}>{product.name}</Serif>
             </View>
           )}
+        </Animated.View>
         </View>
 
         {/* Body */}
@@ -732,10 +752,10 @@ export default function ProductDetail() {
               placeholder="15-digit GSTIN for a company bill"
               placeholderTextColor={colors.inkMute}
               autoCapitalize="characters"
-              style={{ borderWidth: 1.5, borderColor: gstinError ? '#C0344D' : colors.line, borderRadius: radius.md, paddingHorizontal: 14, height: 52, fontSize: 15, color: colors.ink, backgroundColor: colors.white, fontFamily: fonts.sansMed }}
+              style={{ borderWidth: 1.5, borderColor: gstinError ? colors.dangerDeep : colors.line, borderRadius: radius.md, paddingHorizontal: 14, height: 52, fontSize: 15, color: colors.ink, backgroundColor: colors.white, fontFamily: fonts.sansMed }}
             />
             {gstinError ? (
-              <TextBody style={{ fontSize: 12 }} color="#C0344D">
+              <TextBody style={{ fontSize: 12 }} color={colors.dangerDeep}>
                 Enter the full 15-character GSTIN, or leave it blank.
               </TextBody>
             ) : null}
@@ -832,12 +852,14 @@ export default function ProductDetail() {
 
           {err ? <TextBody color={colors.danger} style={{ fontSize: 13, textAlign: 'center' }}>{err}</TextBody> : null}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
+      </KeyboardSafe>
 
       {/* Sticky bottom bar. SOLID white on purpose: the frosted Glass variant
           let the sheet/content behind bleed through the price and CTA, which
           read as a rendering glitch. Money UI is always fully opaque. */}
       <View
+        onLayout={(e) => setCtaH(e.nativeEvent.layout.height)}
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.white, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, borderTopWidth: 1, borderTopColor: colors.line, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: spacing.md, ...shadow.card }}
       >
         {/* The bar is ONLY the action button — no price, in any mode. The
@@ -915,7 +937,7 @@ function CrownBadge() {
 // Glowing, shining PROCEED button.
 // Green-dot veg mark (FSSAI). A green square with a filled dot; contained, no bleed.
 function VegMark({ veg }: { veg: boolean }) {
-  const c = veg ? '#2E7D32' : '#B71C1C';
+  const c = veg ? colors.veg : colors.nonVeg;
   return (
     <View style={{ width: 16, height: 16, borderWidth: 1.5, borderColor: c, borderRadius: 3, alignItems: 'center', justifyContent: 'center' }}>
       <View style={{ width: 7, height: 7, borderRadius: veg ? 4 : 0, backgroundColor: c }} />

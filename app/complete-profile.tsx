@@ -72,7 +72,7 @@ export default function CompleteProfile() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.flameDeep }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.flameDeep }} behavior="padding">
       <View style={{ flex: 1, backgroundColor: colors.flameDeep }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {kbUp ? (

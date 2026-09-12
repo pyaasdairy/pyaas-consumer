@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, Pressable, useWindowDimensions, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useBottomChrome } from './Toast';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, Easing } from 'react-native-reanimated';
@@ -56,6 +57,7 @@ export function useTabBarClearance(extra = 0) {
 
 export function PyaasTabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  useBottomChrome(insets.bottom + BAR_BOTTOM + BAR_H, 'tabs');
   const { width } = useWindowDimensions();
   const routes = state.routes.filter((r: any) => ICONS[r.name]);
   const pillW = width - MARGIN * 2;
@@ -119,6 +121,7 @@ export function PyaasTabBar({ state, navigation }: TabBarProps) {
               <Pressable
                 key={route.key}
                 onPress={onPress}
+                accessible
                 accessibilityRole="tab"
                 accessibilityLabel={LABELS[route.name] ?? route.name}
                 accessibilityState={{ selected: isActive }}
@@ -179,7 +182,7 @@ function VipButton({ active, onPress }: { active: boolean; onPress: () => void }
         <Animated.View style={[{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderWidth: 2.5, borderColor: active ? colors.flameDeep : colors.flame, overflow: 'hidden', ...shadow.card }, aStyle]}>
           {/* The trimmed wordmark, sized to its own 1127:317 ratio. The square
               padded asset in a 44x44 box shrank it to ~24x7pt - unreadable. */}
-          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: MARK_W, height: MARK_W * MARK_RATIO }} contentFit="contain" />
+          <Image transition={220} source={require('../assets/pyaas-logo-trim.png')} style={{ width: MARK_W, height: MARK_W * MARK_RATIO }} contentFit="contain" />
         </Animated.View>
       </Pressable>
     </View>

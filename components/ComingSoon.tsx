@@ -64,7 +64,7 @@ export function ComingSoon() {
     <View style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.sm }}>
       {/* Brand row */}
       <View style={{ alignItems: 'center', paddingBottom: spacing.lg, paddingTop: spacing.sm }}>
-        <Image source={LOGO} style={{ width: 288, height: 86 }} contentFit="contain" />
+        <Image transition={220} source={LOGO} style={{ width: 288, height: 86 }} contentFit="contain" />
       </View>
 
       {/* The banner — warm, on-brand, and honest about where we deliver today. */}
@@ -151,7 +151,7 @@ export function ComingSoon() {
         )}
         ListFooterComponent={
           <View style={{ alignItems: 'center', paddingTop: spacing.xl, gap: 7 }}>
-            <Image source={LOGO} style={{ width: 62, height: 17, opacity: 0.35 }} contentFit="contain" />
+            <Image transition={220} source={LOGO} style={{ width: 62, height: 17, opacity: 0.35 }} contentFit="contain" />
             <TextBody color={colors.inkMute} style={{ fontSize: 10.5, letterSpacing: 0.4 }}>Fresh milk, the day we reach you</TextBody>
           </View>
         }

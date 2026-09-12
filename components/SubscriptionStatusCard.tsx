@@ -25,7 +25,7 @@ import { todayISO, formatWeekday } from '../lib/dates';
  * Self-loading on focus; renders nothing until the first load resolves so it
  * never flashes the empty state at a subscribed member.
  */
-const LIVE_GREEN = '#1B8A3A'; // status green, dot + LIVE pill only (not a brand fill)
+const LIVE_GREEN = colors.live; // status green, dot + LIVE pill only (not a brand fill)
 
 export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { onClaim?: () => void; showEmpty?: boolean; style?: StyleProp<ViewStyle> }) {
   const router = useRouter();
@@ -113,7 +113,7 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
       style={[{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, gap: 10, ...shadow.soft }, style]}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <StatusPill label="Subscription LIVE" dot={LIVE_GREEN} bg="rgba(27,138,58,0.1)" color={LIVE_GREEN} />
+        <StatusPill label="Subscription LIVE" dot={LIVE_GREEN} bg={colors.liveSoft} color={LIVE_GREEN} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
           <TextMed style={{ fontSize: 12.5 }} color={colors.flameDeep}>Manage</TextMed>
           <Ionicons name="chevron-forward" size={14} color={colors.flameDeep} />
@@ -121,7 +121,7 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <View style={{ width: 46, height: 46, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          {p?.image ? <Image source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : <Ionicons name="water" size={20} color={colors.flameDeep} />}
+          {p?.image ? <Image transition={220} source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : <Ionicons name="water" size={20} color={colors.flameDeep} />}
         </View>
         <View style={{ flex: 1, gap: 1 }}>
           <TextSemi numberOfLines={1} style={{ fontSize: 14 }}>

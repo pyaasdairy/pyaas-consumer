@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { KeyboardSafe } from '../../components/KeyboardSafe';
 import { View, Linking, TextInput, ActivityIndicator } from 'react-native';
 import { SafeModal } from '../../components/SafeModal';
 import { Image } from 'expo-image';
@@ -299,7 +300,8 @@ export default function OrderTracking() {
         </View>
       )}
 
-      <Animated.ScrollView automaticallyAdjustKeyboardInsets onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingTop: liveInstant ? MAP_MAX + spacing.md : spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
+<KeyboardSafe>
+            <Animated.ScrollView automaticallyAdjustKeyboardInsets onScroll={onTrackScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, paddingTop: liveInstant ? MAP_MAX + spacing.md : spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg }} showsVerticalScrollIndicator={false}>
         {/* THE ARRIVAL CARD — first card under the map hero; the countdown leads. */}
         {liveInstant ? (
           <Animated.View entering={FadeIn.duration(420)} style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: 6, ...shadow.card }}>
@@ -312,8 +314,8 @@ export default function OrderTracking() {
               </View>
               {heroMins != null && heroMins <= 25 ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#E8F3EC', borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 6 }}>
-                  <Ionicons name="flash" size={13} color="#2E7D4F" />
-                  <TextSemi color="#2E7D4F" style={{ fontSize: 12.5 }}>On time</TextSemi>
+                  <Ionicons name="flash" size={13} color={colors.live} />
+                  <TextSemi color={colors.live} style={{ fontSize: 12.5 }}>On time</TextSemi>
                 </View>
               ) : null}
             </View>
@@ -442,7 +444,7 @@ export default function OrderTracking() {
                   <TextBody style={{ fontSize: 13 }}>{order.riders.vehicle ?? 'Your rider'}</TextBody>
                   {order.riders.rating ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                      <Ionicons name="star" size={12} color="#E9A23B" />
+                      <Ionicons name="star" size={12} color={colors.warn} />
                       <TextBody style={{ fontSize: 12.5 }}>{order.riders.rating.toFixed(1)}</TextBody>
                     </View>
                   ) : null}
@@ -465,7 +467,7 @@ export default function OrderTracking() {
               <Ionicons name="checkmark-circle" size={18} color={colors.blue} />
               <TextSemi style={{ fontSize: 14.5 }}>Delivered · see photo</TextSemi>
             </View>
-            <Image source={{ uri: order.proof_photo_url }} style={{ width: '100%', height: 200 }} contentFit="cover" />
+            <Image transition={220} source={{ uri: order.proof_photo_url }} style={{ width: '100%', height: 200 }} contentFit="cover" />
           </View>
         ) : null}
 
@@ -512,6 +514,7 @@ export default function OrderTracking() {
         <Button title="Continue shopping" onPress={() => router.replace('/(tabs)')} />
 
       </Animated.ScrollView>
+      </KeyboardSafe>
 
       {/* PAY WHILE WE DELIVER — instant COD orders only, and only where an
           online payment can actually land: local mode (backend mode has no
@@ -547,7 +550,7 @@ export default function OrderTracking() {
       <SafeModal visible={payOpen} animationType="slide" onRequestClose={() => setPayOpen(false)}>
         <View style={{ flex: 1, backgroundColor: colors.cream }}>
           <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderBottomWidth: 1, borderColor: colors.line }}>
-            <Tap haptic={false} onPress={() => setPayOpen(false)} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+            <Tap haptic={false} onPress={() => setPayOpen(false)} accessibilityLabel="Close" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="chevron-back" size={20} color={colors.flameDeep} />
             </Tap>
             <TextSemi style={{ fontSize: 16 }}>Pay {order ? rupee(order.total) : ''}</TextSemi>

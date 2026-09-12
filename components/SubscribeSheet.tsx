@@ -294,7 +294,7 @@ export function SubscribeSheet({
                 <Serif style={{ fontSize: 21 }} numberOfLines={1}>{product.name}</Serif>
                 <TextBody style={{ fontSize: 12.5 }}>{product.variant} · {rupee(unitPrice)}</TextBody>
               </View>
-              <Tap haptic={false} onPress={onClose} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
+              <Tap haptic={false} onPress={onClose} accessibilityLabel="Close" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="close" size={18} color={colors.ink} />
               </Tap>
             </View>

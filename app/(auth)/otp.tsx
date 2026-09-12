@@ -71,9 +71,8 @@ export default function OtpLogin() {
   // pop, then keyboard". useAnimatedKeyboard tracks the keyboard's height
   // frame-by-frame on the UI thread, so the hero fades and the card rises in
   // perfect lockstep with the keyboard's own curve; nothing mounts, unmounts
-  // or jumps. Android's window already resizes itself
-  // (softwareKeyboardLayoutMode "resize"), so the compensating spacer is
-  // iOS-only; the hero fade runs on both platforms.
+  // or jumps. The spacer runs on BOTH platforms: Android is edge-to-edge (SDK
+  // 56), which disables the adjustResize window shrink it used to rely on.
   const kb = useAnimatedKeyboard();
 
   /** Devanagari (०-९), Arabic-Indic (٠-٩) and extended (۰-۹) numerals map to
@@ -158,7 +157,9 @@ export default function OtpLogin() {
   // iOS-only bottom spacer that grows in exact sync with the keyboard, lifting
   // the card the way KeyboardAvoidingView did but on the keyboard's own curve.
   const kbSpacerStyle = useAnimatedStyle(() => ({
-    height: Platform.OS === 'ios' ? kb.height.value : 0,
+    // Both platforms: Android runs edge-to-edge, so its window no longer
+    // resizes for the keyboard — the spacer has to lift the card there as well.
+    height: kb.height.value,
   }));
   const launchHint = async () => {
     if (!consented) { setDiscloseOpen(true); return; } // never read the SIM un-consented
@@ -444,7 +445,7 @@ export default function OtpLogin() {
           <>
             {/* Code step: compact header + the OTP card */}
             <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg }}>
-              <Tap haptic={false} onPress={() => setStep('phone')} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+              <Tap haptic={false} onPress={() => setStep('phone')} accessibilityLabel="Change number" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="chevron-back" size={20} color={colors.flameDeep} />
               </Tap>
             </View>
@@ -454,6 +455,9 @@ export default function OtpLogin() {
                 Sent to +91 {digits()}. It fills in on its own the moment the SMS arrives. <TextMed color={colors.flameDeep} onPress={() => setStep('phone')}>Change</TextMed>
               </TextBody>
               <OtpBoxes value={code} error={!!error} onChange={setCode} onComplete={(c) => { if (!loading) verify(c); }} />
+              {/* Red borders alone say nothing; the member must read WHY (wrong
+                  code, expired, backend down) to know what to do next. */}
+              {error ? <TextBody color={colors.danger} style={{ fontSize: 13, textAlign: 'center' }} accessibilityLiveRegion="polite">{error}</TextBody> : null}
               <Tap onPress={loading ? undefined : () => verify()} style={{ marginTop: spacing.lg }}>
                 <View style={{ height: 54, borderRadius: radius.md, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
                   {loading ? <ActivityIndicator color={colors.white} /> : (

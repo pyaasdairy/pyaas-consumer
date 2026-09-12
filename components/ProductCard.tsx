@@ -9,6 +9,8 @@ import { Stars } from './Stars';
 import { StackedProductImage } from './StackedProductImage';
 import { VariantSelector } from './VariantSelector';
 import { haptics } from '../lib/haptics';
+import { showToast } from './Toast';
+import { PopOnChange } from './Pop';
 import { useFavorites } from '../store/favorites';
 import { useCart, activeLane } from '../store/cart';
 import { useDeliveryMode } from '../lib/deliveryMode';
@@ -51,6 +53,7 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
     if (selected.outOfStock) return;
     haptics.press();
     addToCart(selected, 1);
+    showToast(`Added · ${selected.name}`, { icon: 'bag-add', action: { label: 'View cart', onPress: () => router.push('/cart') } });
   };
 
   return (
@@ -103,7 +106,10 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
               // data the member didn't knowingly send (Play User Data policy,
               // the exact category the app was removed under).
               toggleFav(selected.id);
+              showToast(isFav ? 'Removed from favourites' : 'Saved to favourites', { icon: isFav ? 'heart-outline' : 'heart' });
             }}
+            accessibilityLabel={isFav ? 'Remove from favourites' : 'Save to favourites'}
+            accessibilityState={{ selected: isFav }}
             style={{ position: 'absolute', top: 6, right: 6, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', ...shadow.soft }}
           >
             <Ionicons name={isFav ? 'heart' : 'heart-outline'} size={17} color={isFav ? colors.flameDeep : colors.inkMute} />
@@ -117,10 +123,11 @@ export function ProductCard({ product, variants, index = 0, ctaLabel = 'ADD', br
               haptic={false}
               onPress={drop}
               scaleTo={0.88}
+              accessibilityLabel={inCart > 0 ? `Add one more, ${inCart} in cart` : 'Add to cart'}
               style={{ position: 'absolute', bottom: 6, right: 6, minWidth: 32, height: 32, paddingHorizontal: 8, borderRadius: 16, backgroundColor: inCart > 0 ? colors.flameDeep : 'rgba(255,255,255,0.94)', borderWidth: inCart > 0 ? 0 : 1, borderColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 3, ...shadow.soft }}
             >
               <Ionicons name="bag-add" size={16} color={inCart > 0 ? colors.white : colors.flameDeep} />
-              {inCart > 0 ? <TextSemi color={colors.white} style={{ fontSize: 12, ...tabular }}>{inCart}</TextSemi> : null}
+              {inCart > 0 ? <PopOnChange value={inCart}><TextSemi color={colors.white} style={{ fontSize: 12, ...tabular }}>{inCart}</TextSemi></PopOnChange> : null}
             </Tap>
           ) : null}
         </View>

@@ -10,7 +10,7 @@
  * components/Fx primitives.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Image, Text, ActivityIndicator, Alert } from 'react-native';
+import { View, Image, Text, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
 import { SafeModal } from '../../components/SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -28,6 +28,7 @@ import Animated, {
   interpolate,
   type SharedValue,
 } from 'react-native-reanimated';
+import { useBottomChrome } from '../../components/Toast';
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../lib/theme';
 import { TextBody, TextMed, TextSemi, Tap } from '../../components/ui';
 import { enterUp } from '../../lib/motion';
@@ -292,6 +293,12 @@ export default function Vip() {
   );
 
   const active = vipActive(m);
+  // Compact displays (< 360dp) get the short join label so the price row
+  // beside it never clips; every real phone keeps the full label.
+  const { width: winW } = useWindowDimensions();
+  const joinLabel = winW < 360 ? 'Join' : 'Join for 30 days';
+  // The docked join bar (bottom + 82 + 64 tall) is bottom chrome for toasts.
+  useBottomChrome(insets.bottom + 82 + 64, 'screen', !active);
   const days = vipDaysLeft(m);
   const onTrial = vipOnTrial(m);
 
@@ -607,13 +614,13 @@ export default function Vip() {
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
               <Text style={{ fontFamily: fonts.serifBlack, fontSize: 22, letterSpacing: -0.4, color: INK, ...tabular }}>{rupee(PLUS_PRICE_MONTH)}</Text>
-              <Text style={{ fontFamily: fonts.sansSemi, fontSize: 12.5, color: colors.inkSoft }}>/ {PLUS_PERIOD_DAYS} days</Text>
+              <Text style={{ fontFamily: fonts.sansSemi, fontSize: 12.5, color: colors.inkSoft, flexShrink: 1 }} numberOfLines={1}>/ {PLUS_PERIOD_DAYS} days</Text>
             </View>
-            <Text style={{ fontFamily: fonts.sansMed, fontSize: 11, color: colors.inkMute }}>From your wallet · cancel anytime</Text>
+            <Text style={{ fontFamily: fonts.sansMed, fontSize: 11, color: colors.inkMute }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>From your wallet · cancel anytime</Text>
           </View>
           <Tap onPress={openBuy} weight="medium">
             <View style={{ height: 50, paddingHorizontal: 22, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
-              <Text style={{ color: colors.white, fontFamily: fonts.sansBold, fontSize: 15.5 }}>Join for 30 days</Text>
+              <Text style={{ color: colors.white, fontFamily: fonts.sansBold, fontSize: 15.5 }} numberOfLines={1}>{joinLabel}</Text>
             </View>
           </Tap>
         </View>

@@ -76,7 +76,7 @@ export default function Traceability() {
 
   const enterModal = (
     <SafeModal visible={manual} transparent animationType="fade" onRequestClose={() => setManual(false)}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'center', padding: spacing.xl }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(18,10,6,0.55)', justifyContent: 'center', padding: spacing.xl }}>
         <View style={{ backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.lg, gap: spacing.md }}>
           <Serif style={{ fontSize: 22 }}>Enter batch code</Serif>
           <TextBody color={colors.inkMute} style={{ fontSize: 13 }}>It is printed on your pack near the MFG and best-before date.</TextBody>

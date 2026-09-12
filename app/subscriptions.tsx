@@ -150,9 +150,9 @@ export default function Subscriptions() {
         ) : subs.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: 8 }}>
             <Ionicons name="infinite-outline" size={40} color={colors.inkMute} />
-            <TextBody>No active subscription.</TextBody>
+            <TextBody>No active subscription</TextBody>
             <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkMute}>
-              Start your subscription on the home screen: 2 days worth of milk on us, delivered fresh every morning.
+              Fresh milk at your door every morning. Start from the shop, pause or change any time.
             </TextBody>
             <Button title="Start your subscription" small style={{ marginTop: 4, paddingHorizontal: 24 }} onPress={() => router.replace('/(tabs)')} />
           </View>
@@ -176,7 +176,7 @@ export default function Subscriptions() {
                       recharge-if-low, cancel). The pause/resume icon stays a shortcut. */}
                   <Tap onPress={() => setDetailSub(s)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <View style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
-                      {p ? <Image source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
+                      {p ? <Image transition={220} source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
                       <TextSemi style={{ fontSize: 14.5 }}>{s.qty} × {p?.name ?? s.product_id}</TextSemi>
@@ -302,7 +302,7 @@ export default function Subscriptions() {
                 <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.line, marginBottom: 2 }} />
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <View style={{ width: 54, height: 54, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
-                    {p ? <Image source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
+                    {p ? <Image transition={220} source={p.image} style={{ width: '80%', height: '80%' }} contentFit="contain" /> : null}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Serif style={{ fontSize: 20 }}>{p?.name ?? d.product_id}</Serif>

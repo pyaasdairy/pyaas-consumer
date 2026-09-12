@@ -192,7 +192,7 @@ export default function LocationGate() {
                 <TextBody style={{ fontSize: 12.5, marginTop: 2 }} color={colors.inkSoft}>{loc ? `Delivering to ${loc.city}` : 'Set your delivery location, change it anytime.'}</TextBody>
               </View>
               {!needsLocation ? (
-                <Tap haptic={false} onPress={close} accessibilityLabel="Close location picker" style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
+                <Tap haptic={false} onPress={close} accessibilityLabel="Close location picker" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="close" size={20} color={colors.ink} />
                 </Tap>
               ) : null}

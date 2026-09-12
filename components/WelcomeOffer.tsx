@@ -64,7 +64,7 @@ export function WelcomeOffer({ visible, onClaim, onClose }: { visible: boolean; 
           </Animated.View>
 
           <Animated.View entering={FadeIn.duration(420).delay(600)} style={{ alignItems: 'center' }}>
-            <Image source={FREE_PACK_IMG} style={{ width: 150, height: 150 }} contentFit="contain" />
+            <Image transition={220} source={FREE_PACK_IMG} style={{ width: 150, height: 150 }} contentFit="contain" />
             <TextBody style={{ fontSize: 12.5, textAlign: 'center' }} color={colors.inkSoft}>PYAAS Gold Full Cream · 1 L fresh every morning</TextBody>
           </Animated.View>
 

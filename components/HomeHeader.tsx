@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View } from 'react-native';
+import { View, Platform, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,6 +35,10 @@ function greetingFor(name: string): string {
  */
 export function HomeHeader({ firstName }: { firstName: string }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  // 96 on every real phone (>= 360dp); slightly narrower on compact displays
+  // so the location line + greeting keep their room instead of ellipsizing.
+  const logoW = width < 360 ? 82 : 96;
   const city = useUserLocation((s) => s.loc?.city ?? null);
   const openPicker = useUserLocation((s) => s.setPickerOpen);
   // Out of zone → the location line itself says so, in the exact same row
@@ -61,14 +65,18 @@ export function HomeHeader({ firstName }: { firstName: string }) {
   }));
   return (
     <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(236,226,220,0.6)' }, hideStyle]}>
-      {/* Subtle frosted glass: the feed faintly shows through the pinned header. */}
-      <BlurView tint="light" intensity={28} experimentalBlurMethod="dimezisBlurView" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.72)' }} />
+      {/* Subtle frosted glass on iOS: the feed faintly shows through the pinned
+          header. Android has no real blur here (the dimezis method needs a
+          blurTarget and silently fell back to none), so it gets a near-solid
+          wash instead of a translucent one that would let the feed bleed
+          through unblurred. */}
+      <BlurView tint="light" intensity={28} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.94)' : 'rgba(255,255,255,0.72)' }} />
       <Animated.View entering={FadeIn.duration(420)} style={{ flexDirection: 'row', alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: 8 }}>
           {/* PYAAS wordmark · prominent but balanced: 118 wide leaves the
               location line + greeting real room on small screens (150 crushed
               them into "Deliver t..."), keeping the row symmetric. */}
-          <Image source={require('../assets/pyaas-logo-trim.png')} style={{ width: 96, height: 96 * (317 / 1127), flexShrink: 0 }} contentFit="contain" />
+          <Image transition={220} source={require('../assets/pyaas-logo-trim.png')} style={{ width: logoW, height: logoW * (317 / 1127), flexShrink: 0 }} contentFit="contain" />
           <View style={{ flex: 1, minWidth: 0, marginLeft: 10, overflow: 'hidden' }}>
             <Tap haptic={false} onPress={() => openPicker(true)} accessibilityLabel="Change delivery location">
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, maxWidth: '100%' }}>

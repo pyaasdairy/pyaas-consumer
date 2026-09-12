@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { useBottomChrome } from '../components/Toast';
 import { View, ScrollView, ActivityIndicator, type ImageSourcePropType } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,11 +44,13 @@ const SMALL_CART_FEE = 20;
  * cleanly when the address is out of the serving zone.
  */
 // Status green for the "FREE 🎉" trial treatment (matches SubscriptionStatusCard).
-const LIVE_GREEN = '#1B8A3A';
+const LIVE_GREEN = colors.live;
 
 export default function Cart() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [ctaH, setCtaH] = useState(0);
+  useBottomChrome(ctaH, 'screen', ctaH > 0);
   const { profile } = useAuth();
 
   const allLines = useCart((s) => s.lines);
@@ -414,7 +417,7 @@ export default function Cart() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.md }}>
                 <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                   {freeMilk.image ? (
-                    <Image source={freeMilk.image} style={{ width: '80%', height: '80%' }} contentFit="contain" />
+                    <Image transition={220} source={freeMilk.image} style={{ width: '80%', height: '80%' }} contentFit="contain" />
                   ) : (
                     <Ionicons name="water" size={18} color={LIVE_GREEN} />
                   )}
@@ -462,7 +465,7 @@ export default function Cart() {
             <Animated.View key={l.id} entering={FadeInDown.duration(320).delay(i * 40)}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.md, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line, opacity: l.outOfStock ? 0.55 : 1 }}>
                 <View style={{ width: 54, height: 54, borderRadius: radius.sm, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                  {l.image ? <Image source={l.image} style={{ width: '82%', height: '82%' }} contentFit="contain" /> : <Ionicons name="cube-outline" size={22} color={colors.inkMute} />}
+                  {l.image ? <Image transition={220} source={l.image} style={{ width: '82%', height: '82%' }} contentFit="contain" /> : <Ionicons name="cube-outline" size={22} color={colors.inkMute} />}
                 </View>
                 <View style={{ flex: 1 }}>
                   <TextSemi style={{ fontSize: 14.5 }} numberOfLines={1}>{l.name}</TextSemi>
@@ -584,7 +587,7 @@ export default function Cart() {
 
       {/* Sticky wallet-first CTA (hidden when there's nothing one-time to pay) */}
       {orderable.length === 0 ? null : (
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: 'rgba(255,255,255,0.97)', borderTopWidth: 1, borderTopColor: colors.line, gap: 8 }}>
+      <View onLayout={(e) => setCtaH(e.nativeEvent.layout.height)} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: 'rgba(255,255,255,0.97)', borderTopWidth: 1, borderTopColor: colors.line, gap: 8 }}>
         {/* Gate order: 1) address → 2) unlock/funds → 3) place. Each banner and
             the CTA only surface the CURRENT missing step. */}
         {needsAddr && !blocked ? (

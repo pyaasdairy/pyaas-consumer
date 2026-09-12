@@ -12,6 +12,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { PopOnChange } from './Pop';
 import { fireHaptic, type HapticWeight } from '../lib/haptics';
 import { colors, fonts, radius, spacing, shadow } from '../lib/theme';
 import { spring } from '../lib/motion';
@@ -51,6 +52,7 @@ export function Tap({
   weight = 'light',
   scaleTo = 0.96,
   style,
+  hitSlop = 8, // every tap gets a 44pt-class touch target without changing layout
   ...p
 }: PressableProps & { haptic?: boolean; weight?: HapticWeight; scaleTo?: number; children: React.ReactNode }) {
   const s = useSharedValue(1);
@@ -58,6 +60,7 @@ export function Tap({
   return (
     <AnimatedPressable
       accessibilityRole="button"
+      hitSlop={hitSlop}
       {...p}
       onPressIn={() => {
         s.value = withSpring(scaleTo, spring.press);
@@ -233,9 +236,11 @@ export function Stepper({
       <Tap onPress={() => onChange(Math.max(min, qty - 1))} style={styles.stepBtn} scaleTo={0.85}>
         <Text style={styles.stepGlyph}>−</Text>
       </Tap>
-      <Text style={{ fontFamily: fonts.sansSemi, fontWeight: '600', color: colors.ink, fontSize: 15, minWidth: 22, textAlign: 'center' }}>
-        {qty}
-      </Text>
+      <PopOnChange value={qty}>
+        <Text style={{ fontFamily: fonts.sansSemi, fontWeight: '600', color: colors.ink, fontSize: 15, minWidth: 22, textAlign: 'center' }}>
+          {qty}
+        </Text>
+      </PopOnChange>
       <Tap
         onPress={() => onChange(Math.min(max, qty + 1))}
         style={[styles.stepBtn, qty >= max && { opacity: 0.4 }]}

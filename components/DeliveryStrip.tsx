@@ -145,7 +145,7 @@ export function DeliveryStrip() {
               <Serif style={{ fontSize: 20 }}>What would you like delivered?</Serif>
               <TextBody style={{ fontSize: 12.5 }}>Starting {selDay.rel.toLowerCase()}</TextBody>
             </View>
-            <Tap haptic={false} onPress={() => setPicking(false)} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+            <Tap haptic={false} onPress={() => setPicking(false)} accessibilityLabel="Close" style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="close" size={20} color={colors.ink} />
             </Tap>
           </View>
@@ -153,7 +153,7 @@ export function DeliveryStrip() {
             {getMergedProducts().filter((p) => !p.outOfStock).map((p) => (
               <Tap key={p.id} onPress={() => pickProduct(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 10, ...shadow.soft }}>
                 <View style={{ width: 52, height: 52, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                  <Image source={p.image} style={{ width: '82%', height: '82%' }} contentFit="contain" />
+                  <Image transition={220} source={p.image} style={{ width: '82%', height: '82%' }} contentFit="contain" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <TextSemi style={{ fontSize: 14.5 }} numberOfLines={1}>{p.name}</TextSemi>

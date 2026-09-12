@@ -30,6 +30,12 @@ export const colors = {
   // semantic
   success: '#D63C95',
   danger: '#E04B6E',
+  dangerDeep: '#C0344D',                 // destructive text/links (delete account, form errors)
+  live: '#1B8A3A',                       // status green: LIVE pills, on-time, delivered
+  liveSoft: 'rgba(27,138,58,0.10)',
+  warn: '#E9A23B',                       // ratings star / caution
+  veg: '#2E7D32',                        // FSSAI veg mark
+  nonVeg: '#B71C1C',                     // FSSAI non-veg mark
   overlay: 'rgba(42,16,24,0.45)',
   // premium token aliases (intent-named)
   action: '#F36CB5',   // primary CTAs (== flameDeep)

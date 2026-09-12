@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { KeyboardSafe } from '../../components/KeyboardSafe';
 import { View, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -33,7 +34,7 @@ export default function Wallet() {
   const [autopay, setAutopay] = useState<AutopayMandate | null>(null);
   const [days, setDays] = useState<number | null>(null);
   const [burn, setBurn] = useState(0);
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState('250'); // opens at ₹250 (founder call, 9 Sep)
   const [threshold, setThreshold] = useState(TOPUP_THRESHOLDS[1]);
   const [topupAmt, setTopupAmt] = useState(TOPUP_AMOUNTS[1]);
   const [busy, setBusy] = useState(false);
@@ -70,7 +71,7 @@ export default function Wallet() {
 
   function doRecharge(value: number) {
     if (value <= 0) return;
-    setAmount('');
+    setAmount('250'); // re-arm the ₹250 default for the next visit
     router.push(`/recharge?amount=${value}`);
   }
 
@@ -99,14 +100,15 @@ export default function Wallet() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Serif style={{ fontSize: 30 }}>PYAAS Wallet</Serif>
-        <Tap onPress={() => router.push('/wallet-statement')} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Serif style={{ fontSize: 30, flexShrink: 1 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>PYAAS Wallet</Serif>
+        <Tap onPress={() => router.push('/wallet-statement')} accessibilityLabel="Wallet statement" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 12 }}>
           <Ionicons name="receipt-outline" size={16} color={colors.flameDeep} />
           <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>Statement</TextMed>
         </Tap>
       </View>
 
-      <Animated.ScrollView automaticallyAdjustKeyboardInsets onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: tabClearance }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+<KeyboardSafe>
+            <Animated.ScrollView automaticallyAdjustKeyboardInsets onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: tabClearance }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Balance · solid card, motion does the work: count-up + sparks + shine.
             Effects stay INSIDE the clipped card (no glow halo bleeding outside). */}
         <Animated.View entering={FadeInDown.duration(460)}>
@@ -279,6 +281,7 @@ export default function Wallet() {
           Your PYAAS wallet pays for every order and reflects instantly.
         </TextBody>
       </Animated.ScrollView>
+      </KeyboardSafe>
     </View>
   );
 }

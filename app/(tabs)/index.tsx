@@ -36,6 +36,9 @@ import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
 import { useAuth } from '../../lib/auth';
 import { haptics } from '../../lib/haptics';
+import { spring } from '../../lib/motion';
+import { PopOnChange } from '../../components/Pop';
+import { useBottomChrome } from '../../components/Toast';
 
 // The free-trial pack shown on every funnel surface: PYAAS Gold FULL CREAM.
 const FREE_PACK_IMG = require('../../assets/products/gold.png');
@@ -243,6 +246,16 @@ export default function Shop() {
   );
 
   const onScroll = useHideTabBarOnScroll(); // hides the header + bottom bar + tab bar on scroll-down
+
+  // Category rail: ONE highlight that slides between chips (72-wide chips on a
+  // 10 gap → 82 stride; the 64 box sits 4 in). Presentation only — `cat` is
+  // still the single source of truth; this just animates where it points.
+  const railX = useSharedValue(0);
+  useEffect(() => {
+    const i = Math.max(0, CATEGORIES.findIndex((c) => c.key === cat));
+    railX.value = withSpring(spacing.lg + 4 + i * 82, spring.layout);
+  }, [cat, railX]);
+  const railStyle = useAnimatedStyle(() => ({ transform: [{ translateX: railX.value }] }));
 
   // Pull-to-refresh: re-pull dynamic data when the feed is dragged past the top.
   const onRefresh = useCallback(async () => {
@@ -459,7 +472,7 @@ export default function Shop() {
                       same FCM pack shot every funnel surface uses, on the soft
                       flame wash. Pill + copy are load-bearing (§15.6): keep. */}
                   <View style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Image source={FREE_PACK_IMG} style={{ width: 46, height: 46 }} contentFit="contain" />
+                    <Image transition={220} source={FREE_PACK_IMG} style={{ width: 46, height: 46 }} contentFit="contain" />
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                     <View style={{ flexDirection: 'row' }}>
@@ -492,14 +505,15 @@ export default function Shop() {
             {/* Category rail · horizontally scrollable (PYAAS has many ranges) */}
             <Animated.View entering={FadeInDown.duration(440).delay(160)} style={{ marginBottom: spacing.md }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: spacing.lg }}>
+                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, width: 64, height: 64, borderRadius: radius.lg, backgroundColor: colors.flameSoft, borderWidth: 1.5, borderColor: colors.flameDeep }, railStyle]} />
                 {CATEGORIES.map((c) => {
                   const active = cat === c.key;
                   const photo = CAT_IMAGE[c.key];
                   return (
-                    <Tap key={c.key} haptic={false} onPress={() => setCat(c.key)} style={{ alignItems: 'center', gap: 6, width: 72 }}>
-                      <View style={{ width: 64, height: 64, borderRadius: radius.lg, backgroundColor: active ? colors.flameSoft : colors.white, borderWidth: 1.5, borderColor: active ? colors.flameDeep : colors.line, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', ...shadow.soft }}>
+                    <Tap key={c.key} haptic={false} onPress={() => { haptics.select(); setCat(c.key); }} style={{ alignItems: 'center', gap: 6, width: 72 }}>
+                      <View style={{ width: 64, height: 64, borderRadius: radius.lg, backgroundColor: active ? 'transparent' : colors.white, borderWidth: 1.5, borderColor: active ? 'transparent' : colors.line, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', ...(active ? null : shadow.soft) }}>
                         {photo ? (
-                          <Image source={photo} style={{ width: 48, height: 48 }} contentFit="contain" />
+                          <Image transition={220} source={photo} style={{ width: 48, height: 48 }} contentFit="contain" />
                         ) : (
                           <Ionicons name={`${CAT_ICON[c.key] ?? 'grid'}-outline` as any} size={24} color={colors.flameDeep} />
                         )}
@@ -572,7 +586,7 @@ export default function Shop() {
             </View>
             {data.some((g) => g.variants.some((v) => v.manufacturer)) ? (
               <View style={{ alignItems: 'center', paddingTop: spacing.md, gap: 12 }}>
-                <Image source={require('../../assets/pyaas-logo.png')} style={{ width: 210, height: 63 }} contentFit="contain" />
+                <Image transition={220} source={require('../../assets/pyaas-logo.png')} style={{ width: 210, height: 63 }} contentFit="contain" />
                 <TextBody color={colors.inkMute} style={{ fontSize: 12, letterSpacing: 0.4 }}>PARAG Range · Marketed by PYAAS</TextBody>
               </View>
             ) : null}
@@ -709,6 +723,7 @@ function ViewCartBar({ bottomClearance }: { bottomClearance: number }) {
   const mode = useDeliveryMode();
   const lane = mode === 'instant' ? 'instant' : 'morning';
   const count = useCart((s) => s.lines.filter((l) => l.lane === lane).reduce((n, l) => n + l.qty, 0));
+  useBottomChrome(bottomClearance - 6 + 52, 'tabs', count > 0);
   // Rides the SAME navHidden signal as the tab bar + BottomBar, so the whole
   // bottom cluster leaves and returns together on scroll — a pill floating
   // alone over the feed while the rest of the chrome hides reads as detached.
@@ -728,9 +743,11 @@ function ViewCartBar({ bottomClearance }: { bottomClearance: number }) {
       <Tap onPress={() => { haptics.press(); router.push('/cart'); }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameDeep, borderRadius: radius.pill, paddingHorizontal: 18, height: 52, ...shadow.card }}>
           <Ionicons name="bag-handle" size={18} color={colors.white} />
-          <TextSemi color={colors.white} style={{ fontSize: 14.5, flex: 1 }}>
-            {count} {count === 1 ? 'item' : 'items'} · {mode === 'instant' ? 'Instant cart' : 'Morning cart'}
-          </TextSemi>
+          <PopOnChange value={count} style={{ flex: 1 }}>
+            <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>
+              {count} {count === 1 ? 'item' : 'items'} · {mode === 'instant' ? 'Instant cart' : 'Morning cart'}
+            </TextSemi>
+          </PopOnChange>
           <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>View cart</TextSemi>
           <Ionicons name="chevron-forward" size={16} color={colors.white} />
         </View>

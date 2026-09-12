@@ -117,7 +117,7 @@ export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
       >
         {/* Brand — big, warm, unmistakably PYAAS. */}
         <Animated.View entering={FadeInDown.duration(480)} style={{ alignItems: 'center', gap: spacing.md }}>
-          <Image source={LOGO} style={{ width: 240, height: 72 }} contentFit="contain" />
+          <Image transition={220} source={LOGO} style={{ width: 240, height: 72 }} contentFit="contain" />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.duration(480).delay(120)} style={{ alignItems: 'center', gap: 8, marginTop: spacing.lg, marginBottom: spacing.xl }}>
@@ -144,7 +144,7 @@ export function ConsentWelcome({ onAgree }: { onAgree: () => void }) {
               </View>
               <View style={{ flex: 1, gap: 2 }}>
                 <TextSemi style={{ fontSize: 15 }}>{f.what}</TextSemi>
-                <TextBody color={colors.inkMute} style={{ fontSize: 13, lineHeight: 18.5 }}>{f.why}</TextBody>
+                <TextBody color={colors.inkMute} style={{ fontSize: 13, lineHeight: 18.5, textAlign: 'justify' }}>{f.why}</TextBody>
               </View>
             </Animated.View>
           ))}

@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
-import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../components/ui';
+import { Serif, TextBody, TextMed, TextSemi, Tap, Pill, BackButton } from '../components/ui';
 import { getWelcomeFunnelState, startWelcomeLitre, type WelcomeFunnelState, type WelcomePlan } from '../lib/crm';
 import { useDiscLang } from '../lib/i18n';
 import { OfferTermsSummary } from '../components/OfferTermsSummary';
@@ -74,9 +74,7 @@ export default function WelcomeOffer() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Tap onPress={() => router.back()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="chevron-back" size={20} color={colors.flameDeep} />
-        </Tap>
+        <BackButton />
         <Serif style={{ fontSize: 24, flex: 1 }}>{t('Your first litre is on us', 'पहला लीटर हमारी ओर से')}</Serif>
       </View>
 
@@ -86,8 +84,8 @@ export default function WelcomeOffer() {
         <Animated.View entering={FadeInDown.duration(440)}>
           <View style={{ borderRadius: radius.lg, backgroundColor: colors.flameSoft, paddingVertical: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
-              <Image source={PACK_IMG} style={{ width: 92, height: 92, transform: [{ rotate: '-7deg' }], marginRight: -14 }} contentFit="contain" />
-              <Image source={PACK_IMG} style={{ width: 104, height: 104, transform: [{ rotate: '5deg' }] }} contentFit="contain" />
+              <Image transition={220} source={PACK_IMG} style={{ width: 92, height: 92, transform: [{ rotate: '-7deg' }], marginRight: -14 }} contentFit="contain" />
+              <Image transition={220} source={PACK_IMG} style={{ width: 104, height: 104, transform: [{ rotate: '5deg' }] }} contentFit="contain" />
             </View>
             <View style={{ marginTop: 10, backgroundColor: colors.white, borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 5, ...shadow.soft }}>
               <TextSemi color={colors.flameDeep} style={{ fontSize: 13 }}>

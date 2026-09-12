@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow } from '../lib/theme';
-import { Serif, TextBody, TextMed, Tap } from '../components/ui';
+import { Serif, TextBody, TextMed, Tap, BackButton } from '../components/ui';
 import { CONSENT_META, defaultChoices, useConsents, type ConsentChoices, type ConsentKey } from '../components/ConsentSheet';
 
 /**
@@ -46,14 +46,12 @@ export default function MessagePreferences() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Tap onPress={() => router.back()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="chevron-back" size={20} color={colors.flameDeep} />
-        </Tap>
-        <Serif style={{ fontSize: 26 }}>Message preferences</Serif>
+        <BackButton />
+        <Serif style={{ fontSize: 24, flex: 1 }} numberOfLines={1} adjustsFontSizeToFit>Message preferences</Serif>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }} showsVerticalScrollIndicator={false}>
-        <TextBody color={colors.inkSoft} style={{ fontSize: 13, lineHeight: 18 }}>
+        <TextBody color={colors.inkSoft} style={{ fontSize: 13, lineHeight: 18, textAlign: 'justify' }}>
           Delivery, wallet and account messages always arrive. They are part of the
           service. Offers and updates are up to you, and saying no never affects
           your milk or any offer you have already started.

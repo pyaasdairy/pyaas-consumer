@@ -14,7 +14,7 @@ import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard'
 import { useTabBarClearance } from '../../components/PyaasTabBar';
 
 // Status green for the 2+2 "FREE" badge (matches SubscriptionStatusCard / cart).
-const FREE_GREEN = '#1B8A3A';
+const FREE_GREEN = colors.live;
 
 function fmtDate(iso: string) {
   try {
@@ -86,7 +86,7 @@ export default function Orders() {
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
               <Ionicons name="receipt-outline" size={56} color={colors.inkMute} />
-              <Serif style={{ fontSize: 22 }}>No orders yet.</Serif>
+              <Serif style={{ fontSize: 22 }}>No orders yet</Serif>
               <TextBody style={{ textAlign: 'center' }}>{error || 'Your delivered and active orders show up here.'}</TextBody>
               <Button title="Order milk" onPress={() => router.replace('/(tabs)')} style={{ marginTop: 6, paddingHorizontal: 28 }} />
             </View>

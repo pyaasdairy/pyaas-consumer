@@ -282,10 +282,10 @@ export function AddressCaptureSheet({
 
   return (
     <SafeModal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose} presentationStyle="fullScreen" onShow={() => setMapOpen(true)}>
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.milk }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.milk }} behavior="padding">
         {/* Header */}
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.line }}>
-          <Tap onPress={onClose} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
+          <Tap accessibilityLabel="Back" onPress={onClose} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="arrow-back" size={22} color={colors.ink} />
           </Tap>
           <View style={{ flex: 1 }}>
@@ -386,7 +386,7 @@ export function AddressCaptureSheet({
           {/* Sample door photo — helps the rider find the exact door. */}
           {doorPhoto ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: spacing.sm }}>
-              <Image source={{ uri: doorPhoto }} style={{ width: 56, height: 56, borderRadius: radius.sm }} contentFit="cover" />
+              <Image transition={220} source={{ uri: doorPhoto }} style={{ width: 56, height: 56, borderRadius: radius.sm }} contentFit="cover" />
               <View style={{ flex: 1 }}>
                 <TextMed style={{ fontSize: 13.5 }}>Door photo added</TextMed>
                 <TextBody style={{ fontSize: 11.5 }} color={colors.inkSoft}>Your rider sees this to find the exact door</TextBody>

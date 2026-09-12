@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { KeyboardSafe } from '../components/KeyboardSafe';
 import { View, TextInput } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -114,11 +115,12 @@ export default function WalletStatement() {
         })}
       </Animated.ScrollView>
 
-      <Animated.ScrollView automaticallyAdjustKeyboardInsets style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xxl }} showsVerticalScrollIndicator={false}>
+<KeyboardSafe>
+            <Animated.ScrollView automaticallyAdjustKeyboardInsets style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xxl }} showsVerticalScrollIndicator={false}>
         {shown.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
             <Ionicons name="receipt-outline" size={40} color={colors.inkMute} />
-            <TextBody style={{ fontSize: 14 }}>No transactions to show.</TextBody>
+            <TextBody style={{ fontSize: 14 }}>No transactions to show</TextBody>
           </View>
         ) : (
           <View style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, ...shadow.soft }}>
@@ -149,6 +151,7 @@ export default function WalletStatement() {
           </View>
         )}
       </Animated.ScrollView>
+      </KeyboardSafe>
     </View>
   );
 }

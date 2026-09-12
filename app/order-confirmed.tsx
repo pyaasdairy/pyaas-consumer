@@ -63,7 +63,7 @@ export default function OrderConfirmed() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 6, paddingBottom: insets.bottom + 120, paddingHorizontal: spacing.lg, gap: spacing.md }}>
         {/* Close */}
-        <Tap haptic={false} onPress={close} style={{ alignSelf: 'flex-start', width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.7)', alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+        <Tap accessibilityLabel="Close" haptic={false} onPress={close} style={{ alignSelf: 'flex-start', width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.7)', alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
           <Ionicons name="close" size={22} color={INK} />
         </Tap>
 
@@ -96,7 +96,7 @@ export default function OrderConfirmed() {
           <Animated.View entering={FadeInDown.duration(420).delay(260)} style={{ backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: spacing.md, ...shadow.soft }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 60, height: 60, borderRadius: radius.md, backgroundColor: colors.wash, alignItems: 'center', justifyContent: 'center' }}>
-                <Image source={product.image} style={{ width: '82%', height: '82%' }} contentFit="contain" />
+                <Image transition={220} source={product.image} style={{ width: '82%', height: '82%' }} contentFit="contain" />
               </View>
               <View style={{ flex: 1 }}>
                 <TextSemi style={{ fontSize: 15.5 }}>{product.name}</TextSemi>

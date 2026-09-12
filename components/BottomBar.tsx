@@ -1,4 +1,5 @@
 import React from 'react';
+import { useBottomChrome } from './Toast';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -16,9 +17,9 @@ export function useBottomBarClearance() {
   return insets.bottom + 112 + 50 + 14;
 }
 
-function MiniButton({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
+function MiniButton({ icon, onPress, label }: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void; label: string }) {
   return (
-    <Tap onPress={onPress} scaleTo={0.86} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', ...shadow.card }}>
+    <Tap onPress={onPress} scaleTo={0.86} accessibilityLabel={label} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', ...shadow.card }}>
       <Ionicons name={icon} size={20} color={colors.flameDeep} />
     </Tap>
   );
@@ -31,6 +32,7 @@ function MiniButton({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; o
  */
 export function BottomBar() {
   const insets = useSafeAreaInsets();
+  useBottomChrome(insets.bottom + 112 + 50, 'tabs');
   const router = useRouter();
   const hideStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: navHidden.value * (insets.bottom + 190) }],
@@ -42,7 +44,7 @@ export function BottomBar() {
       style={[{ position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: insets.bottom + 112, flexDirection: 'row', alignItems: 'center', gap: 10 }, hideStyle]}
     >
       <Animated.View entering={FadeInDown.duration(440).delay(80)}>
-        <MiniButton icon="calendar-clear-outline" onPress={() => router.push('/subscriptions')} />
+        <MiniButton icon="calendar-clear-outline" label="My subscriptions" onPress={() => router.push('/subscriptions')} />
       </Animated.View>
 
       <Animated.View entering={FadeInDown.duration(440)} style={{ flex: 1 }}>
