@@ -14,6 +14,20 @@ import { setAddressCoords, type Coords } from '../lib/location';
 import { geoAddress, placeLabelFromCoords, useUserLocation } from '../lib/userLocation';
 import { getServiceability, joinWaitlist } from '../lib/serviceability';
 import { useAuth } from '../lib/auth';
+import { Select, type SelectOption } from './Select';
+import {
+  SOCIETIES,
+  floorLabel,
+  isInLaunchArea,
+  societyById,
+  societyForCoords,
+  societyLine1,
+  societyLine2,
+  societySummary,
+  towerById,
+  unitsOnFloor,
+  LAUNCH_AREA,
+} from '../constants/societies';
 
 /**
  * THE address capture — the ONE complete, Country-Delight-style flow used
@@ -32,6 +46,18 @@ import { useAuth } from '../lib/auth';
  * Saving stores the address + the exact geo pin (both — the pin routes the
  * rider, the words route a human) and marks the member's delivery location
  * exact, then hands the saved Address back to the caller.
+ *
+ * SOCIETY MODE (new, 18 Sep): when the pin lands inside the launch township,
+ * step 2 stops asking members to TYPE their door and asks them to PICK it —
+ * Society → Tower → Floor → Flat, from the society's own unit directory
+ * (constants/societies). Two reasons, both operational:
+ *   - the rider app can then group a tower floor into one lift ride instead of
+ *     parsing "805, p-4 blk" by hand at 5 AM;
+ *   - members stop mistyping the door that their milk depends on.
+ * The typed field is always one tap away ("My flat is not listed"), because the
+ * directory has known gaps and nobody may be locked out of ordering by a
+ * missing row. Outside the township nothing changes: the plain form renders
+ * exactly as before.
  */
 
 /** The Locality/Area field sits directly ABOVE the form's own City and Pincode
@@ -76,6 +102,17 @@ export function AddressCaptureSheet({
 
   const [flat, setFlat] = useState('');
   const [locality, setLocality] = useState('');
+  // ── Society mode ───────────────────────────────────────────────────────────
+  // `societyMode` is true while the pin is inside the launch township AND the
+  // member has not opted out into the typed field.
+  const [societyId, setSocietyId] = useState<string | null>(null);
+  const [tower, setTower] = useState<string | null>(null);
+  const [floor, setFloor] = useState<number | null>(null);
+  const [unit, setUnit] = useState<string | null>(null);
+  const [typedDoor, setTypedDoor] = useState(false); // "my flat is not listed"
+  const inLaunchArea = isInLaunchArea(coords);
+  const society = societyById(societyId);
+  const societyMode = inLaunchArea && !typedDoor;
   const [receiver, setReceiver] = useState('');
   const [city, setCity] = useState('');
   const [pincode, setPincode] = useState('');
@@ -148,6 +185,11 @@ export function AddressCaptureSheet({
     setGeoLabel(null);
     setFlat('');
     setLocality('');
+    setSocietyId(null);
+    setTower(null);
+    setFloor(null);
+    setUnit(null);
+    setTypedDoor(false);
     // City prefills from where the member already told us they are (the
     // located/picked city — Lucknow across the launch zone); the pin's
     // reverse-geocode refines it, and the field stays editable.
@@ -172,6 +214,12 @@ export function AddressCaptureSheet({
     haptics.success();
     // Is this exact pin inside a serving store's zone? (5 km fence, backend.)
     void checkPinServiceable(c);
+    // Inside the township: preselect the society whose circle the pin sits in,
+    // so a resident usually only picks tower → floor → flat.
+    const guess = societyForCoords(c);
+    if (guess) {
+      setSocietyId((cur) => cur ?? guess.id);
+    }
     const g = await geoAddress(c);
     if (g.city) setCity(g.city);
     if (g.pincode) setPincode(g.pincode);
@@ -228,9 +276,11 @@ export function AddressCaptureSheet({
   // server-side). Blocking on svcChecking left the button dead for up to 15s
   // on a slow network, which read as "the form won't submit".
   const pinOk = coords != null;
-  // Any non-empty house/flat number is valid — "7", "B2" and "Flat 402" are all
-  // real doors; a ≥3-char rule silently dead-locked Save for short numbers.
-  const flatOk = flat.trim().length >= 1;
+  // Society mode needs the full chain (society → tower → floor → flat); typed
+  // mode accepts any non-empty door — "7", "B2" and "Flat 402" are all real
+  // doors, and a ≥3-char rule silently dead-locked Save for short numbers.
+  const societyChainOk = !!(society && tower && floor != null && unit);
+  const flatOk = societyMode ? societyChainOk : flat.trim().length >= 1;
   const receiverOk = receiver.trim().length >= 2;
   const cityOk = city.trim().length >= 2;
   const pinCodeOk = pincode.trim().replace(/\D/g, '').length === 6;
@@ -242,7 +292,7 @@ export function AddressCaptureSheet({
     if (!canSave) {
       setErr(
         !pinOk ? 'Set your delivery location on the map first.'
-        : !flatOk ? 'Please add your flat / house number.'
+        : !flatOk ? (societyMode ? 'Please pick your tower, floor and flat.' : 'Please add your flat / house number.')
         : !receiverOk ? 'Please add the receiver’s name.'
         : !cityOk ? 'Please add your city.'
         : 'Please enter the 6-digit pincode.',
@@ -252,13 +302,26 @@ export function AddressCaptureSheet({
     setSaving(true);
     setErr('');
     try {
+      // In society mode the structured parts ALSO render into line1/line2, so a
+      // consumer that only reads the text lines still gets a complete door.
+      const parts = societyMode && society && tower && floor != null && unit
+        ? { societyId: society.id, societyName: society.name, tower, floor, unit }
+        : null;
       const created = await addAddress({
         label: 'Home',
-        line1: flat.trim(),
-        line2: locality.trim() || null,
+        line1: parts ? societyLine1(parts) : flat.trim(),
+        line2: parts
+          ? societyLine2(parts, locality.trim() || society?.area)
+          : locality.trim() || null,
         city: city.trim(),
         pincode: pincode.trim().replace(/\D/g, ''),
         is_default: true,
+        // Machine-groupable fields the rider app buckets by (tower + floor).
+        society: parts?.societyName ?? null,
+        society_id: parts?.societyId ?? null,
+        tower: parts?.tower ?? null,
+        floor: parts?.floor ?? null,
+        unit: parts?.unit ?? null,
         receiver_name: receiver.trim(),
         geo_label: geoLabel,
         ring_bell: ringBell,
@@ -269,7 +332,9 @@ export function AddressCaptureSheet({
       if (coords && created?.id) {
         try { await setAddressCoords(created.id, coords); } catch { /* pin retried on next edit */ }
         // The saved door IS the member's delivery location now (exact).
-        try { await useUserLocation.getState().setFromAddress(city.trim(), coords, true); } catch { /* non-fatal */ }
+        // Pass the society's own area so the header reads "Deliver to Sushant
+        // Golf City" rather than "Deliver to Lucknow".
+        try { await useUserLocation.getState().setFromAddress(city.trim(), coords, true, society?.area ?? undefined); } catch { /* non-fatal */ }
       }
       haptics.confirm();
       onSaved(created, coords);
@@ -353,7 +418,93 @@ export function AddressCaptureSheet({
               <TextBody style={{ fontSize: 12.5 }} color={colors.inkSoft}>Checking delivery availability at this spot…</TextBody>
             </View>
           ) : null}
-          <Field label="Flat / House No / Apartment" value={flat} onChangeText={setFlat} placeholder="e.g. Flat 402, Lotus Apartments" />
+          {/* SOCIETY MODE — pick the door instead of typing it, so orders can
+              be grouped by tower and floor for the rider. */}
+          {societyMode ? (
+            <View style={{ gap: spacing.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 10 }}>
+                <Ionicons name="business-outline" size={16} color={colors.flameDeep} />
+                <TextBody style={{ fontSize: 12, flex: 1 }} color={colors.ink}>
+                  We deliver inside {LAUNCH_AREA.area}. Pick your flat and the rider brings your milk to the right door.
+                </TextBody>
+              </View>
+
+              <Select
+                label="Society"
+                value={societyId}
+                placeholder="Choose your society"
+                sheetTitle="Your society"
+                options={SOCIETIES.map((x): SelectOption => ({ value: x.id, label: x.name, sub: x.area }))}
+                onChange={(v) => { setSocietyId(v); setTower(null); setFloor(null); setUnit(null); setErr(''); }}
+              />
+
+              <Select
+                label="Tower / Block"
+                value={tower}
+                placeholder="Choose your tower"
+                sheetTitle="Your tower"
+                disabled={!society}
+                disabledHint="Choose your society first"
+                options={(society?.towers ?? []).map((tw): SelectOption => ({
+                  value: tw.id,
+                  label: tw.label,
+                  sub: `${tw.floors.length} floors`,
+                }))}
+                onChange={(v) => { setTower(v); setFloor(null); setUnit(null); setErr(''); }}
+              />
+
+              <Select
+                label="Floor"
+                value={floor == null ? null : String(floor)}
+                placeholder="Choose your floor"
+                sheetTitle="Your floor"
+                disabled={!tower}
+                disabledHint="Choose your tower first"
+                options={(towerById(society, tower)?.floors ?? []).map((f): SelectOption => ({
+                  value: String(f.floor),
+                  label: floorLabel(f.floor),
+                  sub: `${f.units.length} ${f.units.length === 1 ? 'flat' : 'flats'}`,
+                }))}
+                onChange={(v) => { setFloor(Number(v)); setUnit(null); setErr(''); }}
+              />
+
+              <Select
+                label="Flat number"
+                value={unit}
+                placeholder="Choose your flat"
+                sheetTitle="Your flat"
+                disabled={floor == null}
+                disabledHint="Choose your floor first"
+                options={unitsOnFloor(society, tower, floor).map((u): SelectOption => ({ value: u, label: u }))}
+                onChange={(v) => { setUnit(v); setErr(''); }}
+              />
+
+              {/* The confirmation line, in the exact shape the rider sees. */}
+              {society && tower && floor != null && unit ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.blueSoft, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 10 }}>
+                  <Ionicons name="checkmark-circle" size={16} color={colors.blue} />
+                  <TextMed style={{ fontSize: 13, flex: 1 }} color={colors.ink}>
+                    {societySummary({ societyId: society.id, societyName: society.name, tower, floor, unit })}
+                  </TextMed>
+                </View>
+              ) : null}
+
+              {/* The escape hatch. The society directory has known gaps, so
+                  nobody may be stuck behind a missing row. */}
+              <Tap haptic={false} onPress={() => { setTypedDoor(true); setErr(''); }} style={{ alignSelf: 'flex-start' }}>
+                <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>My flat is not listed · type it instead</TextMed>
+              </Tap>
+            </View>
+          ) : (
+            <>
+              <Field label="Flat / House No / Apartment" value={flat} onChangeText={setFlat} placeholder="e.g. Flat 402, Lotus Apartments" />
+              {inLaunchArea ? (
+                <Tap haptic={false} onPress={() => { setTypedDoor(false); setErr(''); }} style={{ alignSelf: 'flex-start' }}>
+                  <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>Pick my flat from the society list instead</TextMed>
+                </Tap>
+              ) : null}
+            </>
+          )}
           <Field label="Locality / Area / Landmark (optional)" value={locality} onChangeText={setLocality} placeholder="e.g. Near City Park" />
           <Field label="Receiver's name" value={receiver} onChangeText={setReceiver} placeholder="Who receives the milk?" />
           <View style={{ flexDirection: 'row', gap: 10 }}>

@@ -38,6 +38,17 @@ export type Address = {
   instructions?: string | null;
   /** Sample door photo the member added so the rider finds the exact door. */
   door_photo_uri?: string | null;
+  // ── Structured society address (launch township) ───────────────────────────
+  // Inside a listed society the member picks Society → Tower → Floor → Flat
+  // instead of typing a door, so orders can be GROUPED BY TOWER AND FLOOR for
+  // the rider (one lift ride, one stack of packs). The parts are ALSO rendered
+  // into line1/line2, so any consumer that only reads the text lines still has
+  // a complete address. All optional — a typed address simply leaves them null.
+  society?: string | null;      // "Chandra Panorama"
+  society_id?: string | null;   // "chandra-panorama"
+  tower?: string | null;        // "P4"
+  floor?: number | null;        // 8 (0 = ground)
+  unit?: string | null;         // "805"
   /** Server-side twin id (Mongo hex) once mirrored to the backend — the DB copy
    *  the subscription worker + store routing read. */
   backend_id?: string | null;
@@ -169,6 +180,11 @@ export async function listAddresses(): Promise<Address[]> {
             call_before: !!r.call_before,
             instructions: (r.instructions as string) || null,
             door_photo_uri: (r.door_photo_uri as string) || null,
+            society: (r.society as string) || null,
+            society_id: (r.society_id as string) || null,
+            tower: (r.tower as string) || null,
+            floor: (r.floor as number | null) ?? null,
+            unit: (r.unit as string) || null,
           } as Partial<Address>;
           const existing = local.find((l) => l.backend_id === bid);
           if (existing) {
@@ -279,6 +295,12 @@ async function mirrorAddressCreate(uid: string, row: Address, throwOnFailure = f
       call_before: row.call_before,
       instructions: row.instructions ?? '',
       door_photo_uri: row.door_photo_uri ?? '',
+      // Structured society parts — the rider app groups by tower + floor.
+      society: row.society ?? undefined,
+      society_id: row.society_id ?? undefined,
+      tower: row.tower ?? undefined,
+      floor: row.floor ?? undefined,
+      unit: row.unit ?? undefined,
     });
     if (created?.id) {
       await updateRows<Address>('addresses', uid, (r) => r.id === row.id, { backend_id: created.id });

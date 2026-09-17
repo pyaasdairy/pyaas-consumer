@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { CARE_PHONE } from '../lib/support';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { TextBody, TextMed, Tap, Pill } from './ui';
 
@@ -36,7 +37,10 @@ export function OfferTermsSummary({ hi }: { hi: boolean }) {
           'केवल हमारे मौजूदा डिलीवरी क्षेत्र में, स्टॉक रहने तक।'),
         t('This is additional quantity, not a discount. Milk MRP does not change.',
           'यह अतिरिक्त मात्रा है, छूट नहीं। दूध की MRP में कोई बदलाव नहीं।'),
-        t('Help: 99996 80081', 'सहायता: 99996 80081'),
+        // The REGISTERED care line (lib/support.CARE_PHONE). The published
+        // PDFs still print the old 99996 80081; the app carries the number the
+        // company actually answers, so this is derived, never retyped.
+        t(`Help: ${CARE_PHONE}`, `सहायता: ${CARE_PHONE}`),
       ].map((line, i) => (
         <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
           <Ionicons name="checkmark-circle" size={15} color={colors.flameDeep} style={{ marginTop: 2 }} />

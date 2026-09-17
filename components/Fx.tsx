@@ -138,3 +138,111 @@ export function useCountUp(target: number, duration = 1500, run = true): number 
   }, [target, duration, run]);
   return n;
 }
+
+// ── Confetti burst ───────────────────────────────────────────────────────────
+// A real celebration, used once: the moment a member's FREE pack is claimed
+// (founder call, 18 Sep — "3 to 4 seconds when the free pack is claimed through
+// the address"). Solid brand-coloured chips, no gradients, no images: each
+// piece falls, drifts and spins on the UI thread, then the whole layer fades.
+// It runs ONCE and stops — nothing here repeats, so it can never become
+// ambient noise on a screen the member stays on.
+
+const CONFETTI_COLORS = [FLAME, GOLD, '#D63C95', '#F491CC', '#1B8A3A', WHITE];
+
+function ConfettiPiece({
+  x,
+  size,
+  delay,
+  dur,
+  drift,
+  spin,
+  color,
+  fall,
+  square,
+}: {
+  x: number;
+  size: number;
+  delay: number;
+  dur: number;
+  drift: number;
+  spin: number;
+  color: string;
+  fall: number;
+  square: boolean;
+}) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    // Linear on purpose: gravity reads wrong with an eased fall.
+    t.value = withDelay(delay, withTiming(1, { duration: dur, easing: Easing.linear }));
+  }, [t, delay, dur]);
+  const st = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(t.value, [0, 1], [-30, fall]) },
+      { translateX: interpolate(t.value, [0, 0.5, 1], [0, drift * 0.6, drift]) },
+      { rotate: `${interpolate(t.value, [0, 1], [0, spin])}deg` },
+    ],
+    opacity: interpolate(t.value, [0, 0.08, 0.75, 1], [0, 1, 1, 0]),
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: 'absolute',
+          left: x,
+          top: 0,
+          width: size,
+          height: square ? size : size * 2.2,
+          borderRadius: square ? 2 : size / 2,
+          backgroundColor: color,
+        },
+        st,
+      ]}
+    />
+  );
+}
+
+/**
+ * Full-bleed confetti. Mount it while `run` is true; it plays for ~`duration`
+ * ms and then sits inert (the pieces have faded), so the caller can simply
+ * unmount it or leave it in place. Pointer-events are off throughout, so it
+ * never blocks the button underneath.
+ */
+export function Confetti({
+  run = true,
+  count = 70,
+  duration = 3500,
+}: {
+  run?: boolean;
+  count?: number;
+  duration?: number;
+}) {
+  const { width, height } = useWindowDimensions();
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: count }, (_, i) => ({
+        key: i,
+        x: Math.random() * (width - 12),
+        size: 6 + Math.random() * 6,
+        // Staggered over the first second so it reads as a burst, not a curtain.
+        delay: Math.random() * 900,
+        dur: duration * (0.55 + Math.random() * 0.45),
+        drift: (Math.random() - 0.5) * 140,
+        spin: (Math.random() - 0.5) * 900,
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        fall: height * (0.75 + Math.random() * 0.35),
+        square: Math.random() > 0.45,
+      })),
+    [count, duration, width, height],
+  );
+  if (!run) return null;
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {pieces.map(({ key, ...p }) => (
+        // React 19 no longer accepts `key` via a spread, so it is passed
+        // explicitly and never reaches the piece as a prop.
+        <ConfettiPiece key={key} {...p} />
+      ))}
+    </View>
+  );
+}

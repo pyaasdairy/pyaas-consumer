@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import { getSingle, putSingle } from './localStore';
 import { getUserId } from './session';
 import type { Coords } from './location';
+import { LAUNCH_AREA, isInLaunchArea } from '../constants/societies';
 
 /**
  * The member's chosen DELIVERY LOCATION — the single source of truth the shop
@@ -20,7 +21,20 @@ export type LocSource = 'gps' | 'map' | 'manual' | 'address';
 // `exact` = the coordinate is a real, precise point (device GPS, a dropped map
 // pin, or a geocoded searched address) — NOT a city centroid. The subscription
 // exact-location gate (lib/location.hasExactLocation) trusts this flag.
-export type UserLoc = { coords: Coords; city: string; source: LocSource; exact: boolean };
+export type UserLoc = {
+  coords: Coords;
+  city: string;
+  source: LocSource;
+  exact: boolean;
+  /**
+   * The NATIVE locality the member actually calls home ("Sushant Golf City"),
+   * as opposed to the metro they sit in ("Lucknow"). The header shows this
+   * when we have it, because "Deliver to Lucknow" tells a Golf City resident
+   * nothing about whether we mean their door. Optional: older persisted rows
+   * and city picks have no area, and every consumer falls back to `city`.
+   */
+  area?: string | null;
+};
 
 /** Curated serviceable cities (PARAG's UP footprint) for the manual picker. */
 export const CITIES: { name: string; coords: Coords }[] = [
@@ -116,6 +130,40 @@ export async function placeLabelFromCoords(c: Coords): Promise<string | null> {
   }
 }
 
+/**
+ * The locality/neighbourhood name for a point — what a resident would answer if
+ * asked where they live. Prefers the OS geocoder's district/subregion, drops
+ * anything that merely repeats the city, and falls back to the launch
+ * township's own label when the point sits inside it (the geocoder often
+ * returns nothing useful for a young township).
+ */
+export async function areaFromCoords(c: Coords): Promise<string | null> {
+  const inLaunch = isInLaunchArea(c);
+  // INSIDE THE LAUNCH TOWNSHIP the township's own name wins outright. The OS
+  // geocoder answers with a sub-locality there ("Sector B"), which is precise
+  // but tells a member nothing about whether they are in our service area —
+  // and "Golf City" is the name residents actually use for where they live
+  // (founder call, 18 Sep). Outside it, the geocoder's locality is the best
+  // answer we have.
+  if (inLaunch) return LAUNCH_AREA.area;
+  try {
+    const res = await Location.reverseGeocodeAsync({ latitude: c.lat, longitude: c.lng });
+    const r = res?.[0] as ((typeof res)[0] & { subregion?: string }) | undefined;
+    const city = snapToKnownCity(r?.city || r?.subregion || r?.region || null, c);
+    const candidates = [r?.district, r?.subregion, r?.name, r?.street];
+    for (const raw of candidates) {
+      const v = (raw ?? '').trim();
+      if (!v) continue;
+      if (/^\d/.test(v)) continue;                              // "402, Block C" is a door, not an area
+      if (city && v.toLowerCase() === city.toLowerCase()) continue; // just the city again
+      return v;
+    }
+  } catch {
+    /* geocoder unavailable — fall through */
+  }
+  return inLaunch ? LAUNCH_AREA.area : null;
+}
+
 type State = {
   loc: UserLoc | null;
   /** true once hydrate() has run (home waits for this before prompting). */
@@ -130,8 +178,10 @@ type State = {
   /** Ask for location permission (re-prompts every call) and set a GPS fix. */
   useMyLocation: () => Promise<boolean>;
   setCity: (name: string) => Promise<void>;
-  /** `exact` = a precise geocoded point (a searched address) vs a city centroid. */
-  setFromAddress: (city: string, coords: Coords, exact?: boolean) => Promise<void>;
+  /** `exact` = a precise geocoded point (a searched address) vs a city centroid.
+   *  `area` = the native locality when the caller already knows it (a society
+   *  address); omitted, it is resolved from the pin. */
+  setFromAddress: (city: string, coords: Coords, exact?: boolean, area?: string | null) => Promise<void>;
   /** Set an EXACT delivery point from a dropped map pin (reverse-geocodes a label). */
   setFromPin: (coords: Coords) => Promise<void>;
 };
@@ -163,7 +213,8 @@ export const useUserLocation = create<State>((set) => ({
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       const city = (await cityFromCoords(coords)) ?? 'your location';
-      const loc: UserLoc = { coords, city, source: 'gps', exact: true };
+      const area = await areaFromCoords(coords);
+      const loc: UserLoc = { coords, city, source: 'gps', exact: true, area };
       set({ loc, permissionDenied: false, locating: false });
       await persist(loc);
       return true;
@@ -176,18 +227,23 @@ export const useUserLocation = create<State>((set) => ({
     const c = CITIES.find((x) => x.name === name);
     if (!c) return;
     // A city centroid is NOT an exact door — exact:false.
-    const loc: UserLoc = { coords: c.coords, city: c.name, source: 'manual', exact: false };
+    // A city pick has no locality — the member told us the metro, nothing more.
+    const loc: UserLoc = { coords: c.coords, city: c.name, source: 'manual', exact: false, area: null };
     set({ loc, permissionDenied: false });
     await persist(loc);
   },
-  setFromAddress: async (city, coords, exact = false) => {
-    const loc: UserLoc = { coords, city, source: 'address', exact };
+  setFromAddress: async (city, coords, exact = false, area) => {
+    // A saved society address passes its own area ("Sushant Golf City"); any
+    // other address resolves one from the pin.
+    const resolved = area ?? (await areaFromCoords(coords));
+    const loc: UserLoc = { coords, city, source: 'address', exact, area: resolved };
     set({ loc });
     await persist(loc);
   },
   setFromPin: async (coords) => {
     const city = (await cityFromCoords(coords)) ?? 'your pinned location';
-    const loc: UserLoc = { coords, city, source: 'map', exact: true };
+    const area = await areaFromCoords(coords);
+    const loc: UserLoc = { coords, city, source: 'map', exact: true, area };
     set({ loc, permissionDenied: false });
     await persist(loc);
   },
@@ -196,4 +252,17 @@ export const useUserLocation = create<State>((set) => ({
 /** Non-hook read for the data layer (serviceability resolvePoint). */
 export function currentUserLoc(): UserLoc | null {
   return useUserLocation.getState().loc;
+}
+
+/**
+ * What to print after "Deliver to": the native locality when we have one, the
+ * city otherwise. One helper so the header, the cart and the order screens can
+ * never disagree about where the member thinks the milk is going.
+ */
+export function deliveryPlaceLabel(loc: UserLoc | null | undefined): string | null {
+  if (!loc) return null;
+  const area = (loc.area ?? '').trim();
+  if (area) return area;
+  const city = (loc.city ?? '').trim();
+  return city || null;
 }

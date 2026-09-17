@@ -8,6 +8,7 @@ import {
   type Profile,
 } from './session';
 import { resetServiceability } from './serviceability';
+import { resetNotificationCenter } from './notificationCenter';
 import { useUserLocation } from './userLocation';
 
 type AuthValue = {
@@ -78,6 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // account's signature and inherits its verdict (fence lifted or lowered
     // for the wrong person). Reset both so the new session resolves fresh.
     resetServiceability();
+    // The feed and its badge belong to the account that just left.
+    resetNotificationCenter();
     useUserLocation.setState({ loc: null, ready: false });
   }, []);
 

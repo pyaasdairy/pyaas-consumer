@@ -17,6 +17,14 @@ const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WD_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /**
+ * DEPRECATED, NOT RENDERED ANYWHERE (18 Sep). The home screen no longer shows
+ * this tile: the founder removed the "Your deliveries" day strip and its
+ * "Add more subscription" card from the hero, because they pushed the actual
+ * shop below the fold and duplicated what My Subscriptions already owns. The
+ * file is kept, unreferenced, so the calendar can be restored or moved onto the
+ * subscriptions screen without rebuilding it. Do not re-mount it on Home
+ * without asking.
+ *
  * Top "your deliveries" tile. Shows the next 7 mornings; each day reflects the
  * user's REAL scheduled deliveries (frequency-aware), so the count is never a
  * fabricated lump sum.

@@ -3,6 +3,7 @@ import { getUserId } from '../lib/session';
 import { getBalances, replayPendingPromos, reverseRetiredRechargeBonuses } from '../lib/walletApi';
 import { syncWalletUnlock } from '../lib/walletGate';
 import { replayParkedRestockLeads } from '../lib/leads';
+import { checkAutoTopup } from '../lib/autoTopup';
 
 /**
  * PYAAS wallet balance store. Reads the DERIVED balances off the append-only
@@ -51,6 +52,9 @@ export const useWallet = create<WalletState>((set) => ({
       // ₹500 gate: the first refresh that sees the balance at/over the target
       // unlocks purchasing and auto-starts the 7-day starter plan (idempotent).
       void syncWalletUnlock(b.available);
+      // AUTO TOP-UP WATCH: if the member armed it and the balance has fallen
+      // under their line, raise the one-a-day reminder (lib/autoTopup).
+      void checkAutoTopup(b.available);
       set({
         balance: b.available,
         cash: b.cash,

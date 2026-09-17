@@ -14,8 +14,9 @@ import { WelcomeLitrePopup } from '../../components/WelcomeLitrePopup';
 import { ShopSkeleton } from '../../components/Skeleton';
 import { HomeHeader, useHomeHeaderHeight } from '../../components/HomeHeader';
 import { BottomBar, useBottomBarClearance } from '../../components/BottomBar';
-import { DeliveryStrip } from '../../components/DeliveryStrip';
 import { HeroSlideshow } from '../../components/HeroSlideshow';
+import { LiveOrderCard } from '../../components/LiveOrderCard';
+import { RateAppSheet } from '../../components/RateAppSheet';
 import { CATEGORIES, type Category } from '../../constants/products';
 import { useCatalog, getMergedProducts, refreshCatalog, groupProducts, type GroupedProduct } from '../../lib/catalog';
 import { PromoGate } from '../../components/PromoGate';
@@ -25,11 +26,14 @@ import { useUserLocation } from '../../lib/userLocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useServiceability } from '../../lib/serviceability';
 import { useCart } from '../../store/cart';
-import { listOrders, type Order } from '../../lib/api';
-import { STATUS_LABEL } from '../../lib/orderStatus';
+import { listOrders } from '../../lib/api';
+import { useLiveOrders, isInstantOrder as isInstantLaneOrder } from '../../lib/orderTracking';
+import { instantWindow } from '../../lib/instantHours';
+import { recordDeliveredCount, shouldAskForRating } from '../../lib/appReview';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
 import { getWelcomeFunnelState, type WelcomeFunnelState } from '../../lib/crm';
-import { PREPAID_TARGET, prepaidTier } from '../../lib/prepaid';
+import { PREPAID_TARGET } from '../../lib/prepaid';
+import { balanceTier, MIN_RECHARGE } from '../../lib/pricing';
 import { listSubscriptions, syncServerSubscriptions } from '../../lib/subscriptions';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
 import { useWallet } from '../../store/wallet';
@@ -38,7 +42,7 @@ import { useAuth } from '../../lib/auth';
 import { haptics } from '../../lib/haptics';
 import { spring } from '../../lib/motion';
 import { PopOnChange } from '../../components/Pop';
-import { useBottomChrome } from '../../components/Toast';
+import { useBottomChrome, showToast } from '../../components/Toast';
 
 // The free-trial pack shown on every funnel surface: PYAAS Gold FULL CREAM.
 const FREE_PACK_IMG = require('../../assets/products/gold.png');
@@ -93,7 +97,8 @@ export default function Shop() {
   const [cat, setCat] = useState<Category | 'all'>('all');
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  // Rating prompt: offered only once the member has actually been served.
+  const [rateOpen, setRateOpen] = useState(false);
   // MORNING | INSTANT mode the whole home screen carries (shared store — the
   // product page honours it too). 'scheduled' (set elsewhere) renders as Morning.
   const mode = useDeliveryMode();
@@ -149,22 +154,29 @@ export default function Shop() {
     // The member clicked it — acknowledged for this location, permanently.
     if (oozSig.current) void AsyncStorage.setItem(oozSig.current, '1').catch(() => {});
   }, []);
-  // If the serving store doesn't run the ⚡ instant lane here, never leave the
-  // member stranded on the (now disabled) Instant tab — fall back to Morning.
+  // LIVE TRACKING: poll the member's own orders while Home is on screen, so a
+  // rider moving through the states updates the card here AND fires the
+  // notification (lib/orderTracking owns both, idempotently).
+  const live = useLiveOrders(true);
+  // Lane split for the tracking cards: truly-instant = lane says instant AND
+  // the 'by HH:MM' window shape (legacy rows carried a lane default and must
+  // stay in the Morning world).
+  const trackedOrders = useMemo(
+    () => live.orders.filter((o) => (instant ? isInstantLaneOrder(o) : !isInstantLaneOrder(o))).slice(0, 2),
+    [live.orders, instant],
+  );
+  // INSTANT HOURS: the published window is the floor under the store manager's
+  // toggle, so the lane is never advertised at 2 AM even if the backend is
+  // stale or silent. Closed-for-night NEVER removes the segment — it explains
+  // itself and names the hour it opens (founder call, 18 Sep).
+  const win = instantWindow(live.now);
+  const instantOpen = instantServed !== false && !instantClosed && win.open;
+  const instantNote = !win.open ? win.note : instantClosed ? `Instant resumes ${instantResumesLabel ?? 'soon'}` : instantServed === false ? 'Instant is not available at your address yet' : null;
+  // A shut lane must never leave the member stranded in the Instant world —
+  // the shop falls back to Morning, which is always open.
   useEffect(() => {
-    if (instantServed === false && mode === 'instant') setDeliveryMode('morning');
-  }, [instantServed, mode]);
-  // Lane split for the Track strip: truly-instant = lane says instant AND the
-  // 'by HH:MM' window shape (legacy rows carried a lane default and must stay
-  // in the Morning world).
-  const isInstantOrder = useCallback(
-    (o: Order) => o.lane === 'instant' && (o.delivery_window ?? '').toLowerCase().startsWith('by '),
-    [],
-  );
-  const stripOrders = useMemo(
-    () => activeOrders.filter((o) => (instant ? isInstantOrder(o) : !isInstantOrder(o))),
-    [activeOrders, instant, isInstantOrder],
-  );
+    if (!instantOpen && mode === 'instant') setDeliveryMode('morning');
+  }, [instantOpen, mode]);
   // Whether the member has an active/paused subscription — gates the low-wallet
   // "tomorrow's delivery may pause" nudge (never nag a fresh 0-wallet user).
   const [hasSub, setHasSub] = useState(false);
@@ -204,15 +216,22 @@ export default function Shop() {
   // WelcomeLitrePopup on the SERVER's eligibility say-so; members mid-2+2 keep
   // their running trial (lib/trial accounting untouched) — only the pitch died.
 
-  // Active orders drive the "Track your order" strip. Refetched whenever the
-  // home tab regains focus; renders nothing gracefully when there are none.
+  // Home focus: the rating gate's delivered count, serviceability, the
+  // subscription sweep and the campaign state. Live order tracking has its own
+  // poll loop (useLiveOrders above).
   useFocusEffect(
     useCallback(() => {
       let on = true;
       const loadOrders = () =>
         listOrders()
           .then((os) => {
-            if (on) setActiveOrders(os.filter((o) => !['delivered', 'cancelled'].includes(o.status)));
+            if (!on) return;
+            // How many mornings have actually landed — the rating ask waits for
+            // three, so we never beg for stars from someone we haven't served.
+            void recordDeliveredCount(os.filter((o) => o.status === 'delivered').length);
+            void shouldAskForRating().then((ask) => {
+              if (on && ask && !anyPopupOpen()) setRateOpen(true);
+            });
           })
           .catch(() => { /* signed out / offline — show nothing */ });
       loadOrders();
@@ -220,6 +239,13 @@ export default function Shop() {
       // their default address, the point (and its cache signature) changed, so
       // the gate + instant availability refresh. Cached/no-op for the same point.
       void svcCheck();
+      // ...and then KEEP re-checking while Home is on screen. The store
+      // manager's instant toggle is a live switch: without this poll the app
+      // held the cached verdict until the next cold focus, so reopening the
+      // lane took minutes to show up (tester report, 18 Sep). `force` skips
+      // the signature cache; 30s is frequent enough to feel immediate and
+      // cheap enough for a free-tier backend.
+      const svcPoll = setInterval(() => { void svcCheck({ force: true }); }, 30000);
       // SUBSCRIPTION SWEEP: turn today's due subscriptions into real morning
       // orders (idempotent per sub+day). Runs on launch + every home focus,
       // non-blocking and error-soft; when it places anything, re-pull the
@@ -231,7 +257,7 @@ export default function Shop() {
         .catch(() => { /* error-soft — retried on next focus */ });
       recheckWelcome();
       recheckFresh();
-      return () => { on = false; };
+      return () => { on = false; clearInterval(svcPoll); };
     }, [recheckWelcome, recheckFresh, refreshWallet, svcCheck])
   );
   // On every Home focus, re-pull the live catalog and flag any cart line that
@@ -365,7 +391,7 @@ export default function Shop() {
           <View>
             {/* MORNING | INSTANT mode toggle · the very top of the feed */}
             <Animated.View entering={FadeInDown.duration(400)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-              <DeliveryModeToggle instant={instant} instantServed={instantServed !== false} instantClosed={instantClosed} resumesLabel={instantResumesLabel} />
+              <DeliveryModeToggle instant={instant} instantOpen={instantOpen} note={instantNote} opensAtLabel={win.opensAtLabel} />
             </Animated.View>
 
             {/* PREPAID FUNNEL BANNER · shown to an EXISTING subscriber whose prepaid
@@ -374,7 +400,19 @@ export default function Shop() {
                 Never nags a fresh 0-wallet, no-subscription user (they see the trial). */}
             {hasSub && balance < PREPAID_TARGET ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-                {lowBalance ? (
+                {/* CRITICAL (under ₹100): a delivery can genuinely fail to
+                    settle, so this is red and says exactly that. LOW (under
+                    ₹200) keeps the pink "top up" tone. Founder call, 18 Sep. */}
+                {balanceTier(balance) === 'critical' ? (
+                  <Tap onPress={() => router.push(`/recharge?amount=${MIN_RECHARGE}&reason=so tomorrow's delivery is not paused`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.critical, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
+                    <Ionicons name="alert-circle" size={18} color={colors.white} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <TextSemi style={{ fontSize: 13 }} color={colors.white} numberOfLines={1}>Wallet critically low · {rupee(balance)}</TextSemi>
+                      <TextMed style={{ fontSize: 11.5 }} color="rgba(255,255,255,0.92)" numberOfLines={1}>Recharge {rupee(MIN_RECHARGE)} now so tomorrow's delivery is not paused</TextMed>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.85)" />
+                  </Tap>
+                ) : lowBalance ? (
                   <Tap onPress={() => router.push(`/recharge?amount=${PREPAID_TARGET}&reason=go prepaid for one-tap mornings`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.action, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, ...shadow.soft }}>
                     <Ionicons name="wallet" size={18} color={colors.gold} />
                     <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.white}>Low wallet. Add {rupee(PREPAID_TARGET)} so tomorrow's delivery isn't paused.</TextMed>
@@ -393,46 +431,27 @@ export default function Shop() {
             {/* (The small "start your subscription" strip that sat here was
                 redundant with the big trial card below — removed.) */}
 
-            {/* Track your order · MODE-AWARE: the Instant world only tracks
-                instant orders, the Morning world tracks the scheduled ones —
-                a scheduled order's tracker never bleeds into the Instant view
-                (that read as "I never placed an instant order?!"). An order is
-                truly instant only when lane says so AND its window is the
-                'by HH:MM' shape (legacy rows carried lane defaults). */}
-            {stripOrders.length > 0 ? (
-              <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-                {/* Premium tracking card: white surface, icon disc, real type
-                    hierarchy, chevron in its own disc — not a flat pink strip. */}
-                <Tap
-                  scaleTo={0.97}
-                  onPress={() =>
-                    stripOrders.length === 1
-                      ? router.push(`/order/${stripOrders[0].id}`)
-                      : router.push('/(tabs)/orders')
-                  }
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, paddingHorizontal: spacing.md, paddingVertical: 12, ...shadow.card }}
-                >
-                  <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="bicycle" size={21} color={colors.flameDeep} />
-                  </View>
-                  <View style={{ flex: 1, gap: 1 }}>
-                    <TextSemi style={{ fontSize: 15 }} color={colors.ink}>
-                      {stripOrders.length === 1 ? 'Track your order' : `${stripOrders.length} orders on the way`}
-                    </TextSemi>
-                    <TextBody style={{ fontSize: 12.5 }} color={colors.inkMute} numberOfLines={1}>
-                      {stripOrders.length === 1 ? STATUS_LABEL[stripOrders[0].status] : 'Track your order'}
-                    </TextBody>
-                  </View>
-                  <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="chevron-forward" size={16} color={colors.white} />
-                  </View>
-                </Tap>
+            {/* LIVE TRACKING · MODE-AWARE: the Instant world tracks instant
+                orders, the Morning world the scheduled ones, so a scheduled
+                order's tracker never bleeds into the Instant view. The card
+                carries the step rail + countdown and advances as the store
+                reports each state (lib/orderTracking, which also raises the
+                notification for the same transition). */}
+            {trackedOrders.length > 0 ? (
+              <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm }}>
+                {trackedOrders.map((o) => (
+                  <LiveOrderCard key={o.id} order={o} now={live.now} />
+                ))}
               </Animated.View>
             ) : null}
 
-            {/* Morning: the delivery calendar strip. Instant: swapped for the
-                ~20-minute ETA banner (no calendar — it's a now order). */}
-            {instant ? (
+            {/* THE HERO CALENDAR IS GONE (founder call, 18 Sep): the
+                "Your deliveries" day strip and its "Add more subscription"
+                card sat above the shop pushing products below the fold, and
+                repeated what My Subscriptions already owns. Instant keeps its
+                one-line promise banner; Morning goes straight to the offer +
+                subscription cards below. */}
+            {instant && trackedOrders.length === 0 ? (
               <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flameDeep, paddingHorizontal: 14, paddingVertical: 12, ...shadow.soft }}>
                   <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
@@ -446,11 +465,7 @@ export default function Shop() {
                   </View>
                 </View>
               </Animated.View>
-            ) : (
-              <Animated.View entering={FadeInDown.duration(440)}>
-                <DeliveryStrip />
-              </Animated.View>
-            )}
+            ) : null}
 
             {/* Free-pack funnel · the selling point. WHITE with a pink outline
                 on purpose — subtle and rich, not a pink slab; the accent lives
@@ -610,6 +625,10 @@ export default function Shop() {
       {/* Welcome Litre first-landing popup — the campaign's ONE self-presenting
           acquisition surface (§15.6), once per launch, on the server's say-so. */}
       <WelcomeLitrePopup state={wlState} />
+
+      {/* "Rate the app" — stars in-app first; four or five hop to the store,
+          one to three open the complaint register instead of a public review. */}
+      <RateAppSheet visible={rateOpen} onClose={() => setRateOpen(false)} />
     </View>
   );
 }
@@ -623,16 +642,13 @@ export default function Shop() {
 const TOGGLE_PAD = 4;
 const TOGGLE_GAP = 4;
 
-function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabel }: { instant: boolean; instantServed: boolean; instantClosed?: boolean; resumesLabel?: string | null }) {
-  // Instant segment disables when the address isn't served OR the store is shut
-  // for the night; the note below explains which. Morning always stays available.
-  const closedForNight = !!instantClosed;
+function DeliveryModeToggle({ instant, instantOpen, note, opensAtLabel }: { instant: boolean; instantOpen: boolean; note: string | null; opensAtLabel: string | null }) {
   // Sliding thumb: ONE pink pill that springs between the two segments on the
   // UI thread, instead of each segment repainting its own background (which
   // read as a bland instant swap). Segments stay transparent; the thumb sits
   // behind them and carries the fill + shadow.
   const [trackW, setTrackW] = useState(0);
-  const activeIdx = instant && instantServed ? 1 : 0;
+  const activeIdx = instant && instantOpen ? 1 : 0;
   const pos = useSharedValue(activeIdx);
   useEffect(() => {
     pos.value = withSpring(activeIdx, { damping: 19, stiffness: 240, mass: 0.7 });
@@ -641,6 +657,17 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: pos.value * (thumbW + TOGGLE_GAP) }],
   }));
+  // CLOSED ≠ REMOVED (founder call, 18 Sep). A shut instant lane keeps its
+  // segment, its badge and its tap: tapping says when it opens rather than
+  // doing nothing, which is what "don't disable instant" means in practice.
+  function onInstantPress() {
+    if (instantOpen) { setDeliveryMode('instant'); return; }
+    haptics.select();
+    showToast(
+      opensAtLabel ? `Instant opens at ${opensAtLabel}. Order for the morning slot instead.` : note ?? 'Instant is closed right now.',
+      { icon: 'moon-outline' },
+    );
+  }
   return (
     <View style={{ gap: 6 }}>
       <View
@@ -654,7 +681,7 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
           />
         ) : null}
         <ModeSegment
-          active={!instant}
+          active={!instant || !instantOpen}
           onPress={() => setDeliveryMode('morning')}
           icon="sunny"
           label="Morning"
@@ -662,20 +689,22 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
           a11yLabel="Morning delivery, 5 to 7:30 AM slot"
         />
         <ModeSegment
-          active={instant && instantServed}
-          disabled={!instantServed}
-          onPress={() => setDeliveryMode('instant')}
-          icon="flash"
+          active={instant && instantOpen}
+          // Dimmed, never dead: the tap explains the hours.
+          muted={!instantOpen}
+          onPress={onInstantPress}
+          icon={instantOpen ? 'flash' : 'moon'}
           label="Instant"
-          badge={instant && instantServed ? undefined : '20 min'}
-          a11yLabel={instantServed ? 'Instant delivery, 20 minutes' : closedForNight ? `Instant closed, resumes ${resumesLabel ?? 'soon'}` : 'Instant delivery not available at your address yet'}
+          sub={instantOpen ? undefined : opensAtLabel ? `from ${opensAtLabel}` : 'closed'}
+          badge={instantOpen && !(instant && instantOpen) ? '20 min' : undefined}
+          a11yLabel={instantOpen ? 'Instant delivery, 20 minutes' : note ?? 'Instant delivery closed right now'}
         />
       </View>
-      {!instantServed ? (
+      {note ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 }}>
-          <Ionicons name={closedForNight ? 'moon-outline' : 'information-circle-outline'} size={13} color={closedForNight ? colors.flameDeep : colors.inkMute} />
-          <TextMed style={{ fontSize: 11, flex: 1 }} color={closedForNight ? colors.flameDeep : colors.inkMute}>
-            {closedForNight ? `Instant resumes ${resumesLabel ?? 'soon'}` : 'Instant not available at your address yet'}
+          <Ionicons name={!instantOpen ? 'moon-outline' : 'information-circle-outline'} size={13} color={colors.inkSoft} />
+          <TextMed style={{ fontSize: 11, flex: 1 }} color={colors.inkSoft}>
+            {note}. Morning delivery is open.
           </TextMed>
         </View>
       ) : null}
@@ -683,17 +712,16 @@ function DeliveryModeToggle({ instant, instantServed, instantClosed, resumesLabe
   );
 }
 
-function ModeSegment({ active, onPress, icon, label, sub, badge, a11yLabel, disabled }: { active: boolean; onPress: () => void; icon: any; label: string; sub?: string; badge?: string; a11yLabel?: string; disabled?: boolean }) {
+function ModeSegment({ active, onPress, icon, label, sub, badge, a11yLabel, muted }: { active: boolean; onPress: () => void; icon: any; label: string; sub?: string; badge?: string; a11yLabel?: string; muted?: boolean }) {
   return (
     <Tap
-      haptic={!disabled}
-      onPress={disabled ? undefined : onPress}
+      onPress={onPress}
       accessibilityRole="button"
-      accessibilityState={{ selected: active, disabled: !!disabled }}
+      accessibilityState={{ selected: active }}
       accessibilityLabel={a11yLabel ?? label}
       // The sliding thumb behind the row carries the active fill + shadow —
       // segments stay transparent so the pill can glide between them.
-      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, opacity: disabled ? 0.42 : 1 }}
+      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radius.pill, opacity: muted ? 0.55 : 1 }}
     >
       <Ionicons name={icon} size={15} color={active ? colors.onAction : colors.flameDeep} />
       <View style={{ alignItems: 'flex-start' }}>

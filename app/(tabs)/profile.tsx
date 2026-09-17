@@ -19,6 +19,7 @@ import { listOrders } from '../../lib/api';
 import { listSubscriptions } from '../../lib/subscriptions';
 import { getVip, vipActive, vipDaysLeft, type VipMembership } from '../../lib/vip';
 import { useTabBarClearance } from '../../components/PyaasTabBar';
+import { RateAppSheet } from '../../components/RateAppSheet';
 
 const SUPPORT_EMAIL = CARE_EMAIL;
 const SITE = SITE_URL;
@@ -40,6 +41,9 @@ export default function Profile() {
   const [subCount, setSubCount] = useState(0);
   const [vip, setVip] = useState<VipMembership | null>(null);
   const [focused, setFocused] = useState(true);
+  // "Rate the app" is reachable on demand from the grid below, not only when
+  // the app decides to ask.
+  const [rateOpen, setRateOpen] = useState(false);
   const onScroll = useHideTabBarOnScroll();
   // The tab bar's real reach is insets.bottom + 90; a flat 130 clipped content
   // on home-indicator iPhones and over-padded on others.
@@ -136,6 +140,16 @@ export default function Profile() {
             { icon: 'notifications-outline', label: 'Message preferences', onPress: () => router.push('/message-preferences') },
           ]}
         />
+        <GridSection
+          delay={280}
+          title="Help and Feedback"
+          tiles={[
+            { icon: 'notifications-circle-outline', label: 'Notifications', onPress: () => router.push('/notifications') },
+            { icon: 'document-text-outline', label: 'Complaints', onPress: () => router.push('/complaints') },
+            { icon: 'star-outline', label: 'Rate the app', onPress: () => setRateOpen(true) },
+            { icon: 'help-buoy-outline', label: 'Help & support', onPress: () => router.push('/support') },
+          ]}
+        />
 
         {/* Membership card · PYAAS Plus */}
         <Animated.View entering={FadeInDown.duration(440).delay(300)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
@@ -229,6 +243,7 @@ export default function Profile() {
           <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>Version : {Constants.expoConfig?.version ?? '1.0.0'}</TextBody>
         </Animated.View>
       </Animated.ScrollView>
+      <RateAppSheet visible={rateOpen} onClose={() => setRateOpen(false)} />
     </View>
   );
 }

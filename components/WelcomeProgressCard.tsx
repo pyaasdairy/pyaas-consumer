@@ -31,7 +31,7 @@ function rows(o: NonNullable<CrmOfferView['offer']>): PackRow[] | null {
 
   const p1: PackRow =
     o.pack1_state === 'delivered'
-      ? { ...done, title: 'Pack 1 delivered', sub: '500 ml Full Cream, enjoyed on us' }
+      ? { ...done, title: 'Pack 1 delivered', sub: '500 ml Full Cream, free with our compliments' }
       : { ...wait, title: 'Pack 1 · on its way', sub: 'Arrives free with your first delivery' };
 
   switch (o.pack2_state) {

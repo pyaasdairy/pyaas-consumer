@@ -7,8 +7,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
+import { Confetti } from '../components/Fx';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill, BackButton } from '../components/ui';
 import { getWelcomeFunnelState, startWelcomeLitre, type WelcomeFunnelState, type WelcomePlan } from '../lib/crm';
+import { notify } from '../lib/notificationCenter';
 import { useDiscLang } from '../lib/i18n';
 import { OfferTermsSummary } from '../components/OfferTermsSummary';
 
@@ -44,6 +46,11 @@ export default function WelcomeOffer() {
   const [freq, setFreq] = useState<'daily' | 'alternate'>('daily');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // CELEBRATION (founder call, 18 Sep): when the free pack is actually
+  // claimed — the server accepted the address and started the plan — the screen
+  // holds for ~3.5 seconds of confetti before handing back to the shop. It is
+  // the one genuinely good moment in the funnel, so it gets a moment.
+  const [claimed, setClaimed] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let on = true;
@@ -57,7 +64,20 @@ export default function WelcomeOffer() {
       const body: WelcomePlan = { plan_product_id: plan.id, plan_qty: plan.qty, plan_frequency: freq };
       await startWelcomeLitre(body);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/(tabs)'); // home shows the plan card + the W-01 bell
+      // Tell the member in the notification feed too, so the claim is on the
+      // record they can go back to.
+      void notify({
+        kind: 'offer',
+        title: 'Your free litre is claimed',
+        body: 'Pack 1 arrives free with your first morning delivery. Nothing to pay now.',
+        href: '/(tabs)',
+        dedupe: 'welcome-litre-claimed',
+        silent: true,
+      });
+      setClaimed(true);
+      // Home shows the plan card + the W-01 bell once we get there.
+      setTimeout(() => router.replace('/(tabs)'), 3500);
+      return;
     } catch (e: any) {
       const code = e?.code ?? '';
       if (code === 'ADDRESS_REQUIRED') { router.push('/address'); return; }
@@ -70,6 +90,37 @@ export default function WelcomeOffer() {
   }
 
   const t = (en: string, hiText: string) => (hi ? hiText : en);
+
+  // ── Claimed · the celebration ──────────────────────────────────────────────
+  if (claimed) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.milk, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: 14, overflow: 'hidden' }}>
+        <Confetti run duration={3500} count={80} />
+        <Animated.View entering={FadeInDown.duration(420)} style={{ alignItems: 'center', gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+            <Image transition={220} source={PACK_IMG} style={{ width: 92, height: 92, transform: [{ rotate: '-8deg' }], marginRight: -12 }} contentFit="contain" />
+            <Image transition={220} source={PACK_IMG} style={{ width: 104, height: 104, transform: [{ rotate: '6deg' }] }} contentFit="contain" />
+          </View>
+          <Serif style={{ fontSize: 27, textAlign: 'center' }}>{t('Your first litre is yours', 'आपका पहला लीटर आपका है')}</Serif>
+          <TextBody style={{ fontSize: 14, textAlign: 'center', lineHeight: 21 }} color={colors.inkSoft}>
+            {t('Pack 1 arrives free with your first morning delivery. Nothing to pay now.',
+               'पहला पैक आपकी पहली सुबह की डिलीवरी के साथ मुफ़्त आएगा। अभी कुछ भी देना नहीं है।')}
+          </TextBody>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.flameSoft, borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 6 }}>
+            <Ionicons name="gift" size={14} color={colors.flameDeep} />
+            <TextSemi color={colors.flameDeep} style={{ fontSize: 12.5 }}>
+              {t('2 × 500 ml Full Cream = 1 litre, free', '2 × 500 मि.ली. फुल क्रीम = 1 लीटर, मुफ़्त')}
+            </TextSemi>
+          </View>
+        </Animated.View>
+        <Tap onPress={() => router.replace('/(tabs)')} style={{ alignSelf: 'stretch', marginTop: 8 }}>
+          <View style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', ...shadow.soft }}>
+            <TextSemi color={colors.white} style={{ fontSize: 16 }}>{t('Start shopping', 'दुकान पर चलिए')}</TextSemi>
+          </View>
+        </Tap>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>

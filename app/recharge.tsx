@@ -12,9 +12,10 @@ import { colors, radius, spacing, shadow, tabular, rupee, fonts } from '../lib/t
 import { Serif, TextBody, TextMed, TextSemi, Tap, BackButton } from '../components/ui';
 import { ShineSweep, FloatingParticles } from '../components/Fx';
 import { useBottomChrome } from '../components/Toast';
+import { AutoTopupCard } from '../components/AutoTopupCard';
 import { useWallet } from '../store/wallet';
 import { useAuth } from '../lib/auth';
-import { rechargeBonus } from '../lib/pricing';
+import { rechargeBonus, MIN_RECHARGE } from '../lib/pricing';
 import { PREPAID_TARGET } from '../lib/prepaid';
 import { rechargeWallet } from '../lib/walletApi';
 import { recordRechargeForOffer } from '../lib/freePack';
@@ -33,16 +34,19 @@ import {
   type CheckoutResult,
 } from '../lib/razorpay';
 
-// The recharge grid — the campaign §6.4 preset table VERBATIM: ₹300 / ₹500 /
-// ₹1,000 / ₹2,000, every tile at EQUAL visual weight — no badge, no louder
+// The recharge grid — every tile at EQUAL visual weight, no badge, no louder
 // border (Interface Interference is named in the CCPA's June 2026 enforcement).
-// ₹500 stays the opening selection; the ₹100 floor remains available through
-// the custom field but is never advertised.
-const PACKS = [300, 500, 1000, 2000];
+// ₹500 is the opening selection AND the floor: the campaign's §6.4 table
+// opened at ₹300, but ₹500 is now the minimum recharge anywhere in the app
+// (founder call, 18 Sep — it is also the Welcome Litre qualifier, so a member
+// can no longer half-fund themselves into a paused delivery), and a tile a
+// member cannot choose has no business on the grid. Four tiles keep the 2×2
+// symmetry.
+const PACKS = [MIN_RECHARGE, 1000, 2000, 3000];
 
-// §6.4 day-equivalents, matching the published table exactly (toned 1 L/day at
-// ₹59: ₹300 ≈ 5 · ₹500 ≈ 8 · ₹1,000 ≈ 17 · ₹2,000 ≈ 34). Always "≈", never a
-// promise — the footnote under the grid names the basis.
+// §6.4 day-equivalents on the published basis (toned 1 L/day at ₹59: ₹500 ≈ 8
+// · ₹1,000 ≈ 17 · ₹2,000 ≈ 34 · ₹3,000 ≈ 51). Always "≈", never a promise —
+// the footnote under the grid names the basis.
 const MORNING_RATE = 59;
 const morningsFor = (amt: number) => Math.max(1, Math.round(amt / MORNING_RATE));
 
@@ -71,9 +75,9 @@ export default function Recharge() {
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
   const params = useLocalSearchParams<{ amount?: string; min?: string; returnTo?: string; reason?: string }>();
-  // Global floor: ₹100 is the smallest recharge anywhere in the app. A caller's
-  // shortfall (`min` param) can only RAISE the floor, never lower it.
-  const MIN_RECHARGE = 99; // aligned with the advertised 2+2 offer minimum
+  // Global floor: ₹500 is the smallest recharge anywhere in the app (lib/pricing
+  // owns the number). A caller's shortfall (`min` param) can only RAISE the
+  // floor, never lower it, and the custom box cannot go under it either.
   const min = Math.max(MIN_RECHARGE, Math.round(Number(params.min) || 0));
   // returnTo is deep-linkable (pyaas://recharge?returnTo=...), so it may only
   // ever point at an INTERNAL route — a crafted link must not steer
@@ -86,9 +90,9 @@ export default function Recharge() {
   const refresh = useWallet((s) => s.refresh);
 
   const initial = useMemo(() => {
-    // ₹500 is ALWAYS the opening selection (the funnel), raised only when the
-    // caller's explicit amount or a large shortfall needs more. Members can
-    // still tap a smaller path by typing a custom amount (₹100 floor).
+    // ₹500 is ALWAYS the opening selection (it is both the funnel target and
+    // the floor), raised only when the caller's explicit amount or a large
+    // shortfall needs more.
     const a = Math.round(Number(params.amount) || 0);
     const want = Math.max(a, min > 0 ? snapUp(min) : 0);
     return Math.max(PREPAID_TARGET, want);
@@ -96,16 +100,15 @@ export default function Recharge() {
 
   // `amount` is the string the custom field holds; `selected` is the committed value.
   const [selected, setSelected] = useState<number>(initial);
-  // Custom amount opens PRE-FILLED at ₹250 (founder call, 9 Sep) unless the caller
-  // pinned an amount (offer card / nudges) or the required minimum is above it.
+  // The custom box opens PRE-FILLED at the floor, ₹500 (founder call, 18 Sep;
+  // it opened at ₹250 before the floor moved). A caller that passes a preset
+  // amount keeps that tile selected instead; any other passed amount (the
+  // wallet tab's own box) lands in the custom box.
   const [custom, setCustom] = useState(() => {
-    // Founder call (9 Sep): the custom box always OPENS at ₹250. A caller that
-    // passes a preset amount (offer card → ₹500) keeps its tile selected; any
-    // other passed amount (the wallet tab's own box) lands in the custom box.
     const a = Math.round(Number(params.amount) || 0);
     if (a > 0 && PACKS.includes(a)) return '';
     if (a > 0 && a >= min) return String(a);
-    return min <= 250 ? '250' : '';
+    return String(min);
   });
   const value = custom.trim() ? Math.max(0, Math.round(Number(custom) || 0)) : selected;
   const bonus = rechargeBonus(value);
@@ -406,20 +409,29 @@ export default function Recharge() {
             <TextMed color={colors.flameDeep} style={{ fontSize: 11 }} onPress={() => router.push('/terms')}>Terms</TextMed>
           </TextBody>
 
+          {/* AUTO TOP-UP comes BEFORE the custom box (founder call, 18 Sep):
+              the better answer to "how much?" is "never think about it". */}
+          <AutoTopupCard />
+
           {/* Custom amount */}
+          <TextMed style={{ fontSize: 12.5 }} color={colors.inkSoft}>Or enter your own amount (minimum {rupee(MIN_RECHARGE)})</TextMed>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1.5, borderColor: custom.trim() ? colors.flameDeep : colors.line, paddingHorizontal: 14, height: 54 }}>
             <Serif style={{ fontSize: 20 }} color={colors.inkMute}>₹</Serif>
             <TextInput
               value={custom}
               onChangeText={(t) => { setCustom(t.replace(/[^0-9]/g, '')); setError(''); }}
               keyboardType="number-pad"
-              placeholder="Enter a custom amount"
+              placeholder={`Minimum ${rupee(MIN_RECHARGE)}`}
               placeholderTextColor={colors.inkMute}
               style={{ flex: 1, fontFamily: fonts.sansSemi, fontSize: 18, color: colors.ink, ...tabular }}
             />
           </View>
           {belowMin ? (
-            <TextMed color={colors.danger} style={{ fontSize: 12.5 }}>Enter at least {rupee(min)} {reason || 'to continue'}.</TextMed>
+            <TextMed color={colors.dangerDeep} style={{ fontSize: 12.5 }}>
+              {value > 0 && min === MIN_RECHARGE
+                ? `The smallest recharge is ${rupee(MIN_RECHARGE)}. It funds about ${morningsFor(MIN_RECHARGE)} mornings.`
+                : `Enter at least ${rupee(min)} ${reason || 'to continue'}.`}
+            </TextMed>
           ) : custom.trim() && value > 0 ? (
             <Animated.View entering={FadeIn.duration(220)}>
               <TextMed color={colors.blue} style={{ fontSize: 12.5, ...tabular }}>

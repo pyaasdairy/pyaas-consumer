@@ -31,6 +31,8 @@ export const colors = {
   success: '#D63C95',
   danger: '#E04B6E',
   dangerDeep: '#C0344D',                 // destructive text/links (delete account, form errors)
+  critical: '#D92D3F',                   // CRITICAL state fill: wallet under the floor, blocked action
+  criticalSoft: 'rgba(217,45,63,0.10)',  // its wash (banner backgrounds, chips)
   live: '#1B8A3A',                       // status green: LIVE pills, on-time, delivered
   liveSoft: 'rgba(27,138,58,0.10)',
   warn: '#E9A23B',                       // ratings star / caution

@@ -1,19 +1,12 @@
-import React, { useState } from 'react';
+import React, { useCallback } from 'react';
 import { View, ScrollView, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow } from '../lib/theme';
-import { Serif, TextBody, TextMed, TextSemi, Button, Field, Tap, BackButton } from '../components/ui';
-import { CARE_EMAIL, HAS_CARE_PHONE, SITE_URL, SUPPORT, callCare, emailCare } from '../lib/support';
-
-const TYPES = [
-  { key: 'missing', label: 'Missing delivery', icon: 'bag-remove-outline' },
-  { key: 'quality', label: 'Quality issue', icon: 'flask-outline' },
-  { key: 'payment', label: 'Payment issue', icon: 'card-outline' },
-  { key: 'other', label: 'Something else', icon: 'help-circle-outline' },
-];
+import { Serif, TextBody, TextSemi, Tap, BackButton } from '../components/ui';
+import { CARE_EMAIL, HAS_CARE_PHONE, SITE_URL, SUPPORT, callCare } from '../lib/support';
+import { useComplaints } from '../lib/complaints';
 
 const SUPPORT_ADDRESS = CARE_EMAIL;
 const SUPPORT_EMAIL = `mailto:${CARE_EMAIL}?subject=PYAAS%20support`;
@@ -22,35 +15,12 @@ const SUPPORT_SITE = SITE_URL;
 export default function Support() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [kind, setKind] = useState('missing');
-  const [detail, setDetail] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [err, setErr] = useState('');
-
-  async function submit() {
-    if (!detail.trim()) { setErr('Please describe the issue.'); return; }
-    setBusy(true); setErr('');
-    try {
-      // There is no support backend yet, so this screen cannot "raise" anything.
-      // It used to acknowledge locally and tell the customer we'd get back to
-      // them — a promise nobody on our side could ever see. Until the parag-api
-      // support endpoint exists, hand the complaint to the channel a human
-      // actually reads and say plainly that sending it is still the user's tap.
-      const label = TYPES.find((t) => t.key === kind)?.label ?? 'Support';
-      const opened = await emailCare(
-        `PYAAS complaint: ${label}`,
-        `Issue: ${label}\n\n${detail.trim()}\n\nSent from the PYAAS app`,
-      );
-      if (!opened) {
-        setErr(`Could not open your email app. Please write to ${SUPPORT_ADDRESS}${HAS_CARE_PHONE ? ` or call ${SUPPORT.careNumber}` : ''}.`);
-        return;
-      }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setDone(true);
-    } catch (e: any) { setErr(e?.message ?? `Could not submit. Please email ${SUPPORT_ADDRESS} instead.`); }
-    finally { setBusy(false); }
-  }
+  // How many complaints are still open — shown on the register card so the
+  // member can see at a glance that we have something of theirs in hand.
+  const complaints = useComplaints((st) => st.rows);
+  const refreshComplaints = useComplaints((st) => st.refresh);
+  useFocusEffect(useCallback(() => { void refreshComplaints(); }, [refreshComplaints]));
+  const openCount = complaints.filter((c) => c.status !== 'resolved' && c.status !== 'closed').length;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
@@ -108,32 +78,37 @@ export default function Support() {
           <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
         </Tap>
 
-        {done ? (
-          <View style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: 10 }}>
-            <Ionicons name="mail-open-outline" size={56} color={colors.blue} />
-            <TextSemi style={{ fontSize: 16 }}>Complaint ready to send</TextSemi>
-            <TextBody style={{ textAlign: 'center' }}>
-              We’ve opened your email app with the details filled in. Send that mail and our team replies to you there{HAS_CARE_PHONE ? ', or use the Call customer care button above if it’s urgent' : ''}.</TextBody>
+        {/* THE COMPLAINT REGISTER (new, 18 Sep): complaints now live on a real
+            register with a reference and a status, instead of being handed to
+            the member's email app and forgotten. This card is the entry point;
+            app/complaints.tsx owns filing and following them. */}
+        <Tap onPress={() => router.push('/complaints')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.flame, padding: spacing.md, ...shadow.soft }}>
+          <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.flameSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="document-text-outline" size={20} color={colors.flameDeep} />
           </View>
-        ) : (
-          <>
-            <TextSemi style={{ fontSize: 16 }}>Raise a complaint</TextSemi>
-            <TextBody color={colors.inkSoft} style={{ fontSize: 12.5 }}>
-              We don’t have an in-app complaints desk yet, so this opens your email app with the details filled in.
+          <View style={{ flex: 1 }}>
+            <TextSemi style={{ fontSize: 15 }}>Register a complaint</TextSemi>
+            <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>
+              {openCount > 0 ? `${openCount} open · track it here` : 'Get a reference number and follow it'}
             </TextBody>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {TYPES.map((t) => (
-                <Tap key={t.key} onPress={() => setKind(t.key)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '47%', flexGrow: 1, paddingVertical: 12, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: kind === t.key ? colors.action : colors.white, borderWidth: 1, borderColor: kind === t.key ? colors.action : colors.line }}>
-                  <Ionicons name={t.icon as any} size={18} color={kind === t.key ? colors.white : colors.inkSoft} />
-                  <TextMed color={kind === t.key ? colors.white : colors.inkSoft} style={{ fontSize: 13 }}>{t.label}</TextMed>
-                </Tap>
-              ))}
-            </View>
-            <Field label="What happened?" value={detail} onChangeText={setDetail} placeholder="Describe the issue…" multiline style={{ minHeight: 90, textAlignVertical: 'top' }} />
-            {err ? <TextBody color={colors.flameDeep} style={{ fontSize: 13 }}>{err}</TextBody> : null}
-            <Button title="Email this complaint" loading={busy} onPress={submit} />
-          </>
-        )}
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.flameDeep} />
+        </Tap>
+
+        <Tap onPress={() => router.push('/notifications')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.line, ...shadow.soft }}>
+          <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="notifications-outline" size={20} color={colors.flameDeep} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <TextSemi style={{ fontSize: 15 }}>Notifications</TextSemi>
+            <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>Everything we have told you, in one place</TextBody>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
+        </Tap>
+
+        <TextBody style={{ fontSize: 11.5, textAlign: 'center', marginTop: spacing.sm }} color={colors.inkMute}>
+          Consumer helpline {SUPPORT.helpline} · {CARE_EMAIL}
+        </TextBody>
       </ScrollView>
     </View>
   );

@@ -11,13 +11,15 @@ import { FloatingParticles, ShineSweep, useCountUp } from '../../components/Fx';
 import { useTabBarClearance } from '../../components/PyaasTabBar';
 import { useHideTabBarOnScroll } from '../../lib/navVisibility';
 import { useWallet } from '../../store/wallet';
-import { rechargeBonus, LOW_BALANCE_THRESHOLD } from '../../lib/pricing';
+import { rechargeBonus, LOW_BALANCE_THRESHOLD, CRITICAL_BALANCE_THRESHOLD, MIN_RECHARGE, balanceTier } from '../../lib/pricing';
 import { getAutopay, setupAutopay, cancelAutopay, approveAutopay, getSpendSummary, type AutopayMandate } from '../../lib/walletApi';
 import { isBackendConfigured } from '../../lib/apiClient';
 import { getCrmOffer, type CrmOfferView } from '../../lib/crm';
+import { AutoTopupCard } from '../../components/AutoTopupCard';
 
 // Quick recharge packs surfaced on the dashboard (bonus resolved from pricing).
-const QUICK_PACKS = [500, 1000, 2000];
+// The smallest is the app-wide floor — ₹500 (lib/pricing.MIN_RECHARGE).
+const QUICK_PACKS = [MIN_RECHARGE, 1000, 2000];
 // Auto top-up presets (threshold to trip at · amount to add).
 const TOPUP_THRESHOLDS = [100, 200, 300];
 const TOPUP_AMOUNTS = [500, 1000, 2000];
@@ -34,7 +36,8 @@ export default function Wallet() {
   const [autopay, setAutopay] = useState<AutopayMandate | null>(null);
   const [days, setDays] = useState<number | null>(null);
   const [burn, setBurn] = useState(0);
-  const [amount, setAmount] = useState('250'); // opens at ₹250 (founder call, 9 Sep)
+  // The custom box opens at the floor, ₹500 (founder call, 18 Sep).
+  const [amount, setAmount] = useState(String(MIN_RECHARGE));
   const [threshold, setThreshold] = useState(TOPUP_THRESHOLDS[1]);
   const [topupAmt, setTopupAmt] = useState(TOPUP_AMOUNTS[1]);
   const [busy, setBusy] = useState(false);
@@ -65,13 +68,17 @@ export default function Wallet() {
   }, [load]));
 
   const shownBalance = useCountUp(balance, 1000, focused); // count-up on load
+  const tier = balanceTier(balance);
   const amt = Number(amount) || 0;
+  const amtBelowFloor = amt > 0 && amt < MIN_RECHARGE;
   const bonus = rechargeBonus(amt);
   const autopayOn = !!autopay;
 
   function doRecharge(value: number) {
-    if (value <= 0) return;
-    setAmount('250'); // re-arm the ₹250 default for the next visit
+    // The floor is enforced here as well as on the recharge screen, so no path
+    // into checkout can carry an amount under ₹500.
+    if (value < MIN_RECHARGE) return;
+    setAmount(String(MIN_RECHARGE)); // re-arm the default for the next visit
     router.push(`/recharge?amount=${value}`);
   }
 
@@ -159,8 +166,30 @@ export default function Wallet() {
           </View>
         </Animated.View>
 
-        {/* Low-balance warning */}
-        {lowBalance ? (
+        {/* Low-balance funnel, TWO TIERS (founder call, 18 Sep). Under ₹100 is
+            CRITICAL: a delivery can genuinely fail to settle, so it is red,
+            states the balance and carries the recharge CTA itself. Under ₹200
+            stays the soft pink "top up soon" note. */}
+        {tier === 'critical' ? (
+          <Animated.View entering={FadeIn.duration(260)}>
+            <View style={{ backgroundColor: colors.critical, borderRadius: radius.lg, padding: spacing.md, gap: 10, ...shadow.soft }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Ionicons name="alert-circle" size={20} color={colors.white} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <TextSemi color={colors.white} style={{ fontSize: 14.5 }}>Balance critically low</TextSemi>
+                  <TextMed color="rgba(255,255,255,0.92)" style={{ fontSize: 12.5 }}>
+                    Under {rupee(CRITICAL_BALANCE_THRESHOLD)} your next morning can be paused.
+                  </TextMed>
+                </View>
+              </View>
+              <Tap onPress={() => doRecharge(MIN_RECHARGE)}>
+                <View style={{ height: 46, borderRadius: radius.pill, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' }}>
+                  <TextSemi color={colors.critical} style={{ fontSize: 14.5, ...tabular }}>Recharge {rupee(MIN_RECHARGE)} now</TextSemi>
+                </View>
+              </Tap>
+            </View>
+          </Animated.View>
+        ) : lowBalance ? (
           <Animated.View entering={FadeIn.duration(260)}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.flame, padding: spacing.md }}>
               <Ionicons name="alert-circle" size={20} color={colors.flameDeep} />
@@ -248,12 +277,19 @@ export default function Wallet() {
             })}
           </View>
 
-          {/* Custom amount */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, height: 52 }}>
+          {/* AUTO TOP-UP is offered BEFORE the custom box (founder call, 18 Sep):
+              set it once and the wallet stops being something to remember. */}
+          <AutoTopupCard />
+
+          {/* Custom amount — never below the ₹500 floor. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: amtBelowFloor ? colors.dangerDeep : colors.line, paddingHorizontal: 14, height: 52 }}>
             <Serif style={{ fontSize: 20 }} color={colors.inkMute}>₹</Serif>
-            <TextInput value={amount} onChangeText={setAmount} keyboardType="number-pad" placeholder="Custom amount" placeholderTextColor={colors.inkMute} style={{ flex: 1, fontFamily: fonts.sansSemi, fontSize: 18, color: colors.ink, ...tabular }} />
-            <Button title="Add" small disabled={amt <= 0} onPress={() => doRecharge(amt)} style={{ paddingHorizontal: 22 }} />
+            <TextInput value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder={`Minimum ${rupee(MIN_RECHARGE)}`} placeholderTextColor={colors.inkMute} style={{ flex: 1, fontFamily: fonts.sansSemi, fontSize: 18, color: colors.ink, ...tabular }} />
+            <Button title="Add" small disabled={amt < MIN_RECHARGE} onPress={() => doRecharge(amt)} style={{ paddingHorizontal: 22 }} />
           </View>
+          {amtBelowFloor ? (
+            <TextMed color={colors.dangerDeep} style={{ fontSize: 12.5 }}>The smallest recharge is {rupee(MIN_RECHARGE)}.</TextMed>
+          ) : null}
           {bonus ? (
             <Animated.View entering={FadeIn.duration(260)}>
               <TextMed color={colors.blue} style={{ fontSize: 12.5 }}>

@@ -2,7 +2,7 @@
   "expo": {
     "name": "PYAAS",
     "slug": "pyaas-app",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "scheme": [
       "pyaas",
       "parag"
@@ -13,7 +13,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "in.pyaasdairy.app",
-      "buildNumber": "14",
+      "buildNumber": "15",
       "associatedDomains": [
         "applinks:pyaasdairy.com",
         "applinks:www.pyaasdairy.com"
@@ -126,7 +126,7 @@
     },
     "android": {
       "package": "in.pyaasdairy.app",
-      "versionCode": 39,
+      "versionCode": 40,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
@@ -205,6 +205,14 @@
           "motionUsagePermission": "PYAAS uses motion data only to keep delivery tracking and map animations smooth on your device. It is never stored or shared.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#F36CB5",
+          "defaultChannel": "orders",
+          "enableBackgroundRemoteNotifications": false
         }
       ],
       "expo-sharing",

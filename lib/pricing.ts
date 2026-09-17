@@ -36,6 +36,31 @@ export function rechargeBonus(_amount: number): RechargeTier | null {
 
 export const LOW_BALANCE_THRESHOLD = 200; // ₹ below which we nudge a recharge
 
+/**
+ * CRITICAL balance (founder call, 18 Sep): below ₹100 a morning delivery can
+ * genuinely fail to settle, so the nudge stops being a pink suggestion and
+ * becomes a red one. LOW (< ₹200) stays the soft "top up soon" tier — two
+ * tiers, one threshold each, so no screen invents its own number.
+ */
+export const CRITICAL_BALANCE_THRESHOLD = 100;
+
+/** Which wallet tier a balance sits in. Drives colour + copy everywhere. */
+export type BalanceTier = 'critical' | 'low' | 'healthy';
+export function balanceTier(balance: number): BalanceTier {
+  if (balance < CRITICAL_BALANCE_THRESHOLD) return 'critical';
+  if (balance < LOW_BALANCE_THRESHOLD) return 'low';
+  return 'healthy';
+}
+
+/**
+ * MINIMUM RECHARGE (founder call, 18 Sep): ₹500 is the floor for EVERY top-up
+ * path — presets, the custom box, a shortfall passed in by a caller. It is the
+ * amount that funds a real week of mornings, and it is also the Welcome Litre
+ * qualifier, so a member can never half-fund themselves into a paused
+ * delivery. Every screen reads this constant; nothing hardcodes 250 or 100.
+ */
+export const MIN_RECHARGE = 500;
+
 // ── ORDER LIMITS (fair-use; protects launch inventory) ──────────────────────
 export const MAX_QTY_PER_PRODUCT = 10; // units of one product per order
 export const MAX_ITEMS_PER_ORDER = 30; // total units per order

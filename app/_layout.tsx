@@ -21,6 +21,7 @@ import { runOneTimeLocalReset } from '../lib/localReset';
 import { drainMirrorQueue } from '../lib/mirrorQueue';
 import { warmBackend } from '../lib/warmup';
 import { ToastHost } from '../components/Toast';
+import { ensureChannels, installForegroundHandler } from '../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hydrateProfileFromServer } from '../lib/profileApi';
 // Importing consentSync also registers the 'consents' mirror handler at boot,
@@ -107,6 +108,12 @@ function RootNavigator() {
   // auth/session hangs (so it can't wedge).
   useEffect(() => {
     warmBackend(); // wake the sleeping backend NOW, while the splash/consent plays
+    // Notifications: register the Android channels and the foreground
+    // presentation rule at boot. This asks for NOTHING — permission is only
+    // ever requested from the notifications screen, where the member can read
+    // what we would send first.
+    installForegroundHandler();
+    void ensureChannels();
     const min = setTimeout(() => setMinSplash(true), 700);
     const max = setTimeout(() => setMaxWaited(true), 5000);
     return () => { clearTimeout(min); clearTimeout(max); };
