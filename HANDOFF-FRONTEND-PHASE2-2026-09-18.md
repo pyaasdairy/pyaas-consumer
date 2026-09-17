@@ -238,7 +238,7 @@ native folders are gitignored and were last generated at 1.0.0); it is now in
 step with `app.json`, but a Play release still goes through EAS remote
 versioning, not these numbers.
 
-**Five things the emulator walkthrough changed**, all of them worth knowing:
+**Six things the emulator walkthrough changed**, all of them worth knowing:
 
 1. **Android notification permission has no "not asked yet" state.** A member
    who has never seen the dialog reads back as `denied` with
@@ -255,6 +255,13 @@ versioning, not these numbers.
    filtered by what was typed before read as a list with rows missing.
 5. **Complaint chips ellipsized** ("Problem wit…"). Labels are shorter and the
    chips now wrap to two lines.
+6. **The sign-in carousel still sold the retired 2+2 offer.** `landing-4.png`
+   reads "FREE MILK FOR 2 DAYS · Join now and enjoy 2 days on us" and played on
+   the very first screen a new member sees, while the live offer is one free
+   litre. It is now pulled from rotation, exactly as `banner-1`/`banner-2` were
+   pulled from the home carousel for the same reason. **This needs artwork, not
+   code:** supply corrected Welcome Litre art and add it back to the `SLIDES`
+   list in `app/(auth)/otp.tsx`.
 
 ## 9. Build and run
 
@@ -315,3 +322,5 @@ was needed; iOS needed the `pod install` above.
 - The published Terms and Privacy PDFs still print the old `99996 80081`. The
   app now shows the registered number everywhere, so the **documents** are the
   stale ones and need reissuing.
+- Corrected Welcome Litre artwork for the sign-in carousel (and for the two home
+  banners pulled earlier). Three creatives are missing from rotation until then.

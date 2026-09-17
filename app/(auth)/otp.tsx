@@ -43,12 +43,21 @@ import { ConsentWelcome } from '../../components/ConsentWelcome';
  * absent (all of iOS, and Android without Play Services).
  */
 
-// The four landing creatives, in order, for the top slideshow.
+// The landing creatives, in order, for the top slideshow.
+//
+// landing-4 is PULLED from rotation (18 Sep) for the same reason banner-1 and
+// banner-2 were pulled from the home carousel: the artwork reads "FREE MILK FOR
+// 2 DAYS · Join now and enjoy 2 days on us", which is the RETIRED 2+2 pitch.
+// The live offer is one free litre (500 ml with the first delivery, the second
+// pack on a ₹500 recharge), so that art promised a different free thing than
+// the app delivers — on the very first screen a new member sees, before
+// sign-in. A free-milk claim the app does not honour is a false money claim
+// (Play Deceptive Behavior, the original takedown reason). Do not re-add the
+// file: add corrected Welcome Litre art and list it here.
 const SLIDES = [
   require('../../assets/landing/landing-1.png'),
   require('../../assets/landing/landing-2.png'),
   require('../../assets/landing/landing-3.png'),
-  require('../../assets/landing/landing-4.png'),
 ];
 const SLIDE_RATIO = 1024 / 1536; // h/w of the landing art
 const SLIDE_INTERVAL = 3400;
