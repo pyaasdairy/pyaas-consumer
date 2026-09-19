@@ -223,13 +223,18 @@ can re-check on receipt.
 
 ## 8. Builds, and what testing changed
 
-**Artifacts from this pass** (both walked on a device/emulator, both carrying
-Hermes bytecode 96):
+**Artifacts from this pass** (both walked on a device/emulator):
 
-| Platform | Version | Where |
-|---|---|---|
-| Android | 1.0.4, versionCode 40 | `~/Desktop/pyaas-apks/PYAAS-TEST-0918-0236-…-phase2-v104.apk` |
-| iOS | 1.0.4, build 15 | installed on the iPhone 17 Pro from `Release-iphoneos/PYAAS.app` |
+| Platform | Version | Hermes | Where |
+|---|---|---|---|
+| Android | 1.0.4, versionCode 40 | stock V1, bytecode 98 | `~/Desktop/pyaas-apks/PYAAS-TEST-0920-0149-28ae1d1-phase2-hermesV1.apk` |
+| iOS | 1.0.4, build 15 | 0.16 opt-out, bytecode 96 | installed on the iPhone 17 Pro from `Release-iphoneos/PYAAS.app` |
+
+The Android APK was rebuilt on 20 Sep after merging the co-dev's `e3b5793`,
+which moved Android back to stock Hermes V1 after the 0.16 opt-out crashed a
+real Samsung about 10 seconds after launch. The rebuild ran about four minutes
+across every tab on an arm64 emulator with no crash. The earlier bytecode-96
+APK from 18 Sep is superseded; do not circulate it.
 
 The version was moved to **1.0.4 / build 15 / versionCode 40** so these cannot
 collide with 1.0.3 build 14, which is in App Review. Note that the local
@@ -276,11 +281,17 @@ cd ios && pod install
 
 Two standing rules for this repo, both learned the hard way:
 
-1. **Always verify the Hermes bytecode version is 96** after a build —
-   `head -c 12 <bundle> | xxd`, byte 8 must be `0x60`. A failed `hermesc`
-   silently ships a stale bundle and the app crashes on launch with "Wrong
-   bytecode version". The three halves of the Hermes 0.16 pairing are documented
-   in `plugins/withHermesV1Disabled.js`.
+1. **Always verify the Hermes bytecode version after a build**, per platform:
+   `head -c 12 <bundle> | xxd`, byte 8 must be `0x60` (96) on **iOS** and
+   `0x62` (98) on **Android**. iOS keeps the Hermes 0.16 opt-out (three halves,
+   documented in `plugins/withHermesV1Disabled.js`); Android runs stock V1 since
+   `e3b5793`. A failed `hermesc` silently ships a stale bundle and the app
+   crashes on launch with "Wrong bytecode version". Because `android/` is
+   gitignored, an old checkout keeps the opt-out until you either prebuild or
+   remove `hermesV1Enabled=false` from `android/gradle.properties` and the
+   `ios/Pods` `hermesCommand` line from `android/app/build.gradle`. After that
+   change, clear every `node_modules/*/android/.cxx` and `android/build` folder,
+   or the native build links against a library `gradlew clean` already deleted.
 2. **`adb install -r` silently fails over a differently-signed install.**
    `adb uninstall in.pyaasdairy.app` first.
 
