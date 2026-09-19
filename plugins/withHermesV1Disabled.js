@@ -82,19 +82,27 @@ module.exports = function withHermesV1Disabled(config) {
     cfg.modResults['expo.useHermesV1'] = 'false';
     return cfg;
   });
+  // ANDROID: the V1 opt-out is iOS-ONLY now. Android never showed the V1
+  // launch-freeze, and forcing hermes-android 0.16 crashed at RUNTIME instead:
+  // SIGSEGV inside libhermesvm.so on the JS thread ~10s after launch —
+  // reproduced on an arm64 API-35 emulator (1 Sep 2026) and matching the
+  // field crash on a Samsung ("PYAAS closed because this app has a bug").
+  // Root cause family: the only HBC-96 compiler reachable on a laptop build is
+  // the hermes-IOS artifact's hermesc (pod tarball / maven twin), and its
+  // output is not reliably compatible with the hermes-ANDROID 0.16 VM — same
+  // marketing version, different builds. Stock V1 on Android = matched
+  // VM + compiler out of the box, 16KB-aligned, no custom toolchain juggling.
   config = withGradleProperties(config, (cfg) => {
-    // Replace any existing entry so re-running prebuild stays idempotent.
+    // Strip any stale opt-out from earlier prebuilds; DO NOT re-add it.
     cfg.modResults = cfg.modResults.filter(
       (item) => !(item.type === 'property' && item.key === 'hermesV1Enabled'),
     );
-    cfg.modResults.push({
-      type: 'comment',
-      value: 'Hermes V1 <= 250829098.0.15 memory regression — see plugins/withHermesV1Disabled.js',
-    });
-    cfg.modResults.push({ type: 'property', key: 'hermesV1Enabled', value: 'false' });
     return cfg;
   });
-  config = withAppBuildGradle(config, (cfg) => {
+  // Android compiler half likewise removed — the Expo template's default
+  // hermesCommand (hermes-compiler npm, V1/HBC-98) now matches the V1 VM.
+  // eslint-disable-next-line no-unused-vars
+  const _disabledAndroidCompilerHalf = (cfg) => {
     // ANDROID COMPILER HALF (the Aug-21 test APK proved the gap): with
     // hermesV1Enabled=false the gradle plugin swaps the ENGINE to
     // hermes-android 0.16.0 (HBC 96) but still resolves hermesc from the
@@ -116,7 +124,7 @@ module.exports = function withHermesV1Disabled(config) {
       cfg.modResults.contents = c.replace(/(^react \{)/m, `$1\n${line}`);
     }
     return cfg;
-  });
+  };
   config = withDangerousMod(config, [
     'ios',
     async (cfg) => {

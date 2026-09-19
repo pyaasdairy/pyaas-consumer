@@ -52,7 +52,9 @@ export function WelcomeLitrePopup({ state }: { state: WelcomeFunnelState | null 
           </View>
           {[
             t('First morning: 500 ml Full Cream, free', 'पहली सुबह: 500 मि.ली. फुल क्रीम दूध मुफ़्त'),
-            t('First recharge of ₹500 → second 500 ml pack free too', '₹500 का पहला रिचार्ज → दूसरा 500 मि.ली. पैक भी मुफ़्त'),
+            // "within 7 days" is a MATERIAL term of the offer (offer terms,
+            // pack 2) — carried over from the co-dev's parallel popup at merge.
+            t('Recharge ₹500 once within 7 days → second 500 ml pack free too', '7 दिन में एक बार ₹500 का रिचार्ज → दूसरा 500 मि.ली. पैक भी मुफ़्त'),
             t('No payment to start · pause or cancel any time', 'शुरू करने के लिए कोई भुगतान नहीं · कभी भी रोकें या बंद करें'),
           ].map((line, i) => (
             <View key={i} style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 4 }}>
