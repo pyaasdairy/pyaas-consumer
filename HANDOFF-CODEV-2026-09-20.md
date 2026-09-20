@@ -1,0 +1,90 @@
+# Consumer app — handoff, 20 September 2026
+
+**The full handoff lives in the backend repo:**
+`parag-saathi-be/docs/HANDOFF-CODEV-2026-09-20.md` — branches, audit findings, the CRM
+trigger table, push status, deploy order and the device test plan. Read that first.
+This file is only the consumer-app half, and it continues
+`HANDOFF-FRONTEND-PHASE2-2026-09-18.md` (whose §11 "Still open" list is now partly
+answered by the backend).
+
+---
+
+## Branch
+
+`feature/consumer-revamp-phase2`, two fix commits on top of the 18–20 Sep push.
+
+## What was fixed here
+
+- **MONEY — a member could be charged for a delivery the rider undid.** An undo
+  deliberately frees the wallet charge so a genuine re-delivery can bill again; the
+  settle sweep, working from a list up to 15 seconds stale, could take that freed slot
+  and charge at the app's own sticker total — and on a free Welcome Litre pack the row
+  is not marked `trial_free`, so the existing guard missed it. Live tracking polls four
+  times a minute, which turned a rare race into a routine one. The sweep now skips
+  anything delivered inside the rider's 15-minute undo window plus a 5-minute margin,
+  and a **missing** `delivered_at` means *wait*, not *charge*.
+- **STORE POLICY — the rating sheet filtered by sentiment**: 4–5 stars to the store,
+  1–3 into the complaint box, never seeing the store. Apple and Google both forbid it,
+  on an app already removed from Play once. Every rating now sees the store **and** the
+  "tell us what went wrong" box.
+- **₹500** — the cart quoted "recharge ₹40" and then the recharge screen clamped to
+  ₹500. The cart now quotes what we actually ask for and says the rest stays in the
+  wallet.
+- **"Auto top-up" → "Low-balance reminder"**, with "nothing is charged until you pay"
+  above the switch instead of after it. It is a reminder; the old name promised a
+  mandate we do not have.
+- **Per-account storage** for the reminder and the rating flags. On a shared phone the
+  next member inherited the previous one's armed threshold, and one person's star
+  rating silenced the ask for everybody after them. Both also outlived account deletion.
+- **`.specstory/` gitignored** — it holds full AI session transcripts, which quote
+  `.env` values.
+
+Verify: `npx tsc --noEmit` clean.
+
+## The backend now answers three of your §11 items
+
+- **`POST` / `GET /consumer/complaints`** exist, with an operator surface at
+  `/consumer/admin/crm/complaints` so a person actually reads them and writes the
+  `resolution` the member sees verbatim. Filing is idempotent per `(consumer, ref)`, so
+  your offline retry returns the same ticket instead of a second one.
+- **`POST /consumer/push/register`** exists and matches what the app sends. It stores
+  the token; it cannot send anything yet (see below). The response says
+  `"delivery":"pending_sender"`.
+- **Structured address** — `society`, `society_id`, `tower`, `floor`, `unit` are stored,
+  returned by `GET /addresses`, and copied onto the delivery task.
+
+## Still open in this repo
+
+**Push — nothing server-initiated reaches anybody today**
+
+1. **`eas init`** — `app.json` has no `extra.eas.projectId`, so `getExpoPushTokenAsync()`
+   throws on every device and **zero tokens exist**. Founder/account-level.
+2. **Firebase project + `google-services.json` + `android.googleServicesFile`.**
+3. **APNs key** for iOS.
+4. **Call `registerForPush()` at boot and after sign-in**, not only from the settings
+   screen.
+5. **A tap handler** — nothing registers `addNotificationResponseReceivedListener`, so
+   the `href` packed into each notification goes nowhere.
+6. **Unbind on sign-out** (needs `DELETE /consumer/push/register` on the backend), or a
+   shared phone keeps notifying the previous member.
+7. **An Android notification icon** — Android currently draws a white square.
+
+**Other**
+
+- Stale "Delivered" burst when switching accounts.
+- `autoTopup`'s legacy-key migration is read-only: re-save under the scoped key, and
+  call `clearAutoTopup` on sign-out (it has no call sites today).
+- Opening the notifications screen re-POSTs `read` for every CRM row, every time.
+- The complaint photo is a device-local `file://` URI that is never uploaded, so the
+  operator sees nothing.
+- Cart copy still overstates the unlock requirement (the gate is ₹100; ₹500 is the
+  minimum top-up).
+- Terms and Privacy PDFs still print `99996 80081`; the app shows the registered number.
+- Three Welcome Litre creatives are out of rotation pending artwork.
+
+## Worth knowing
+
+With no push and only two DLT templates registered (W-01 enrolment, W-07 offer
+expiring), **the in-app inbox is the only channel for almost every CRM message**. A
+member finds out when they open the app. Order-confirmed, out-for-delivery and
+delivered messages have no code behind them at all. Full table in the backend handoff §5.
