@@ -9,6 +9,7 @@ import {
 } from './session';
 import { resetServiceability } from './serviceability';
 import { resetNotificationCenter } from './notificationCenter';
+import { announcePushForCurrentSession } from './notifications';
 import { useUserLocation } from './userLocation';
 
 type AuthValue = {
@@ -63,6 +64,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
     const unsub = onSessionChange(() => {
       syncFromSession();
+      // The push row is keyed by device token and must follow the member who
+      // is signed in NOW — the permission primer is hidden once permission
+      // exists, so this is the only path that can rebind a shared handset.
+      void announcePushForCurrentSession();
     });
     return () => {
       mounted = false;
@@ -81,6 +86,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     resetServiceability();
     // The feed and its badge belong to the account that just left.
     resetNotificationCenter();
+    // …and so does the push pairing: re-announce so the row stops naming them.
+    void announcePushForCurrentSession();
     useUserLocation.setState({ loc: null, ready: false });
   }, []);
 

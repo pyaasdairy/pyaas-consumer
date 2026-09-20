@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { api, isBackendConfigured } from './apiClient';
+import { getUserId } from './session';
 
 /**
  * OS NOTIFICATIONS — the thin, fail-soft seam over expo-notifications.
@@ -217,7 +218,14 @@ export async function setBadge(count: number): Promise<void> {
 }
 
 // ── Push token registration (the backend's half) ─────────────────────────────
-let registered = false;
+// WHICH MEMBER this device is currently announced as — not a bare boolean.
+//
+// A handset is shared: one member signs out, another signs in, and the server
+// row (keyed by push token) must follow whoever is signed in now, or the first
+// member's wallet balance and delivery OTP land on the second member's phone.
+// A plain `registered` flag could never express that: nothing resets it on
+// sign-out, so the device stayed bound to whoever granted first, forever.
+let registeredFor: string | null = null;
 
 /**
  * Mint this device's push token and hand it to the backend. Fire-and-forget:
@@ -229,12 +237,13 @@ let registered = false;
  */
 export async function registerForPush(): Promise<string | null> {
   const m = mod();
-  if (!m?.getExpoPushTokenAsync || registered) return null;
+  if (!m?.getExpoPushTokenAsync) return null;
   try {
+    const uid = (await getUserId()) ?? '';
+    if (registeredFor !== null && registeredFor === uid) return null;
     if ((await permissionState()) !== 'granted') return null;
     const { data: token } = await m.getExpoPushTokenAsync();
     if (!token) return null;
-    registered = true;
     if (isBackendConfigured()) {
       try {
         await api.post('/push/register', {
@@ -242,12 +251,46 @@ export async function registerForPush(): Promise<string | null> {
           platform: Platform.OS,
           provider: 'expo',
         });
+        registeredFor = uid; // only once the server actually holds the token
       } catch {
-        /* endpoint not live yet — the token is still valid for a later retry */
+        // The endpoint was unreachable (offline, or a build predating it).
+        // Deliberately do NOT latch: leaving `registered` false is what makes
+        // the promised "later retry" real — the next call re-offers the token
+        // instead of the device going permanently unregistered until a
+        // relaunch. Re-registering an already-stored token is a no-op server
+        // side (it upserts by token), so retrying costs nothing.
       }
+    } else {
+      registeredFor = uid; // no backend to tell; the token is still useful locally
     }
     return token;
   } catch {
     return null;
+  }
+}
+
+
+/**
+ * Re-announce this device for the member who is signed in NOW.
+ *
+ * Call it on sign-in and on sign-out. The permission primer that owns the only
+ * other call site is hidden once permission exists (it renders only while
+ * `perm !== 'granted'`), and OS permission is per-APP, not per-account — so
+ * without this a second member on a shared handset had no way at all to claim
+ * the device, and kept receiving the first member's notifications.
+ *
+ * Safe to call freely: it no-ops when permission was never granted, and the
+ * server upserts by token, so re-announcing an unchanged pairing costs nothing.
+ */
+export async function announcePushForCurrentSession(): Promise<void> {
+  try {
+    if (!notificationsSupported()) return;
+    if ((await permissionState()) !== 'granted') {
+      registeredFor = null; // nothing to announce; let a later grant register
+      return;
+    }
+    await registerForPush();
+  } catch {
+    /* never block a session change on a push bookkeeping call */
   }
 }
