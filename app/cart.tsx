@@ -26,6 +26,7 @@ import { useServiceability, joinWaitlist } from '../lib/serviceability';
 import { useDeliveryMode } from '../lib/deliveryMode';
 import { useAuth } from '../lib/auth';
 import { purchasesUnlocked, onWalletUnlocked, WALLET_UNLOCK_TARGET } from '../lib/walletGate';
+import { MIN_RECHARGE } from '../lib/pricing';
 
 // Fees we SHOW (for transparency, like a quick-commerce bill) but WAIVE — so the
 // amount payable stays item-total + delivery. Handling + small-cart are on us.
@@ -231,7 +232,10 @@ export default function Cart() {
     haptics.press();
     const qs = new URLSearchParams({
       min: String(Math.ceil(unlockShort)),
-      amount: String(Math.max(100, Math.ceil(unlockShort / 50) * 50)),
+      // Open the grid on the amount we will actually accept: the recharge
+      // screen clamps everything up to MIN_RECHARGE, so pre-filling ₹100 only
+      // to overrule it a screen later is the app arguing with itself.
+      amount: String(Math.max(MIN_RECHARGE, Math.ceil(unlockShort / 50) * 50)),
       returnTo: '/cart',
       reason: 'to unlock ordering',
     }).toString();
@@ -599,13 +603,20 @@ export default function Cart() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
             <Ionicons name="gift" size={16} color={colors.flameDeep} />
             <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>
-              Fund your wallet to {rupee(WALLET_UNLOCK_TARGET)} to unlock ordering. Nothing starts on its own; you choose what to order.
+              Fund your wallet with {rupee(MIN_RECHARGE)} to unlock ordering. Nothing starts on its own; you choose what to order.
             </TextMed>
           </View>
         ) : !locked && short > 0 && !blocked ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
             <Ionicons name="wallet" size={16} color={colors.flameDeep} />
-            <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>Low balance. Recharge {rupee(short)} to pay for this order.</TextMed>
+            {/* Quote what the member will actually be asked for. The recharge
+                screen clamps every top-up up to MIN_RECHARGE, so promising
+                "recharge ₹40" here and then demanding ₹500 one tap later was
+                the app contradicting itself. */}
+            <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>
+              Low balance. Recharge {rupee(Math.max(MIN_RECHARGE, Math.ceil(short)))} to pay for this order
+              {short < MIN_RECHARGE ? `. ${rupee(MIN_RECHARGE)} is our smallest top-up — the rest stays in your wallet.` : '.'}
+            </TextMed>
           </View>
         ) : null}
 

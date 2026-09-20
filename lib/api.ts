@@ -512,11 +512,33 @@ export async function listOrders(): Promise<Order[]> {
  * debit retried — so with AutoPay on, delivered milk is always paid for.
  * Returns the ids that still could not be settled (for callers that want to nudge).
  */
+/** How long the rider may undo a completed delivery (rider_ops_tasks.go). */
+const RIDER_UNDO_WINDOW_MS = 15 * 60 * 1000;
+/** Plus a margin, so a stale list or a slow clock cannot land inside it. */
+const SETTLE_AFTER_MS = RIDER_UNDO_WINDOW_MS + 5 * 60 * 1000;
+
 export async function settleDeliveredOrders(orders: Order[]): Promise<string[]> {
   if (!isBackendConfigured()) return [];
   const unsettled: string[] = [];
+  const now = Date.now();
   for (const o of orders) {
     if (o.status !== 'delivered' || o.payment_method === 'cod') continue;
+    // NEVER settle inside the rider's undo window.
+    //
+    // An undo deliberately FREES the wallet charge so a genuine re-delivery can
+    // bill again. This sweep — working from a list up to 15 seconds stale —
+    // could take that freed slot and charge the member for milk that went back
+    // to the store, at the app's own sticker total; on a free Welcome Litre
+    // pack the row is not marked trial_free, so the guard below missed it too.
+    // Live tracking polls four times a minute now, so what once needed an open
+    // screen at exactly the wrong moment became routine.
+    //
+    // The server already settles at delivery (deliverDelivery debits before it
+    // flips the status), which leaves this sweep as a safety net for orders the
+    // server somehow left unpaid — and a net has no business firing while the
+    // rider can still undo.
+    const at = Date.parse(String((o as { delivered_at?: string }).delivered_at ?? '')) || 0;
+    if (at && now - at < SETTLE_AFTER_MS) continue;
     // Trial FREE days are FREE: the order shipped with trial_free (total 0 on
     // rows this app placed), and the server settles its own ledger with a ₹0
     // gate row. Debiting here would back-charge the exact days the home banner

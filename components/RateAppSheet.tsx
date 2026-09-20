@@ -14,11 +14,16 @@ import { fileComplaint } from '../lib/complaints';
 /**
  * RATE THE APP — asked in-app, answered honestly.
  *
- * Five stars in a sheet. Four or five and we hand them to the store's own
- * review screen. Three or fewer and we do NOT: we ask what went wrong and file
- * it in the complaint register, because a member with a real problem deserves
- * a ticket and a reply, not a public one-star box. That split is the whole
- * point of asking inside the app first.
+ * Five stars in a sheet. EVERY rating is offered the store, and every rating is
+ * offered the "tell us what went wrong" box: the two sit side by side and the
+ * member picks.
+ *
+ * It used to branch — 4-5 stars went to the store, 1-3 were routed into the
+ * complaint register instead and never saw it. Both Apple and Google forbid
+ * that (filtering who is asked to review by how they feel is exactly the
+ * practice the rules name), and this app has already been removed from a store
+ * once. Offering help to an unhappy member is right; withholding the store from
+ * them is not.
  *
  * "Not now" is remembered (60-day cooldown); rating or sending feedback settles
  * it for good, so nobody is asked twice.
@@ -118,21 +123,28 @@ export function RateAppSheet({ visible, onClose }: { visible: boolean; onClose: 
                 ))}
               </View>
 
-              {stars === 0 ? null : happy ? (
+              {stars === 0 ? null : (
                 <Animated.View entering={FadeIn.duration(220)} style={{ gap: 10 }}>
                   <TextBody style={{ fontSize: 13.5, textAlign: 'center', lineHeight: 20 }} color={colors.inkSoft}>
-                    That is lovely to hear. Would you leave the same rating on the store? It genuinely helps a young dairy.
+                    {happy
+                      ? 'That is lovely to hear. Would you leave the same rating on the store? It genuinely helps a young dairy.'
+                      : 'Thank you for saying so. Tell us what to fix and we will act on it — and you are welcome to leave this rating on the store too.'}
                   </TextBody>
+
+                  {/* The store is offered to EVERY rating — see the note above. */}
                   <Tap onPress={toStore}>
                     <View style={{ height: 54, borderRadius: radius.pill, backgroundColor: colors.flameDeep, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, ...shadow.soft }}>
                       <TextSemi color={colors.white} style={{ fontSize: 16 }}>Rate us on the store</TextSemi>
                       <Ionicons name="arrow-forward" size={17} color={colors.white} />
                     </View>
                   </Tap>
-                </Animated.View>
-              ) : (
-                <Animated.View entering={FadeIn.duration(220)} style={{ gap: 10 }}>
-                  <TextMed style={{ fontSize: 13.5 }}>What went wrong? We read every one of these.</TextMed>
+
+                  {/* ...and so is the chance to tell us directly. An unhappy
+                      member gets the box opened for them; a happy one can still
+                      reach it. Neither replaces the other. */}
+                  <TextMed style={{ fontSize: 13.5, marginTop: 2 }}>
+                    {happy ? 'Anything we could do better?' : 'What went wrong? We read every one of these.'}
+                  </TextMed>
                   <Field
                     label=""
                     value={detail}
@@ -141,8 +153,8 @@ export function RateAppSheet({ visible, onClose }: { visible: boolean; onClose: 
                     multiline
                     style={{ minHeight: 88, textAlignVertical: 'top' }}
                   />
-                  <Tap onPress={busy ? undefined : sendFeedback}>
-                    <View style={{ height: 54, borderRadius: radius.pill, backgroundColor: detail.trim() ? colors.flameDeep : colors.line, alignItems: 'center', justifyContent: 'center', opacity: detail.trim() ? 1 : 0.8 }}>
+                  <Tap onPress={busy || !detail.trim() ? undefined : sendFeedback}>
+                    <View style={{ height: 54, borderRadius: radius.pill, backgroundColor: detail.trim() ? colors.ink : colors.line, alignItems: 'center', justifyContent: 'center', opacity: detail.trim() ? 1 : 0.8 }}>
                       {busy ? <ActivityIndicator color={colors.white} /> : (
                         <TextSemi color={colors.white} style={{ fontSize: 16 }}>Send to our team</TextSemi>
                       )}

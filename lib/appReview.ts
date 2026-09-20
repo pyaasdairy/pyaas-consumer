@@ -1,5 +1,6 @@
 import { Linking, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getUserId } from './session';
 
 /**
  * RATE THE APP — the in-app rating ask, and the feedback path that catches the
@@ -17,9 +18,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  *   - never again once they have rated (or asked us not to).
  */
 
+// PER ACCOUNT, not per device: with fixed keys, one member tapping a star (or
+// 'not now') permanently silenced the ask for every later account on that
+// phone, and the flags survived account deletion.
 const KEY_LAST_ASKED = 'pyaas_rate_last_asked';
 const KEY_DONE = 'pyaas_rate_done';
 const KEY_DELIVERED = 'pyaas_rate_delivered_seen';
+
+async function k(base: string): Promise<string> {
+  const uid = await getUserId();
+  return uid ? base + ':' + uid : base;
+}
 
 const MIN_DELIVERED = 3;
 const COOLDOWN_DAYS = 60;
@@ -53,11 +62,11 @@ export async function openStoreReview(): Promise<void> {
 
 /** Remember that the member rated (or declined for good) — never ask again. */
 export async function markRatingSettled(): Promise<void> {
-  try { await AsyncStorage.setItem(KEY_DONE, '1'); } catch { /* best-effort */ }
+  try { await AsyncStorage.setItem(await k(KEY_DONE), '1'); } catch { /* best-effort */ }
 }
 
 export async function markAsked(): Promise<void> {
-  try { await AsyncStorage.setItem(KEY_LAST_ASKED, new Date().toISOString()); } catch { /* best-effort */ }
+  try { await AsyncStorage.setItem(await k(KEY_LAST_ASKED), new Date().toISOString()); } catch { /* best-effort */ }
 }
 
 /**
@@ -65,16 +74,16 @@ export async function markAsked(): Promise<void> {
  * until they have genuinely been served. Cheap and idempotent.
  */
 export async function recordDeliveredCount(n: number): Promise<void> {
-  try { await AsyncStorage.setItem(KEY_DELIVERED, String(Math.max(0, Math.round(n)))); } catch { /* best-effort */ }
+  try { await AsyncStorage.setItem(await k(KEY_DELIVERED), String(Math.max(0, Math.round(n)))); } catch { /* best-effort */ }
 }
 
 /** Should we show the rating sheet right now? */
 export async function shouldAskForRating(): Promise<boolean> {
   try {
-    if (await AsyncStorage.getItem(KEY_DONE)) return false;
-    const delivered = Number((await AsyncStorage.getItem(KEY_DELIVERED)) ?? 0);
+    if (await AsyncStorage.getItem(await k(KEY_DONE))) return false;
+    const delivered = Number((await AsyncStorage.getItem(await k(KEY_DELIVERED))) ?? 0);
     if (!Number.isFinite(delivered) || delivered < MIN_DELIVERED) return false;
-    const last = await AsyncStorage.getItem(KEY_LAST_ASKED);
+    const last = await AsyncStorage.getItem(await k(KEY_LAST_ASKED));
     if (last) {
       const days = (Date.now() - new Date(last).getTime()) / 86400000;
       if (!Number.isFinite(days) || days < COOLDOWN_DAYS) return false;

@@ -56,3 +56,9 @@ parag-saathi-be/
 
 # Generated App Store assets (simulator captures)
 appstore-screenshots/
+
+# AI session transcripts — .specstory/history/ holds full conversations, which
+# routinely quote .env values, keys and customer data. Only the two small config
+# files are tracked (they carry no transcript); everything else stays local.
+.specstory/history/
+.specstory/**/*.md

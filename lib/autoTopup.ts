@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncExternalStore } from 'react';
 import { MIN_RECHARGE } from './pricing';
 import { notify } from './notificationCenter';
+import { getUserId } from './session';
 
 /**
  * AUTO TOP-UP — the "never run dry" setting a member can switch on BEFORE they
@@ -26,8 +27,21 @@ import { notify } from './notificationCenter';
  * mandate state; the reminder becomes the pre-debit notice NPCI requires.
  */
 
-const KEY = 'pyaas_auto_topup';
-const LAST_NUDGE = 'pyaas_auto_topup_last_nudge';
+// PER ACCOUNT, not per device.
+//
+// These were two fixed keys, so on a shared phone whoever signed in next
+// inherited the previous member's armed threshold and amount — and the setting
+// outlived "delete my account", which promises the opposite. Suffixing with the
+// uid keeps each account's preference to itself. Signed out (no uid) falls back
+// to the bare key, which is also what an existing setting was stored under, so
+// nobody loses what they had.
+const KEY_BASE = 'pyaas_auto_topup';
+const LAST_NUDGE_BASE = 'pyaas_auto_topup_last_nudge';
+
+async function scopedKey(base: string): Promise<string> {
+  const uid = await getUserId();
+  return uid ? `${base}:${uid}` : base;
+}
 
 export type AutoTopupPrefs = {
   /** The member switched it on. */
@@ -65,7 +79,10 @@ export async function hydrateAutoTopup(): Promise<void> {
   if (hydrated) return;
   hydrated = true;
   try {
-    const raw = await AsyncStorage.getItem(KEY);
+    // This account's own setting, else the pre-scoping one written before the
+    // key carried a uid (read once, then re-saved under the scoped key).
+    const key = await scopedKey(KEY_BASE);
+    const raw = (await AsyncStorage.getItem(key)) ?? (key === KEY_BASE ? null : await AsyncStorage.getItem(KEY_BASE));
     if (!raw) return;
     const p = JSON.parse(raw) as Partial<AutoTopupPrefs>;
     prefs = {
@@ -86,7 +103,17 @@ export async function setAutoTopup(next: Partial<AutoTopupPrefs>): Promise<void>
     amount: Math.max(MIN_RECHARGE, next.amount ?? prefs.amount),
   };
   emit();
-  try { await AsyncStorage.setItem(KEY, JSON.stringify(prefs)); } catch { /* best-effort */ }
+  try { await AsyncStorage.setItem(await scopedKey(KEY_BASE), JSON.stringify(prefs)); } catch { /* best-effort */ }
+}
+
+/** Forget this device's copy of the signed-in member's setting (sign-out,
+ *  account deletion). Without it the next member on the phone inherits it. */
+export async function clearAutoTopup(): Promise<void> {
+  try { await AsyncStorage.removeItem(await scopedKey(KEY_BASE)); } catch { /* best-effort */ }
+  try { await AsyncStorage.removeItem(await scopedKey(LAST_NUDGE_BASE)); } catch { /* best-effort */ }
+  prefs = { ...DEFAULTS };
+  hydrated = false;
+  emit();
 }
 
 /**
@@ -100,9 +127,10 @@ export async function checkAutoTopup(balance: number): Promise<void> {
     if (!prefs.on) return;
     if (balance >= prefs.threshold) return;
     const today = new Date().toISOString().slice(0, 10);
-    const last = await AsyncStorage.getItem(LAST_NUDGE);
+    const nudgeKey = await scopedKey(LAST_NUDGE_BASE);
+    const last = await AsyncStorage.getItem(nudgeKey);
     if (last === today) return;
-    await AsyncStorage.setItem(LAST_NUDGE, today);
+    await AsyncStorage.setItem(nudgeKey, today);
     await notify({
       kind: 'wallet',
       title: 'Time to top up',

@@ -36,11 +36,17 @@ export function AutoTopupCard() {
           <Ionicons name="repeat" size={19} color={colors.flameDeep} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <TextSemi style={{ fontSize: 15 }}>Auto top-up</TextSemi>
+          {/* Named and described for what it IS: a reminder, disclosed BEFORE
+              the switch rather than after. "Auto top-up — set it once and
+              forget the balance" describes a standing mandate we do not have,
+              and the honest line only appeared once the member had already
+              turned it on. When real UPI AutoPay collection is live, this
+              becomes the pre-debit notice NPCI requires. */}
+          <TextSemi style={{ fontSize: 15 }}>Low-balance reminder</TextSemi>
           <TextBody style={{ fontSize: 12 }} color={colors.inkSoft} numberOfLines={2}>
             {prefs.on
-              ? `On · we tell you below ${rupee(prefs.threshold)}, ready to add ${rupee(prefs.amount)}`
-              : 'Never run dry. Set it once and forget the balance.'}
+              ? `On · we remind you below ${rupee(prefs.threshold)}, with ${rupee(prefs.amount)} ready to add`
+              : 'We tell you before the wallet runs low. Nothing is charged until you pay.'}
           </TextBody>
         </View>
         <Switch
