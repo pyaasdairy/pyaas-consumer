@@ -537,8 +537,13 @@ export async function settleDeliveredOrders(orders: Order[]): Promise<string[]> 
     // flips the status), which leaves this sweep as a safety net for orders the
     // server somehow left unpaid — and a net has no business firing while the
     // rider can still undo.
+    // No delivered_at means we cannot tell whether the undo window has closed,
+    // so we WAIT rather than charge. (`if (at && …)` skipped the guard exactly
+    // when the timestamp was missing — the dev advance route sets none, and
+    // rows delivered before this field shipped have none either.) The server
+    // settles at delivery anyway; this sweep only ever catches what it missed.
     const at = Date.parse(String((o as { delivered_at?: string }).delivered_at ?? '')) || 0;
-    if (at && now - at < SETTLE_AFTER_MS) continue;
+    if (!at || now - at < SETTLE_AFTER_MS) continue;
     // Trial FREE days are FREE: the order shipped with trial_free (total 0 on
     // rows this app placed), and the server settles its own ledger with a ₹0
     // gate row. Debiting here would back-charge the exact days the home banner
