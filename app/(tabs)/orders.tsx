@@ -7,6 +7,8 @@ import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-
 import { colors, radius, spacing, shadow, rupee, tabular } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../components/ui';
 import { listOrders, type Order } from '../../lib/api';
+import { isActive } from '../../lib/orderTracking';
+import { todayISO } from '../../lib/dates';
 import { isInstantOrder } from '../../lib/lanes';
 import { useDeliveryMode } from '../../lib/deliveryMode';
 import { STATUS_LABEL, statusColor } from '../../lib/orderStatus';
@@ -42,6 +44,7 @@ export default function Orders() {
   // Shared definition (lib/lanes): OR of the two signals, same as the
   // tracking screen — the old AND here mis-filed lane-instant legacy rows.
   const instantOf = isInstantOrder;
+  const today = todayISO();
   const load = useCallback(async () => {
     try {
       const data = await listOrders();
@@ -78,7 +81,9 @@ export default function Orders() {
         <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 40 }} />
       ) : (
         <Animated.FlatList
-          data={orders.filter((o) => (instant ? instantOf(o) : !instantOf(o)))}
+          // ACTIVE ORDERS ONLY (founder call, 21 Sep): delivered, cancelled and
+          // past-day orders are not listed — see lib/orderTracking.isActive.
+          data={orders.filter((o) => isActive(o, today) && (instant ? instantOf(o) : !instantOf(o)))}
           keyExtractor={(o) => o.id}
           itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(200)}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: tabClearance, gap: spacing.sm }}
@@ -86,8 +91,8 @@ export default function Orders() {
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
               <Ionicons name="receipt-outline" size={56} color={colors.inkMute} />
-              <Serif style={{ fontSize: 22 }}>No orders yet</Serif>
-              <TextBody style={{ textAlign: 'center' }}>{error || 'Your delivered and active orders show up here.'}</TextBody>
+              <Serif style={{ fontSize: 22 }}>No active orders</Serif>
+              <TextBody style={{ textAlign: 'center' }}>{error || 'Orders that are on their way show up here.'}</TextBody>
               <Button title="Order milk" onPress={() => router.replace('/(tabs)')} style={{ marginTop: 6, paddingHorizontal: 28 }} />
             </View>
           }

@@ -128,7 +128,7 @@ export default function Subscriptions() {
                 </View>
               ))}
             </ScrollView>
-            <TextBody style={{ fontSize: 11 }} color={colors.inkMute}>Computed live from your cadence, pauses and skips. Editable until 11:59 PM the night before.</TextBody>
+            <TextBody style={{ fontSize: 11 }} color={colors.inkMute}>Computed live from your cadence, pauses and skips. Editable until 12 noon the day before.</TextBody>
           </View>
         ) : null}
 

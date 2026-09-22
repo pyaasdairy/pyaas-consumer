@@ -17,9 +17,9 @@ import { useWallet } from '../../store/wallet';
 import { getFullProfile, deleteMyAccount, type FullProfile } from '../../lib/profileApi';
 import { listOrders } from '../../lib/api';
 import { listSubscriptions } from '../../lib/subscriptions';
-import { getVip, vipActive, vipDaysLeft, type VipMembership } from '../../lib/vip';
+import { getFoundingFamily, type FoundingFamilyView } from '../../lib/foundingFamily';
 import { useTabBarClearance } from '../../components/PyaasTabBar';
-import { RateAppSheet } from '../../components/RateAppSheet';
+import { openStoreReview } from '../../lib/appReview';
 
 const SUPPORT_EMAIL = CARE_EMAIL;
 const SITE = SITE_URL;
@@ -39,11 +39,8 @@ export default function Profile() {
   const [full, setFull] = useState<FullProfile | null>(null);
   const [orderCount, setOrderCount] = useState(0);
   const [subCount, setSubCount] = useState(0);
-  const [vip, setVip] = useState<VipMembership | null>(null);
+  const [ff, setFf] = useState<FoundingFamilyView | null>(null);
   const [focused, setFocused] = useState(true);
-  // "Rate the app" is reachable on demand from the grid below, not only when
-  // the app decides to ask.
-  const [rateOpen, setRateOpen] = useState(false);
   const onScroll = useHideTabBarOnScroll();
   // The tab bar's real reach is insets.bottom + 90; a flat 130 clipped content
   // on home-indicator iPhones and over-padded on others.
@@ -55,7 +52,7 @@ export default function Profile() {
       setFull(await getFullProfile());
       setOrderCount((await listOrders()).length);
       setSubCount((await listSubscriptions()).filter((s) => s.status === 'active').length);
-      setVip(await getVip());
+      setFf(await getFoundingFamily());
     } catch { /* keep last-known values */ }
   }, [refreshWallet]);
   useFocusEffect(useCallback(() => { setFocused(true); load(); return () => setFocused(false); }, [load]));
@@ -63,8 +60,9 @@ export default function Profile() {
   const name = full?.full_name || profile?.full_name || 'PYAAS member';
   const email = full?.email || '';
   const balCount = useCountUp(balance, 1000, focused);
-  const plusActive = vipActive(vip);
-  const plusDays = vipDaysLeft(vip);
+  // Founding Family status comes from the backend (lib/foundingFamily).
+  const ffMember = ff?.member && ff.member.status !== 'stopped' ? ff.member : null;
+  const ffFarm = ffMember ? ff?.farms.find((f) => f.id === ffMember.farm_id) ?? null : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
@@ -136,7 +134,6 @@ export default function Profile() {
           tiles={[
             { icon: 'gift-outline', label: 'Refer', onPress: () => router.push('/refer') },
             { icon: 'pricetags-outline', label: 'Offer Zone', onPress: () => router.push('/coupons') },
-            { icon: 'mail-outline', label: 'Messages', onPress: () => router.push('/inbox') },
             { icon: 'notifications-outline', label: 'Message preferences', onPress: () => router.push('/message-preferences') },
           ]}
         />
@@ -146,21 +143,25 @@ export default function Profile() {
           tiles={[
             { icon: 'notifications-circle-outline', label: 'Notifications', onPress: () => router.push('/notifications') },
             { icon: 'document-text-outline', label: 'Complaints', onPress: () => router.push('/complaints') },
-            { icon: 'star-outline', label: 'Rate the app', onPress: () => setRateOpen(true) },
+            { icon: 'star-outline', label: 'Rate the app', onPress: () => { void openStoreReview(); } },
             { icon: 'help-buoy-outline', label: 'Help & support', onPress: () => router.push('/support') },
           ]}
         />
 
-        {/* Membership card · PYAAS Plus */}
+        {/* Membership card · Founding Family (was PYAAS Plus, founder call 21 Sep) */}
         <Animated.View entering={FadeInDown.duration(440).delay(300)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
           <Tap onPress={() => router.push('/(tabs)/vip')} scaleTo={0.98} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.cream, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.flameSoft, padding: spacing.md, ...shadow.soft }}>
             <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="diamond" size={20} color={colors.gold} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <TextSemi style={{ fontSize: 15 }}>PYAAS Plus</TextSemi>
+              <TextSemi style={{ fontSize: 15 }}>Founding Family</TextSemi>
               <TextBody style={{ fontSize: 12.5 }} numberOfLines={1}>
-                {plusActive ? `Active · ${plusDays} days left` : 'Join the club, save on every order'}
+                {ffMember
+                  ? ffFarm
+                    ? ffFarm.status === 'unlocked' ? `${ffFarm.name} · delivering` : `${ffFarm.name} · waiting to unlock`
+                    : 'You are in'
+                  : 'Join the Founding Family'}
               </TextBody>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
@@ -186,25 +187,26 @@ export default function Profile() {
           <Row icon="business-outline" label="Where your milk is made" sub="The dairies we source from" onPress={() => router.push('/farms')} last />
         </ListCard>
 
+        {/* Chat, Customer Care and FAQ live in ONE place now — the Help &
+            support screen (founder call, 21 Sep: no repetition). The profile
+            reaches it from the Help & support tile above. */}
+        {/* Diagnostics prints the API host, the signed-in uid, token presence
+            and the OTP provider. That is a developer console, and one tap from
+            a customer's profile it tells an App Review tester in plain language
+            that they are holding a pre-production build (Guideline 2.2). */}
+        {__DEV__ ? (
         <ListCard delay={420}>
-          <Row icon="chatbubble-ellipses-outline" label="Chat With Us" sub="Report an issue with an order" onPress={() => router.push('/support-chat')} />
-          {HAS_CARE_PHONE ? (
-            <Row icon="call-outline" label="Customer Care" sub={SUPPORT.careNumber} onPress={callCare} />
-          ) : null}
-          <Row icon="help-circle-outline" label="Help & FAQ" sub="Answers to common questions" onPress={() => router.push('/faq')} last={!__DEV__} />
-          {/* Diagnostics prints the API host, the signed-in uid, token presence
-              and the OTP provider. That is a developer console, and one tap from
-              a customer's profile it tells an App Review tester in plain language
-              that they are holding a pre-production build (Guideline 2.2). */}
-          {__DEV__ ? (
             <Row icon="pulse-outline" label="Diagnostics" sub="Connection and app health" onPress={() => router.push('/diagnostics')} last />
-          ) : null}
         </ListCard>
+        ) : null}
 
         <ListCard delay={460}>
           <Row icon="information-circle-outline" label="About Us" sub="Who we are and what we stand for" onPress={() => router.push('/about-us')} />
           <Row icon="ribbon-outline" label="FSSAI & Seller Details" sub="Licences and seller information" onPress={() => router.push('/fssai-details')} />
-          <Row icon="briefcase-outline" label="Business & Franchise" sub="Partner or vend with PYAAS" onPress={() => router.push('/business')} />
+          {/* Bulk order stands on its own; the agent network is "Earn with PYAAS"
+              (founder call, 21 Sep — franchise and distributor removed). */}
+          <Row icon="cube-outline" label="Bulk order" sub="For offices, cafes, shops and events" onPress={() => router.push('/bulk-order')} />
+          <Row icon="people-outline" label="Earn with PYAAS" sub="Join the PYAAS Digital Agent Network" onPress={() => router.push('/business')} />
           <Row icon="people-outline" label="Cooperative & Community" sub="Farmers first, always" onPress={() => router.push('/community')} />
           <Row icon="leaf-outline" label="Sustainability" sub="How we are trying to do better" onPress={() => router.push('/sustainability')} last />
         </ListCard>
@@ -243,7 +245,6 @@ export default function Profile() {
           <TextBody style={{ fontSize: 11.5, textAlign: 'center' }}>Version : {Constants.expoConfig?.version ?? '1.0.0'}</TextBody>
         </Animated.View>
       </Animated.ScrollView>
-      <RateAppSheet visible={rateOpen} onClose={() => setRateOpen(false)} />
     </View>
   );
 }

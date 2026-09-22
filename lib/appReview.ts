@@ -2,19 +2,13 @@ import { Linking, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
- * RATE THE APP — the in-app rating ask, and the feedback path that catches the
- * unhappy answers before they reach a public store review.
+ * RATE THE APP — when to ask, and how.
  *
- * THE RULE: we ask for a star rating INSIDE the app first. Four or five stars
- * gets a one-tap hop to the store listing's review sheet. One to three stars
- * never goes to the store — it opens the complaint register with the app
- * category preselected, because a member with a real problem should be talking
- * to us, not typing into a review nobody on our side can answer.
- *
- * WHEN WE ASK (so it is never a nag):
- *   - at least 3 delivered orders (they have actually used the service),
+ * The ask is the OS's own rating prompt (see requestNativeReview below), shown
+ * once the member has actually been served:
+ *   - at least 3 delivered orders,
  *   - never within 60 days of the last ask,
- *   - never again once they have rated (or asked us not to).
+ *   - never again once they have rated.
  */
 
 const KEY_LAST_ASKED = 'pyaas_rate_last_asked';
@@ -82,5 +76,44 @@ export async function shouldAskForRating(): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+// ── The OS's own rating prompt (Blinkit-style) ───────────────────────────────
+// "Enjoying PYAAS? Tap a star to rate it on the App Store." is iOS's native
+// review sheet (SKStoreReviewController); Android shows Google Play's in-app
+// review card. Both are free and rate in place without leaving the app. Apple
+// also REQUIRES this API for review prompts (Guideline 5.6.1): a custom star
+// sheet that routes only happy raters to the store is disallowed, which is why
+// the in-app sheet was retired (founder call, 21 Sep).
+//
+// The OS decides whether to actually show it (Apple: at most 3 times a year)
+// and it never shows in TestFlight. It must not be tied to a button, so the
+// profile's "Rate the app" tile opens the store page instead.
+
+type StoreReviewModule = {
+  isAvailableAsync: () => Promise<boolean>;
+  requestReview: () => Promise<void>;
+};
+
+function storeReview(): StoreReviewModule | null {
+  try {
+    // Lazy: a binary without the native module keeps working without it.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    return require('expo-store-review') as StoreReviewModule;
+  } catch {
+    return null;
+  }
+}
+
+/** Ask the OS to show its rating prompt. Records the ask either way. */
+export async function requestNativeReview(): Promise<void> {
+  await markAsked();
+  const m = storeReview();
+  if (!m) return;
+  try {
+    if (await m.isAvailableAsync()) await m.requestReview();
+  } catch {
+    /* the OS declined — nothing to do */
   }
 }

@@ -259,7 +259,7 @@ export default function Complaints() {
           <View style={{ backgroundColor: colors.cream, borderRadius: radius.lg, padding: spacing.md, gap: 4, marginTop: spacing.sm }}>
             <TextSemi style={{ fontSize: 13.5 }}>Not resolved?</TextSemi>
             <TextBody style={{ fontSize: 12, lineHeight: 18 }} color={colors.inkSoft}>
-              Escalate to our grievance officer, {GRIEVANCE_OFFICER}, at {GRIEVANCE_EMAIL}. We reply within the timelines in our published terms.
+              Write to the {GRIEVANCE_OFFICER}, at {GRIEVANCE_EMAIL}. We reply within the timelines in our published terms.
             </TextBody>
             <Tap haptic={false} onPress={() => router.push('/support')} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
               <TextMed color={colors.flameDeep} style={{ fontSize: 12.5 }}>All the ways to reach us</TextMed>

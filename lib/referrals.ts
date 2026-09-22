@@ -1,5 +1,6 @@
 import { requireUserId, getUserId } from './session';
 import { getRows, insertRow, setRows, getSingle, putSingle, newId } from './localStore';
+import { api, isBackendConfigured } from './apiClient';
 
 /**
  * PYAAS referrals — a shareable per-user code plus a local reward ledger. Runs
@@ -55,6 +56,20 @@ export async function preserveReferralCode(fromUid: string, toUid: string): Prom
 export async function getReferralCode(): Promise<string> {
   const uid = await getUserId();
   if (!uid) return '';
+  // SERVER FIRST (21 Sep): the program never worked because the code lived
+  // only on this phone and the server could not tell whose code "PGHZU4" was.
+  // GET /referrals/code returns the server's code for this member; the
+  // on-device derivation below is the fallback and the backend is asked to
+  // use the SAME derivation, so codes already shared keep attributing.
+  if (isBackendConfigured()) {
+    try {
+      const r = await api.get<{ code?: string }>('/referrals/code');
+      if (r?.code) {
+        await putSingle('referral_code', uid, { code: r.code });
+        return r.code;
+      }
+    } catch { /* endpoint not live yet — fall back */ }
+  }
   const stored = await getSingle<{ code: string }>('referral_code', uid);
   return stored?.code ?? codeFromUid(uid);
 }
@@ -72,7 +87,14 @@ export async function getReferralCode(): Promise<string> {
 /** Full referral ledger, newest first. */
 export async function listReferrals(): Promise<Referral[]> {
   const uid = await requireUserId();
-  // TODO(api): GET /referrals — when backend live, read the server ledger.
+  // The ledger is the SERVER's (who joined with this member's code, what was
+  // credited). The local table only answers when the endpoint is not live.
+  if (isBackendConfigured()) {
+    try {
+      const rows = await api.get<Referral[]>('/referrals');
+      if (Array.isArray(rows)) return rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    } catch { /* not live yet — fall back */ }
+  }
   const rows = await getRows<Referral>('referrals', uid);
   return rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
@@ -100,6 +122,25 @@ export async function getReferredBy(): Promise<string | null> {
  *  referrer's side once signup completes (server-side when the API is live). */
 export async function setReferredBy(code: string): Promise<void> {
   const uid = await requireUserId();
-  // TODO(api): POST /referrals/apply { code } — validate + credit server-side.
-  await putSingle<ReferralMeta>('referral_meta', uid, { referred_by: code.trim().toUpperCase() });
+  const clean = code.trim().toUpperCase();
+  await putSingle<ReferralMeta>('referral_meta', uid, { referred_by: clean });
+  // The server validates the code, links the two accounts and credits the
+  // reward. Fail-soft: until POST /referrals/apply is live the code is kept on
+  // the device and the backend can backfill it.
+  if (isBackendConfigured()) {
+    try { await api.post('/referrals/apply', { code: clean }); } catch { /* not live yet */ }
+  }
+}
+
+/**
+ * The share message, in PYAAS One Voice (pyaas-one-voice.md): the master line,
+ * the before-7 AM promise, and the welcome offer with its condition in the
+ * same message, exactly as §1.8 requires wherever the headline travels.
+ */
+export function referralShareMessage(code: string): string {
+  return [
+    'I get my milk from PYAAS. Know Your Milk: every pack tells you where it came from, and it is at my door before 7 AM.',
+    `Use my code ${code} when you sign up.`,
+    '1 Litre Free Parag Milk! 500 ml Parag Gold with your first order, and another 500 ml when you add ₹500 to your PYAAS Wallet within 7 days. New customers, in the 13 localities we serve, on the PYAAS app.',
+  ].join('\n\n');
 }

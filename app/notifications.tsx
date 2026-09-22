@@ -9,6 +9,7 @@ import { Serif, TextBody, TextMed, TextSemi, Tap, BackButton } from '../componen
 import { useNotifications, noticeIcon, type Notice } from '../lib/notificationCenter';
 import { permissionState, requestPermission, registerForPush, notificationsSupported, type PermissionState } from '../lib/notifications';
 import { haptics } from '../lib/haptics';
+import { rescheduleTaglines } from '../lib/taglines';
 
 /**
  * NOTIFICATIONS — one place for everything the app has told the member, and the
@@ -63,6 +64,8 @@ export default function Notifications() {
         // Hand the token to the backend for closed-app pushes (silent no-op
         // until that endpoint is live).
         void registerForPush();
+        // Permission is the last gate for the 2-hourly taglines.
+        void rescheduleTaglines();
       }
     } finally {
       setAsking(false);

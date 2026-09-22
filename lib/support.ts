@@ -60,10 +60,13 @@ export const WHATSAPP_URL: string = HAS_WHATSAPP ? `https://wa.me/${WHATSAPP_NUM
 // not the domain named in the Privacy Policy or the Terms.
 export const CARE_EMAIL = 'support@pyaasdairy.com';
 
-/** Named Grievance Officer under the DPDP Act, per Privacy Policy §21. */
-export const GRIEVANCE_OFFICER = 'Amiya Sinha';
-/** Dedicated grievance inbox — distinct from general support. */
-export const GRIEVANCE_EMAIL = 'grievance@pyaasdairy.com';
+/**
+ * Grievance Officer, exactly as the published Terms §23 and Privacy Policy §21
+ * on www.pyaasdairy.com name it (synced 21 Sep): the company, no personal
+ * name, reached at support@. One Voice §1.2 confirms the same wording.
+ */
+export const GRIEVANCE_OFFICER = 'Grievance Officer, Pyaas Dairy Private Limited';
+export const GRIEVANCE_EMAIL = 'support@pyaasdairy.com';
 export const SITE_URL = 'https://www.pyaasdairy.com';
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -10,6 +10,8 @@ import {
 import { resetServiceability } from './serviceability';
 import { resetNotificationCenter } from './notificationCenter';
 import { announcePushForCurrentSession } from './notifications';
+import { cancelTaglines } from './taglines';
+import { cancelCartReminder } from './cartReminder';
 import { useUserLocation } from './userLocation';
 
 type AuthValue = {
@@ -88,6 +90,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     resetNotificationCenter();
     // …and so does the push pairing: re-announce so the row stops naming them.
     void announcePushForCurrentSession();
+    // Taglines are scheduled on the device for the member who just left.
+    void cancelTaglines();
+    void cancelCartReminder();
     useUserLocation.setState({ loc: null, ready: false });
   }, []);
 

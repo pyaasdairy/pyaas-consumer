@@ -35,12 +35,22 @@ type NotificationsModule = {
   getPermissionsAsync: () => Promise<PermissionResponse>;
   requestPermissionsAsync: () => Promise<PermissionResponse>;
   scheduleNotificationAsync: (input: unknown) => Promise<string>;
+  cancelScheduledNotificationAsync?: (id: string) => Promise<void>;
+  getAllScheduledNotificationsAsync?: () => Promise<Array<{ identifier: string; content?: { data?: Record<string, unknown> } }>>;
   setNotificationHandler: (handler: unknown) => void;
   setNotificationChannelAsync?: (id: string, channel: unknown) => Promise<unknown>;
   getExpoPushTokenAsync?: (opts?: unknown) => Promise<{ data: string }>;
   setBadgeCountAsync?: (n: number) => Promise<boolean>;
   dismissAllNotificationsAsync?: () => Promise<void>;
   AndroidImportance?: Record<string, number>;
+  setNotificationCategoryAsync?: (id: string, actions: unknown[]) => Promise<unknown>;
+  addNotificationResponseReceivedListener?: (cb: (r: NotificationResponse) => void) => { remove: () => void };
+  getLastNotificationResponseAsync?: () => Promise<NotificationResponse | null>;
+};
+
+type NotificationResponse = {
+  actionIdentifier?: string;
+  notification?: { request?: { identifier?: string; content?: { data?: Record<string, unknown> } } };
 };
 
 let cached: NotificationsModule | null | undefined;
@@ -116,13 +126,18 @@ export function installForegroundHandler(): void {
   if (!m) return;
   try {
     m.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: false,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async (n: { request?: { content?: { data?: Record<string, unknown> } } }) => {
+        // A tagline is for a member who is NOT in the app; one that comes due
+        // while they are using it stays silent rather than banner over them.
+        const tagline = n?.request?.content?.data?.tagline === true;
+        return {
+          shouldShowAlert: !tagline,
+          shouldPlaySound: false,
+          shouldSetBadge: !tagline,
+          shouldShowBanner: !tagline,
+          shouldShowList: !tagline,
+        };
+      },
     });
   } catch {
     /* older module shape — harmless */
@@ -181,6 +196,10 @@ export type LocalNotice = {
   href?: string;
   /** Extra payload for the tap handler. */
   data?: Record<string, unknown>;
+  /** Stable id: posting again with the same id replaces the shown one. */
+  identifier?: string;
+  /** Action-button category registered at boot (e.g. 'cart' → View Cart). */
+  category?: string;
 };
 
 /**
@@ -196,10 +215,12 @@ export async function notifyNow(n: LocalNotice): Promise<boolean> {
     if ((await permissionState()) !== 'granted') return false;
     await ensureChannels();
     await m.scheduleNotificationAsync({
+      ...(n.identifier ? { identifier: n.identifier } : {}),
       content: {
         title: n.title,
         body: n.body,
         data: { href: n.href ?? null, ...(n.data ?? {}) },
+        ...(n.category ? { categoryIdentifier: n.category } : {}),
         ...(Platform.OS === 'android' ? { channelId: n.channel ?? CHANNELS.orders } : {}),
       },
       trigger: null, // immediately
@@ -293,4 +314,88 @@ export async function announcePushForCurrentSession(): Promise<void> {
   } catch {
     /* never block a session change on a push bookkeeping call */
   }
+}
+
+// ── Scheduled (future) local notifications ───────────────────────────────────
+// Used by lib/taglines. Scheduled by the OS on the device, so they fire with
+// the app closed and cost nothing: no server, no push provider, no per-message
+// fee.
+
+/** Schedule one notification for a future moment. False when unavailable. */
+export async function scheduleAt(when: Date, n: LocalNotice): Promise<boolean> {
+  const m = mod();
+  if (!m) return false;
+  try {
+    if ((await permissionState()) !== 'granted') return false;
+    await ensureChannels();
+    await m.scheduleNotificationAsync({
+      ...(n.identifier ? { identifier: n.identifier } : {}),
+      content: {
+        title: n.title,
+        body: n.body,
+        data: { href: n.href ?? null, ...(n.data ?? {}) },
+        ...(n.category ? { categoryIdentifier: n.category } : {}),
+        ...(Platform.OS === 'android' ? { channelId: n.channel ?? CHANNELS.offers } : {}),
+      },
+      trigger: { type: 'date', date: when, ...(Platform.OS === 'android' ? { channelId: n.channel ?? CHANNELS.offers } : {}) },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Cancel every pending scheduled notification whose data matches. */
+export async function cancelScheduledWhere(match: (data: Record<string, unknown>) => boolean): Promise<void> {
+  const m = mod();
+  if (!m?.getAllScheduledNotificationsAsync || !m.cancelScheduledNotificationAsync) return;
+  try {
+    const pending = await m.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      pending
+        .filter((p) => match(p.content?.data ?? {}))
+        .map((p) => m.cancelScheduledNotificationAsync!(p.identifier)),
+    );
+  } catch {
+    /* best-effort */
+  }
+}
+
+// ── Action buttons + taps ────────────────────────────────────────────────────
+
+/** Action-button categories. 'cart' carries the "View Cart" button. */
+export async function ensureCategories(): Promise<void> {
+  const m = mod();
+  if (!m?.setNotificationCategoryAsync) return;
+  try {
+    await m.setNotificationCategoryAsync('cart', [
+      { identifier: 'view-cart', buttonTitle: 'View Cart', options: { opensAppToForeground: true } },
+    ]);
+  } catch {
+    /* buttons are a nicety */
+  }
+}
+
+/**
+ * Call `open(href)` whenever the member taps a notification (or one of its
+ * buttons), including the tap that cold-started the app. Returns unsubscribe.
+ */
+export function onNotificationTap(open: (href: string) => void): () => void {
+  const m = mod();
+  if (!m?.addNotificationResponseReceivedListener) return () => {};
+  const route = (r: NotificationResponse | null) => {
+    const data = r?.notification?.request?.content?.data ?? {};
+    const href = r?.actionIdentifier === 'view-cart' ? '/cart' : typeof data.href === 'string' ? data.href : null;
+    if (href) open(href);
+  };
+  const seen = new Set<string>();
+  const once = (r: NotificationResponse | null) => {
+    const id = `${r?.notification?.request?.identifier ?? ''}:${r?.actionIdentifier ?? ''}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    route(r);
+  };
+  void m.getLastNotificationResponseAsync?.().then(once).catch(() => {});
+  const sub = m.addNotificationResponseReceivedListener(once);
+  return () => sub.remove();
 }

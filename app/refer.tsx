@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { colors, radius, spacing, shadow, rupee } from '../lib/theme';
 import { Serif, TextBody, TextSemi, Button, BackButton } from '../components/ui';
 import { ShineSweep } from '../components/Fx';
-import { getReferralCode, listReferralStats, listReferrals, REFERRAL_REWARD, type Referral } from '../lib/referrals';
+import { getReferralCode, listReferralStats, listReferrals, REFERRAL_REWARD, type Referral, referralShareMessage } from '../lib/referrals';
 
 export default function Refer() {
   const insets = useSafeAreaInsets();
@@ -26,7 +26,7 @@ export default function Refer() {
   async function share() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await Share.share({
-      message: `Join me on PYAAS, fresh cooperative dairy delivered to your door. Use my code ${code} when you sign up. Sehat ki Dhara!`,
+      message: referralShareMessage(code), // One Voice wording, lib/referrals
     });
   }
 

@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PYAAS App Screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Righteous&display=swap" rel="stylesheet">
+<style>
+:root{
+  --pink:#D6379B; --pink-ink:#A8196F; --pink-soft:#FDE6F3; --ink:#2A1F24; --ink-2:#4A3E45;
+  --bg:#FFF8FB; --line:#F1D9E6; --gold:#8F6517; --gold-soft:#FBF1DC;
+  --violet:#6B5BB8; --blue:#3C6FB6; --green:#23774A; --green-soft:#E3F4EA; --red:#B3261E;
+}
+html{color-scheme:light;background:#FFF8FB}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"ITC Bauhaus","Poppins",system-ui,sans-serif;line-height:1.55;font-size:16px}
+h1,h2,h3{overflow-wrap:anywhere;font-family:"ITC Bauhaus","Righteous","Poppins",sans-serif;font-weight:400}
+img{display:block}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px 60px}
+.muted{color:var(--ink-2)} .pink{color:var(--pink-ink)} .green{color:var(--green);font-weight:700}
+.doc-top{background:linear-gradient(135deg,#D6379B,#A8196F);color:#fff;padding:34px 0 28px;margin-bottom:22px}
+.doc-top .wrap{padding-bottom:0}
+.doc-top h1{margin:.2em 0;font-size:clamp(30px,5vw,44px)}
+.doc-top p{max-width:760px;margin:0}
+.pill{display:inline-block;padding:3px 12px;border-radius:999px;font-size:13px;font-weight:600;background:rgba(0,0,0,.2);color:#fff}
+h2{font-size:clamp(22px,3.4vw,30px);margin:34px 0 8px}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:#fff}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--pink-soft);font-weight:600}
+.no{color:var(--red);font-weight:600;text-decoration:line-through}
+.use{color:var(--green);font-weight:600}
+
+/* screens */
+.flow{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:26px 22px;margin-top:14px}
+.screen{max-width:350px;width:100%;margin:0 auto}
+.capt{font-size:14px;margin-bottom:8px;min-height:70px}
+.capt b{display:block;font-size:16px}
+.num{display:inline-block;background:var(--pink);color:#fff;border-radius:6px;font-size:12px;font-weight:700;padding:1px 8px;margin-right:6px}
+.erpnote{font-size:12.5px;color:var(--ink-2);background:#fff;border:1px dashed #E6B8D2;border-radius:10px;padding:8px 10px;margin-top:10px}
+.erpnote b{color:#7A5512}
+.phone{border:8px solid #2A1F24;border-radius:34px;background:#FFF1F8;height:740px;overflow:hidden;position:relative;box-shadow:0 10px 28px rgba(0,0,0,.12)}
+.ph-status{display:flex;justify-content:space-between;font-size:11px;padding:8px 16px 2px;color:var(--ink-2)}
+.ph-head{padding:4px 14px 8px;display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink-2)}
+.ph-head img{height:22px}
+.ph-head .back{font-weight:700;color:var(--ink);font-size:14px}
+.ph-body{padding:0 12px 90px;height:660px;overflow:hidden}
+.a{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px;margin-bottom:9px;font-size:13px;line-height:1.45}
+.a.hl{border:2px solid var(--pink)}
+.a b.t{display:block;font-size:14px}
+.a .s{font-size:12px;color:var(--ink-2)}
+.sec{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--pink-ink);margin:10px 2px 6px}
+.pbtn{display:block;text-align:center;background:var(--pink);color:#fff;border-radius:999px;padding:9px;font-weight:600;font-size:13.5px;margin-top:8px}
+.pbtn.alt{background:#fff;color:var(--pink-ink);border:1.5px solid var(--pink)}
+.row{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.row:last-child{border-bottom:none}
+.row.tot{font-weight:700;font-size:14px}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px}
+.tag.now{background:var(--green-soft);color:var(--green)}
+.tag.lock{background:var(--pink-soft);color:var(--pink-ink)}
+.tag.gold{background:var(--gold-soft);color:#7A5512}
+.prod{display:flex;gap:10px;align-items:center}
+.prod img{width:52px;height:52px;object-fit:contain;background:#FFF6FB;border-radius:10px;flex:0 0 52px}
+.prod .pi{flex:1;min-width:0}
+.prod .pp{text-align:right;font-size:12px;white-space:nowrap}
+.prod .pp b{font-size:15px;display:block}
+.mini{display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px}
+.mm{height:8px;background:#F3E3EC;border-radius:999px;overflow:hidden;margin:3px 0 6px}
+.mm i{display:block;height:100%;background:var(--pink)}
+.farm{display:flex;gap:10px;align-items:center}
+.farm img{width:58px;height:58px;object-fit:cover;border-radius:10px;flex:0 0 58px;background:#E9DCE3}
+.offer{background:linear-gradient(135deg,#D6379B,#A8196F);color:#fff;border-radius:16px;padding:12px;margin-bottom:9px;font-size:12.5px;position:relative}
+.offer .ob{display:inline-block;background:#fff;color:var(--pink-ink);border-radius:999px;font-size:10px;font-weight:700;padding:2px 8px;letter-spacing:.4px;text-transform:uppercase}
+.offer h3{margin:6px 0 2px;font-size:19px;color:#fff}
+.offer img{position:absolute;right:10px;top:12px;width:46px;height:46px;object-fit:contain;background:#fff;border-radius:10px;padding:2px}
+.offer .wb{display:inline-block;background:#fff;color:var(--pink-ink);border-radius:999px;font-weight:700;padding:2px 10px;margin-top:6px;font-size:12px}
+.perk{display:flex;gap:9px;align-items:flex-start;padding:6px 0;border-bottom:1px dashed var(--line)}
+.perk:last-child{border-bottom:none}
+.perk .ic{flex:0 0 32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px}
+.perk b{display:block;font-size:13.5px}
+.perk span{font-size:12px;color:var(--ink-2)}
+.nav{position:absolute;left:10px;right:10px;bottom:10px;background:#fff;border-radius:22px;box-shadow:0 4px 18px rgba(168,25,111,.15);display:flex;justify-content:space-around;align-items:center;padding:9px 0 8px;font-size:10.5px;color:var(--ink-2)}
+.nav span{display:flex;flex-direction:column;align-items:center;gap:1px}
+.nav span i{font-style:normal;font-size:16px}
+.nav span.on{color:var(--pink-ink);font-weight:700}
+.nav .mid{width:48px;height:48px;border-radius:50%;background:#fff;border:3px solid var(--pink);margin-top:-26px;display:grid;place-items:center;font-weight:700;color:var(--pink);font-size:10px;letter-spacing:.5px}
+.sticky{position:absolute;left:10px;right:10px;bottom:74px;background:#fff;border-radius:18px;box-shadow:0 4px 18px rgba(0,0,0,.12);padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+.sticky b{font-size:16px}
+.sticky .pbtn{margin:0;padding:8px 14px;font-size:12.5px;white-space:nowrap;flex:0 0 auto}
+.notif{background:#fff;border-radius:14px;padding:10px 12px;margin:0 0 9px;box-shadow:0 4px 14px rgba(0,0,0,.12);font-size:12.5px}
+.notif .app{font-size:10.5px;color:var(--ink-2);display:flex;justify-content:space-between}
+.card2{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+footer{margin-top:40px;font-size:13px;color:var(--ink-2);text-align:center}
+</style>
+</head>
+<body>
+
+<div class="doc-top">
+  <div class="wrap">
+    <span class="pill">PYAAS · App screens · v1 · synced with ERP 19 Sep 2026</span>
+    <h1>The PYAAS app: Founding Family, Parag offer, PYAAS milk</h1>
+    <p>Ten screens that replace today's "PYAAS Plus" flow. Same words as the website and the One Voice Guide, and every price read from the ERP. Parag is open to everyone today; PYAAS milk opens only for Founding Family homes whose farm has unlocked.</p>
+  </div>
+</div>
+
+<div class="wrap">
+
+<h2>What changes from today's PYAAS Plus screen</h2>
+<div class="tw"><table>
+  <tr><th>Today in the app</th><th>Change to</th><th>Why</th></tr>
+  <tr><td class="no">PYAAS Plus · "Become a Plus member"</td><td class="use">Founding Family · "Join the Founding Family"</td><td>One name on website, app and ERP.</td></tr>
+  <tr><td class="no">Member price: 10% off every milk, shown on Parag (₹30 → ₹27, ₹71 → ₹64)</td><td class="use">₹2 off every litre on PYAAS milk only. Parag stays at MRP.</td><td>Parag earns about ₹4.70 a litre. 10% off Parag loses money on every pack.</td></tr>
+  <tr><td class="no">Priority slots: "the first morning delivery window, reserved for you"</td><td class="use">Remove</td><td>Not something we can promise every home today.</td></tr>
+  <tr><td class="no">Free delivery "on any order, however small"</td><td class="use">Free delivery, every morning, on PYAAS milk</td><td>Parag is already door delivered at MRP for everyone.</td></tr>
+  <tr><td class="no">"One flat month. It never auto-renews."</td><td class="use">₹99 a month, starts only when your farm opens · stop any month</td><td>Matches the new model. Before unlock nothing is charged beyond the first ₹99, which waits.</td></tr>
+  <tr><td class="no">Black credit-card style member card</td><td class="use">Your farm card: farm photo, farmer's name, your place in line</td><td>The farm is the reason to join, not a card.</td></tr>
+  <tr><td class="no">Join straight away, no farm</td><td class="use">Pick your farm first, then pay ₹99</td><td>Every home claims one of the 4 farms.</td></tr>
+</table></div>
+
+<h2>The screens</h2>
+<p class="muted">Example numbers: Sri Radha Mohan unlocked; Gonard 7 homes to go; Mishra 14; Ranjeet Singh 18. Live numbers come from the ERP.</p>
+
+<div class="flow">
+
+<!-- 1 SHOP -->
+<div class="screen">
+  <div class="capt"><span class="num">1</span><b>Shop (new customer)</b>Parag offer on top, Parag open now, PYAAS milk shown with its unlock button. Ghee sits below, with "Add to cart".</div>
+  <div class="phone">
+    <div class="ph-status"><span>7:02</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><img src="https://www.pyaasdairy.com/images/pyaas-logo.png" alt="PYAAS"><span>📍 Gomti Nagar</span></div>
+    <div class="ph-body">
+      <div class="offer">
+        <span class="ob">Parag Cooperative Milk offer</span>
+        <h3>1 Litre Free Parag Milk!*</h3>
+        500 ml Parag Gold tomorrow by 7 AM. Add ₹500 to your wallet, get another 500 ml free.
+        <br><span class="wb">Worth Rs. 72</span>
+        <img src="https://www.pyaasdairy.com/images/parag-gold-pouch.png" alt="Parag Gold pouch">
+      </div>
+      <div class="sec">Cooperative Milk · <span class="tag now">Delivering now</span></div>
+      <div class="a"><div class="prod"><img src="https://www.pyaasdairy.com/images/parag-gold-pouch.png" alt="Parag Gold 500 ml"><div class="pi"><b>Parag Gold Full Cream</b><div class="s">500 ml · door delivered at MRP</div></div><div class="pp"><b>₹36</b>Subscribe</div></div></div>
+      <div class="a"><div class="prod"><img src="https://www.pyaasdairy.com/images/parag-gold-pouch.png" alt="Parag Taza pouch"><div class="pi"><b>Parag Taza Toned</b><div class="s">500 ml · door delivered at MRP</div></div><div class="pp"><b>₹30</b>Subscribe</div></div></div>
+      <div class="sec">PYAAS milk · <span class="tag lock">🔒 Founding Family</span></div>
+      <div class="a"><div class="prod"><img src="https://www.pyaasdairy.com/images/whole-farm-bottle-front.jpg" alt="Whole Farm Milk 1 L"><div class="pi"><b>Whole Farm Milk</b><div class="s">1 L · from the farm you claim</div></div><div class="pp"><b>₹85</b>members ₹83</div></div><span class="pbtn alt">🔓 Unlock with Founding Family</span></div>
+    </div>
+    <div class="nav"><span class="on"><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid">PYAAS</span><span><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> PRG-FCM-500ML ₹36, PRG-TONED-500ML ₹30, level 1 MRP. Whole Farm Milk SKU must be created first (₹85, level 3 ₹83). Offer banner shown only to new customers.</div>
+</div>
+
+<!-- 2 PARAG PRODUCT -->
+<div class="screen">
+  <div class="capt"><span class="num">2</span><b>Parag Gold: subscribe</b>No membership needed. First order carries the free 500 ml.</div>
+  <div class="phone">
+    <div class="ph-status"><span>7:03</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><span class="back">‹ Parag Gold</span><span class="tag now">Delivering now</span></div>
+    <div class="ph-body">
+      <div class="a" style="text-align:center"><img src="https://www.pyaasdairy.com/images/parag-gold-pouch.png" alt="Parag Gold 500 ml pouch" style="width:120px;height:120px;object-fit:contain;margin:0 auto"><b class="t">Parag Gold Full Cream Milk</b><span class="s">Parag Cooperative Milk</span></div>
+      <div class="a">
+        <div class="row"><span>500 ml</span><b>₹36</b></div>
+        <div class="row"><span>1 L</span><b>₹71</b></div>
+        <div class="s" style="margin-top:4px">Door delivered at MRP. You pay the printed price, nothing extra.</div>
+      </div>
+      <div class="a hl">
+        <b class="t">🎁 Your first 500 ml is free</b>
+        <span class="s">Order before 12 noon, at your door by 7 AM. Nothing to pay for this pack.</span>
+      </div>
+      <div class="a">
+        <div class="row"><span>How often</span><b>Every day ▾</b></div>
+        <div class="row"><span>Starts</span><b>Tomorrow, 7 AM · pause any day</b></div>
+        
+      </div>
+    </div>
+    <div class="sticky"><div><b>₹0</b> tomorrow<br><span class="muted">then ₹36 a day</span></div><span class="pbtn">Subscribe</span></div>
+    <div class="nav"><span class="on"><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid">PYAAS</span><span><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> first order gets a ₹0 line on PRG-FCM-500ML (MRP ₹36, reason "1 L free offer, step 1"). One per mobile and address.</div>
+</div>
+
+<!-- 3 WALLET -->
+<div class="screen">
+  <div class="capt"><span class="num">3</span><b>Wallet: step 2 of the offer</b>Add ₹500 within 7 days, the second 500 ml is free.</div>
+  <div class="phone">
+    <div class="ph-status"><span>7:05</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><span class="back">PYAAS Wallet</span><span>Balance</span></div>
+    <div class="ph-body">
+      <div class="a" style="text-align:center"><span class="s">Your balance</span><div style="font-size:30px;font-weight:700">₹0</div><span class="s">Pays for your milk each morning</span></div>
+      <div class="a hl">
+        <b class="t">Add ₹500, get another 500 ml Parag Gold free</b>
+        <span class="s">Step 2 of your 1 Litre Free Parag Milk. 6 days left.</span>
+        <div class="mm" style="margin-top:8px"><i style="width:50%"></i></div>
+        <div class="mini"><span>✓ Step 1: first 500 ml</span><span>Step 2: ₹500 top-up</span></div>
+      </div>
+      <div class="sec">Add money</div>
+      <div class="a" style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="tag lock" style="font-size:12px;padding:5px 12px">₹200</span>
+        <span class="tag" style="font-size:12px;padding:5px 12px;background:var(--pink);color:#fff">₹500 🎁</span>
+        <span class="tag lock" style="font-size:12px;padding:5px 12px">₹1,000</span>
+      </div>
+      <div class="a"><span class="s">The ₹500 is not a fee: it buys your own milk, about 14 mornings of Parag Gold 500 ml.</span></div>
+    </div>
+    <div class="sticky"><div><b>₹500</b><br><span class="muted">+ 500 ml free</span></div><span class="pbtn">Add money</span></div>
+    <div class="nav"><span><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid">PYAAS</span><span class="on"><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> wallet top-up = customer advance. First top-up of ₹500+ within 7 days adds a second ₹0 line on PRG-FCM-500ML (step 2).</div>
+</div>
+
+<!-- 4 FOUNDING FAMILY -->
+<div class="screen">
+  <div class="capt"><span class="num">4</span><b>Founding Family (replaces PYAAS Plus)</b>Whole milk first, then the rupee benefits. No priority slots, no Parag discount.</div>
+  <div class="phone">
+    <div class="ph-status"><span>7:08</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><span class="back">Founding Family</span><span>Lucknow</span></div>
+    <div class="ph-body">
+      <div class="a hl" style="display:flex;gap:10px;align-items:center">
+        <img src="https://www.pyaasdairy.com/images/whole-farm-bottle-front.jpg" alt="Whole Farm Milk 1 L bottle" style="width:58px;height:70px;object-fit:contain">
+        <div><b class="t">Whole milk from one farm you choose</b><span class="s">The farmer's name is on your bottle.</span></div>
+      </div>
+      <div class="sec">What your ₹99 a month gets you</div>
+      <div class="a">
+        <div class="perk"><div class="ic" style="background:var(--green)">🚚</div><div><b>Free delivery, every morning</b><span>Others pay ₹5 a delivery. You pay nothing.</span></div></div>
+        <div class="perk"><div class="ic" style="background:var(--pink)">₹</div><div><b>₹2 off every litre</b><span>On all PYAAS milk: Whole Farm Milk and Traced Pool.</span></div></div>
+        <div class="perk"><div class="ic" style="background:var(--violet)">★</div><div><b>Your farm, your place</b><span>Your spot at your farm is kept; milk first at launch.</span></div></div>
+        <div class="perk"><div class="ic" style="background:var(--blue)">↑</div><div><b>Bring a neighbour, get milk sooner</b><span>Each friend who joins moves you up.</span></div></div>
+      </div>
+      <div class="a" style="background:var(--green-soft);border-color:#BFE3CD;padding:8px 11px"><b style="color:var(--green)">1 L a day saves ₹111 a month</b> <span class="s">(₹2,700 vs ₹2,589)</span></div>
+    </div>
+    <div class="sticky"><div><b>₹99</b>/month<br><span class="muted">starts when farm opens</span></div><span class="pbtn" style="white-space:nowrap">Pick your farm</span></div>
+    <div class="nav"><span><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid on">PYAAS</span><span><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> service FOUNDING-99 (₹99/month). Saving line uses level 1 vs level 3 of Whole Farm Milk 1 L and DELIVERY-FEE ₹5 × 30.</div>
+</div>
+
+<!-- 5 PICK FARM -->
+<div class="screen">
+  <div class="capt"><span class="num">5</span><b>Pick your farm</b>Unlocked farm shows the packs it opened and "Claims closed". Locked farms show homes to go.</div>
+  <div class="phone">
+    <div class="ph-status"><span>7:09</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><span class="back">‹ Pick your farm</span><span>4 farms</span></div>
+    <div class="ph-body">
+      <div class="a" style="opacity:.92">
+        <div class="farm"><img src="https://www.pyaasdairy.com/farmerimages/sri-radha-mohan-farm-gonda.jpeg" alt="Sri Radha Mohan Dairy"><div><b class="t">Sri Radha Mohan Dairy</b><span class="s">Ram · Founder's family farm</span><br><span class="tag now">✓ Unlocked · claims closed</span></div></div>
+        <span class="s" style="display:block;margin-top:6px">✓ Unlocked Whole Farm Milk 1 L bottle and pouch for its Founding Family</span>
+      </div>
+      <div class="a hl">
+        <div class="farm"><img src="https://www.pyaasdairy.com/newfarms/gonardfarms1.jpeg" alt="Gonard Dairy"><div><b class="t">Gonard Dairy</b><span class="s">Harsh Singh · Paraspur</span></div></div>
+        <div class="mini"><b>7 more homes to unlock</b><span>58 of 65</span></div><div class="mm"><i style="width:89%"></i></div>
+        <span class="pbtn" style="margin-top:4px">Claim Gonard Dairy</span>
+      </div>
+      <div class="a">
+        <div class="farm"><img src="https://mcpqwdoakjbuvkomvaer.supabase.co/storage/v1/object/public/farm-images/mishra-dairy-1784213409976-20552.jpg" alt="Mishra Dairy"><div><b class="t">Mishra Dairy</b><span class="s">Abhishek Mishra · Gonda</span></div></div>
+        <div class="mini"><b>14 more homes to unlock</b><span>66 of 80</span></div><div class="mm"><i style="width:82%"></i></div>
+      </div>
+      <div class="a">
+        <div class="farm"><img src="https://www.pyaasdairy.com/newfarms/duttnagarfarm.jpeg" alt="Ranjeet Singh Dairy"><div><b class="t">Ranjeet Singh Dairy</b><span class="s">Ranjeet Singh · Dutt Nagar</span></div></div>
+        <div class="mini"><b>18 more homes to unlock</b><span>37 of 55</span></div><div class="mm"><i style="width:67%"></i></div>
+      </div>
+    </div>
+    <div class="nav"><span><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid on">PYAAS</span><span><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> farm records: "Unlocks at" 150 / 80 / 65 / 55, homes claimed, status Filling / Unlocked. Unlocked farms have no Claim button.</div>
+</div>
+
+<!-- 6 JOIN -->
+<div class="screen">
+  <div class="capt"><span class="num">6</span><b>Join: pay ₹99</b>Plain words on when the money moves.</div>
+  <div class="phone">
+    <div class="ph-status"><span>7:10</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><span class="back">‹ Join the Founding Family</span></div>
+    <div class="ph-body">
+      <div class="a"><div class="farm"><img src="https://www.pyaasdairy.com/newfarms/gonardfarms1.jpeg" alt="Gonard Dairy"><div><span class="s">Your farm</span><b class="t">Gonard Dairy · Harsh Singh</b><span class="s">7 more homes to unlock</span></div></div></div>
+      <div class="a">
+        <div class="row"><span>Today</span><b>₹99</b></div>
+        <div class="row"><span>Until Gonard unlocks</span><b>Nothing more</b></div>
+        <div class="row"><span>After it unlocks</span><b>₹99 a month</b></div>
+        <div class="row"><span>Stop</span><b>Any month</b></div>
+      </div>
+      <div class="a">
+        <span class="s">• Your first ₹99 waits until your farm opens; your month starts on its first delivery.<br>• Not unlocked within 60 days of launch? Full ₹99 back.<br>• Parag milk, ghee and the wallet are open to you now, with or without joining.</span>
+      </div>
+      <div class="a"><div class="row"><span>Pay from</span><b>PYAAS Wallet ▾</b></div><span class="s">Secure payment through your PYAAS Wallet.</span></div>
+    </div>
+    <div class="sticky"><div><b>₹99</b><br><span class="muted">hold my seat</span></div><span class="pbtn">Pay ₹99 · hold my seat</span></div>
+    <div class="nav"><span><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid on">PYAAS</span><span><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> ₹99 booked as customer advance against FOUNDING-99, member status "Waiting", claimed farm = Gonard, line number assigned.</div>
+</div>
+
+<!-- 7 YOU'RE IN -->
+<div class="screen">
+  <div class="capt"><span class="num">7</span><b>You're in</b>Your farm card, your place in line, one share button.</div>
+  <div class="phone">
+    <div class="ph-status"><span>7:11</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><img src="https://www.pyaasdairy.com/images/pyaas-logo.png" alt="PYAAS"><span>Founding Family</span></div>
+    <div class="ph-body">
+      <div class="a hl" style="padding:0;overflow:hidden">
+        <img src="https://www.pyaasdairy.com/newfarms/gonardfarms1.jpeg" alt="Gonard Dairy" style="width:100%;height:120px;object-fit:cover;background:#E9DCE3">
+        <div style="padding:10px"><span class="tag lock">Your farm</span><b class="t" style="margin-top:4px">Gonard Dairy · Harsh Singh</b><span class="s">Welcome to the Founding Family, Amiya.</span></div>
+      </div>
+      <div class="a" style="text-align:center"><span class="s">Your place in line</span><div style="font-size:30px;font-weight:700;color:var(--pink-ink)">#289</div><div class="mini"><b>7 more homes to unlock Gonard</b><span>58 of 65</span></div><div class="mm"><i style="width:89%"></i></div></div>
+      <div class="a"><b class="t">Refer a friend, move up the line</b><span class="s">Each friend who joins moves you up. If they claim Gonard Dairy, it unlocks sooner too.</span><span class="pbtn">Share on WhatsApp</span></div>
+    </div>
+    <div class="nav"><span><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid on">PYAAS</span><span><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> referral code on the member; a referral counts only when the friend pays ₹99. Place in line shown after OTP check.</div>
+</div>
+
+<!-- 8 PYAAS PRODUCT, WAITING MEMBER -->
+<div class="screen">
+  <div class="capt"><span class="num">8</span><b>PYAAS milk: member waiting for unlock</b>Member price visible, button waits for the farm.</div>
+  <div class="phone">
+    <div class="ph-status"><span>7:12</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><span class="back">‹ Toned Milk</span><span class="tag gold">Traced Pool</span></div>
+    <div class="ph-body">
+      <div class="a" style="text-align:center"><img src="https://www.pyaasdairy.com/images/1L_Pink_carton_front.png" alt="PYAAS Toned Milk 1 L carton" style="width:110px;height:120px;object-fit:contain;margin:0 auto"><b class="t">PYAAS Toned Milk</b><span class="s">3% fat · 8.5% SNF · every farm named with its share in the QR record</span></div>
+      <div class="a">
+        <div class="row"><span>1 L carton</span><span>₹85 · <b class="pink">you pay ₹83</b></span></div>
+        <div class="row"><span>500 ml carton</span><span>₹51 · <b class="pink">you pay ₹50</b></span></div>
+        <div class="row"><span>450 ml polypack</span><span>₹48 · <b class="pink">you pay ₹47</b></span></div>
+      </div>
+      <div class="a hl"><b class="t">🔒 Opens when Gonard Dairy unlocks</b><span class="s">7 more homes to go. We'll tell you the moment it opens. Free delivery from your first morning.</span></div>
+    </div>
+    <div class="sticky"><div><b>₹83</b> / L<br><span class="muted">Founding Family</span></div><span class="pbtn alt" style="background:#fff">✓ Alert on at unlock</span></div>
+    <div class="nav"><span class="on"><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid">PYAAS</span><span><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> PYS-TONED-1LTR ₹85 / CTN-500ML ₹51 / PP-450ML ₹48 at level 1; level 3 = ₹83 / ₹50 / ₹47. Order blocked until farm status is Unlocked. Unlock alert is on by default for members; non-members see "🔓 Unlock with Founding Family" instead.</div>
+</div>
+
+<!-- 9 CART -->
+<div class="screen">
+  <div class="capt"><span class="num">9</span><b>Tomorrow's basket (after unlock)</b>PYAAS milk at member price, Parag at MRP, delivery free.</div>
+  <div class="phone">
+    <div class="ph-status"><span>9:40 PM</span><span>4G ▮▮▮</span></div>
+    <div class="ph-head"><span class="back">Tomorrow, by 7 AM</span><span class="tag now">Gonard ✓</span></div>
+    <div class="ph-body">
+      <div class="a"><div class="prod"><img src="https://www.pyaasdairy.com/images/whole-farm-bottle-front.jpg" alt="Whole Farm Milk 1 L"><div class="pi"><b>Whole Farm Milk 1 L</b><div class="s">From Gonard Dairy · Harsh Singh</div></div><div class="pp"><span style="text-decoration:line-through">₹85</span><b>₹83</b></div></div></div>
+      <div class="a"><div class="prod"><img src="https://www.pyaasdairy.com/images/parag-gold-pouch.png" alt="Parag Gold 500 ml"><div class="pi"><b>Parag Gold 500 ml</b><div class="s">Cooperative Milk · at MRP</div></div><div class="pp"><b>₹36</b></div></div></div>
+      <div class="a">
+        <div class="row"><span>PYAAS milk (member price)</span><span>₹83</span></div>
+        <div class="row"><span>Parag (MRP)</span><span>₹36</span></div>
+        <div class="row"><span>Delivery</span><span class="green">Free · Founding Family</span></div>
+        <div class="row tot"><span>From your wallet</span><span>₹119</span></div>
+      </div>
+      <div class="a"><span class="s">You saved ₹2 on milk and ₹5 on delivery today. Next ₹99: 1 Nov, from your wallet. Stop any month.</span></div>
+    </div>
+    <div class="nav"><span class="on"><i>🏪</i>Shop</span><span><i>⛶</i>Scan</span><span class="mid">PYAAS</span><span><i>👛</i>Wallet</span><span><i>👤</i>Me</span></div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> order at price level 3 for PYAAS lines, level 1 for Parag. DELIVERY-FEE line added only for non-members with PYAAS milk. Whole Farm Milk line carries the claimed farm.</div>
+</div>
+
+<!-- 10 NOTIFICATIONS -->
+<div class="screen">
+  <div class="capt"><span class="num">10</span><b>Messages that bring them back</b>Short, true, and in the One Voice words.</div>
+  <div class="phone" style="background:linear-gradient(180deg,#3a2a33,#1d1418)">
+    <div class="ph-status" style="color:#EAD9E2"><span>Wed 8:15</span><span>4G ▮▮▮</span></div>
+    <div class="ph-body" style="padding-top:12px">
+      <div class="notif"><div class="app"><b>PYAAS</b><span>now</span></div><b>Gonard Dairy is unlocked! 🎉</b><br>Whole Farm Milk from Harsh Singh and the full PYAAS range are open for you. First delivery tomorrow by 7 AM.</div>
+      <div class="notif"><div class="app"><b>PYAAS</b><span>Mon</span></div><b>Your friend Neha joined</b><br>You moved up to #271. She claimed Gonard Dairy: 2 more to unlock.</div>
+      <div class="notif"><div class="app"><b>PYAAS</b><span>Sun</span></div><b>Your free 500 ml Parag Gold is on the way</b><br>At your door by 7 AM. Add ₹500 to your wallet in the next 6 days for another 500 ml free.</div>
+      <div class="notif"><div class="app"><b>PYAAS</b><span>28 Oct</span></div><b>₹99 Founding Family on 1 Nov</b><br>From your PYAAS Wallet. It keeps free delivery and ₹2 off every litre. Stop any time in Me › Founding Family.</div>
+      <div class="notif"><div class="app"><b>WhatsApp · shared</b><span>Sat</span></div>I joined the PYAAS Founding Family and claimed Gonard Dairy. 6 more homes and it unlocks for our society: pyaasdairy.com/foundationfamily?ref=AMIYA</div>
+    </div>
+  </div>
+  <div class="erpnote"><b>ERP:</b> triggers from farm status change, paid referral, offer step, and FOUNDING-99 billing date (3 days before).</div>
+</div>
+
+</div>
+
+<h2>Rules the app must follow</h2>
+<div class="grid2">
+  <div class="card2"><b>Who can buy what</b><p class="muted" style="margin:6px 0 0">Everyone: Parag (at MRP), ghee, wallet. Founding Family with an unlocked farm: PYAAS milk at the level 3 price. Everyone else sees PYAAS milk with "🔓 Unlock with Founding Family".</p></div>
+  <div class="card2"><b>Prices</b><p class="muted" style="margin:6px 0 0">Always read from the ERP. Level 1 is MRP. Level 3 is the Founding Family price. Never apply a member discount to Parag.</p></div>
+  <div class="card2"><b>Words</b><p class="muted" style="margin:6px 0 0">Founding Family, never Plus or VIP. "1 Litre Free Parag Milk", never "1 litre free milk". No priority slots, no "never auto-renews".</p></div>
+  <div class="card2"><b>Offer limits</b><p class="muted" style="margin:6px 0 0">New customers only · one per mobile and address · select Lucknow areas · Android only · subscription needed · ₹500 top-up within 7 days for step 2 · T&amp;C Apply.</p></div>
+</div>
+
+<footer>PYAAS App screens v1 · Pyaas Dairy Private Limited · Internal mock-up. Photos from pyaasdairy.com. Names, line numbers, dates and homes-to-go are examples. See pyaas-app-spec.md for the build spec.</footer>
+</div>
+</body>
+</html>

@@ -12,6 +12,7 @@ import { useAuth } from '../lib/auth';
 import { updateProfile } from '../lib/profileApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { recordConsents, defaultChoices } from '../components/ConsentSheet';
+import { setReferredBy } from '../lib/referrals';
 
 /**
  * One-time profile completion gate. New sign-ups (especially phone-OTP, which
@@ -25,9 +26,14 @@ export default function CompleteProfile() {
   const router = useRouter();
   const { profile, refreshProfile } = useAuth();
   const [name, setName] = useState(profile?.full_name ?? '');
-  // OPTIONAL marketing opt-in — starts UNTICKED (CCPA forbids pre-ticking).
-  const [offersOptIn, setOffersOptIn] = useState(false);
+  // OPTIONAL offers opt-in — starts TICKED (founder call, 21 Sep: message
+  // preferences are on by default). The member can untick it here or switch
+  // any channel off later in Message preferences.
+  const [offersOptIn, setOffersOptIn] = useState(true);
   const [phone, setPhone] = useState(profile?.phone ?? '');
+  // OPTIONAL referral code (founder call, 21 Sep): new members are asked for
+  // the code of whoever sent them, right at sign-up.
+  const [referral, setReferral] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   // Collapse the tall header while the keyboard is open so the name field + the
@@ -54,10 +60,13 @@ export default function CompleteProfile() {
         const uid = profile?.id;
         if (uid) await AsyncStorage.setItem(`pyaas_setup_done:${uid}`, '1');
       } catch { /* flag is a convenience — the gate also accepts a saved name */ }
+      // A referral code is optional and must never block sign-up.
+      if (referral.trim()) {
+        try { await setReferredBy(referral); } catch { /* kept for a later retry */ }
+      }
       // Required consents + the OPTIONAL offers opt-in exactly as the member
-      // left the checkbox (unticked by default — CCPA forbids pre-ticking; a
-      // tick grants the marketing channels, and Settings → Message
-      // preferences can change it any time).
+      // left the checkbox (ticked by default; a tick grants the marketing
+      // channels, and Settings → Message preferences can change it any time).
       await recordConsents({
         ...defaultChoices(), privacy: true, terms: true,
         marketing: offersOptIn, whatsapp: offersOptIn, sms: offersOptIn,
@@ -93,11 +102,12 @@ export default function CompleteProfile() {
           >
             <Field label="Full name (optional)" value={name} onChangeText={setName} placeholder="Your name (you can skip this)" autoFocus autoComplete="name" textContentType="name" />
             <Field label="Mobile number (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10-digit mobile" autoComplete="tel" textContentType="telephoneNumber" />
+            <Field label="Referral code (optional)" value={referral} onChangeText={(t: string) => setReferral(t.replace(/\s/g, '').toUpperCase())} placeholder="Got a code from a friend?" autoCapitalize="characters" autoCorrect={false} maxLength={12} />
 
             {/* The one surface that can GRANT marketing consent — without it
                 every promotional message (and the whole SMS/WhatsApp channel)
                 stays correctly suppressed at the consent guard forever.
-                Optional, unticked, changeable later in Message preferences. */}
+                Optional, ticked by default, changeable later in Message preferences. */}
             <Tap onPress={() => setOffersOptIn((v) => !v)} style={{ marginTop: spacing.lg }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{ width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: offersOptIn ? colors.flameDeep : colors.line, backgroundColor: offersOptIn ? colors.flameDeep : colors.white, alignItems: 'center', justifyContent: 'center' }}>

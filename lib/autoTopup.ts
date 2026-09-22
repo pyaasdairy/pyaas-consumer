@@ -41,7 +41,8 @@ export type AutoTopupPrefs = {
 export const THRESHOLD_CHOICES = [100, 200, 300];
 export const AMOUNT_CHOICES = [MIN_RECHARGE, 1000, 2000];
 
-const DEFAULTS: AutoTopupPrefs = { on: false, threshold: 200, amount: MIN_RECHARGE };
+// ON by default (founder call, 21 Sep); the member can switch it off.
+const DEFAULTS: AutoTopupPrefs = { on: true, threshold: 200, amount: MIN_RECHARGE };
 
 let prefs: AutoTopupPrefs = DEFAULTS;
 let hydrated = false;

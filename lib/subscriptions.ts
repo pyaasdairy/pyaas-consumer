@@ -217,6 +217,17 @@ export async function createSubscription(params: {
     e.code = NEEDS_EXACT_LOCATION;
     throw e;
   }
+  // ONE LIVE SUBSCRIPTION PER PRODUCT (21 Sep): the server creates a daily
+  // order for EVERY active subscription and never checks for an existing one,
+  // so a second "Subscribe" on the same milk silently doubled the member's
+  // daily order and charge while the app still looked like one plan. Change
+  // the existing plan instead (qty, days, pause) in My subscriptions.
+  const existing = await getRows<Subscription>('subscriptions', uid).catch(() => [] as Subscription[]);
+  if (existing.some((s) => s.product_id === params.productId && (s.status === 'active' || s.status === 'paused'))) {
+    const e = new Error('You already have a subscription for this milk. Change its quantity or days in My subscriptions.') as Error & { code?: string };
+    e.code = 'DUPLICATE_SUBSCRIPTION';
+    throw e;
+  }
   // LOCAL calendar date (lib/dates), never toISOString(): UTC would be
   // yesterday between local midnight and 05:30 IST and phase-shift the cadence.
   const start = params.startDate ?? todayISO();

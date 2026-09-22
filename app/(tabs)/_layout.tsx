@@ -7,10 +7,13 @@ import LocationGate from '../../components/LocationGate';
 export default function TabsLayout() {
   return (
     <View style={{ flex: 1 }}>
-      <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <PyaasTabBar {...props} />}>
+      {/* backBehavior="history": back from a tab returns to the tab (or screen)
+          the member came from, e.g. Wallet opened from the home wallet chip
+          goes back to Home (founder call, 21 Sep). */}
+      <Tabs backBehavior="history" screenOptions={{ headerShown: false }} tabBar={(props) => <PyaasTabBar {...props} />}>
         <Tabs.Screen name="index" options={{ title: 'Shop' }} />
         <Tabs.Screen name="traceability" options={{ title: 'Know your milk' }} />
-        <Tabs.Screen name="vip" options={{ title: 'PYAAS Plus' }} />
+        <Tabs.Screen name="vip" options={{ title: 'Founding Family' }} />
         <Tabs.Screen name="wallet" options={{ title: 'Wallet' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
         {/* Orders stays a registered tab route (reached from Profile / home) but is

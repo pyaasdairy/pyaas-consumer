@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { getRows, insertRow, updateRows, setRows, newId } from './localStore';
 import { getUserId } from './session';
-import { getCrmInbox, markCrmRead, type CrmInboxItem } from './crm';
+import { getCrmInbox, markCrmRead, crmCtaRoute, type CrmInboxItem } from './crm';
 import { notifyNow, setBadge, CHANNELS, type ChannelId } from './notifications';
 
 /**
@@ -86,7 +86,9 @@ function fromCrm(m: CrmInboxItem): Notice {
     // honest title and the whole body still shows underneath.
     title: body.split(/(?<=[.!?])\s/)[0]?.slice(0, 72) || 'PYAAS',
     body,
-    href: '/inbox',
+    // Messages was folded into Notifications (founder call, 21 Sep): a campaign
+    // row opens its own call to action (Recharge, Track order…), or nothing.
+    href: crmCtaRoute(m.cta)?.href ?? null,
     created_at: m.created_at,
     read_at: m.read_at ?? null,
     dedupe: `crm:${m.id}`,
@@ -180,6 +182,8 @@ export type NotifyInput = {
   dedupe?: string;
   /** Skip the OS notification and only write the in-app row. */
   silent?: boolean;
+  /** OS notification id: a later notify() with the same id REPLACES it. */
+  identifier?: string;
 };
 
 /**
@@ -222,6 +226,7 @@ export async function notify(input: NotifyInput): Promise<void> {
         body: input.body,
         channel: CHANNEL_FOR[input.kind],
         href: input.href,
+        identifier: input.identifier,
       });
     }
   } catch {

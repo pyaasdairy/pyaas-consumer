@@ -13,7 +13,10 @@ import { api, isBackendConfigured, HttpError } from './apiClient';
  * the lead to the API instead. See lib/apiClient.ts for the seam.
  */
 
-export type LeadKind = 'bulk_order' | 'franchise' | 'vendor' | 'restock';
+// 'agent' = PYAAS Digital Agent Network (P-DAN), public name "Earn with PYAAS" (21 Sep).
+// 'franchise' and 'vendor' are no longer offered in the app but stay in the type
+// so rows already stored on a device still read.
+export type LeadKind = 'bulk_order' | 'agent' | 'franchise' | 'vendor' | 'restock';
 
 export type Lead = {
   id: string;

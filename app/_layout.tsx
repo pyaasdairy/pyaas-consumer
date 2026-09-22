@@ -21,7 +21,9 @@ import { runOneTimeLocalReset } from '../lib/localReset';
 import { drainMirrorQueue } from '../lib/mirrorQueue';
 import { warmBackend } from '../lib/warmup';
 import { ToastHost } from '../components/Toast';
-import { ensureChannels, installForegroundHandler } from '../lib/notifications';
+import { ensureChannels, ensureCategories, installForegroundHandler, onNotificationTap } from '../lib/notifications';
+import { scheduleCartReminder, cancelCartReminder } from '../lib/cartReminder';
+import { rescheduleTaglines } from '../lib/taglines';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hydrateProfileFromServer } from '../lib/profileApi';
 // Importing consentSync also registers the 'consents' mirror handler at boot,
@@ -114,6 +116,7 @@ function RootNavigator() {
     // what we would send first.
     installForegroundHandler();
     void ensureChannels();
+    void ensureCategories(); // the "View Cart" button on the cart reminder
     const min = setTimeout(() => setMinSplash(true), 700);
     const max = setTimeout(() => setMaxWaited(true), 5000);
     return () => { clearTimeout(min); clearTimeout(max); };
@@ -200,10 +203,26 @@ function RootNavigator() {
       if (st === 'active') {
         warmBackend(); // returning after long background = likely-cold backend
         void drainMirrorQueue().catch(() => undefined);
+        void cancelCartReminder(); // they came back: no "your cart is waiting"
+      }
+      // Leaving the app = re-plan the 2-hourly taglines from the member's
+      // state right now (cart, orders, Offers preference). lib/taglines.
+      // …and, with items in the cart, the 30-minute "Your cart is waiting".
+      if (st === 'background') {
+        void rescheduleTaglines();
+        void scheduleCartReminder();
       }
     });
     return () => sub.remove();
   }, []);
+  // …and once per signed-in launch, so a member who never backgrounds the app
+  // cleanly (swiped away) still has the next 3 days planned.
+  useEffect(() => {
+    if (session) void rescheduleTaglines();
+  }, [session]);
+  // A tapped notification (or its View Cart button) opens what it is about:
+  // the order, the cart, the recharge. Before this, a tap only opened the app.
+  useEffect(() => onNotificationTap((href) => router.push(href as never)), [router]);
 
   const onPublicDocNow = PUBLIC_DOC_ROUTES.has(segments[0] as string);
   const acceptSignedInConsent = useCallback(async () => {

@@ -27,7 +27,7 @@ const ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typ
 const LABELS: Record<string, string> = {
   index: 'Shop',
   traceability: 'Know your milk',
-  vip: 'PYAAS Plus',
+  vip: 'Founding Family',
   wallet: 'Wallet',
   profile: 'Profile',
 };
