@@ -41,6 +41,56 @@ answered by the backend).
 
 Verify: `npx tsc --noEmit` clean.
 
+## Phase B persistence
+
+The backend is the source of truth. After the phase B commits on this branch, what the
+app still keeps on the device in backend mode is:
+
+- **The cart** (`store/cart.ts`).
+- **Auth tokens** (SecureStore, `lib/apiClient.ts`) and the **session pointer**
+  (`parag_current_uid`, plus the OTP-verified login digits the reviewer gate reads).
+- **UI preferences**: disclosure language, the low-balance reminder setting, the
+  rating-ask flags, the free-pack seen / snooze flags, the setup-done gate flag, the
+  order-status seen markers, the local-data version stamp.
+- **Device-scoped disclosure records** by design (`lib/dataConsent.ts`,
+  `lib/locationConsent.ts`), and the `consents` rows as the device's record of what the
+  member tapped; the message-preferences screen renders the server's consent state
+  (`lib/consentSync.ts`).
+- **Offline outboxes**, each row deleted once its replay lands:
+  - address create -> `addr-create` (`lib/api.ts`); a set-default or delete that could not
+    reach the server is queued by server id (`addr-default`, `addr-delete`);
+  - subscription create -> `sub-create` (`lib/subscriptions.ts`); `sub-status` and
+    `sub-edit` only drain ops queued by older builds;
+  - profile edit -> `profile` (`lib/profileApi.ts`);
+  - delivery preferences -> `delivery-prefs` (`lib/deliveryPrefs.ts`), the changed keys only;
+  - consents -> `consents` (`lib/consentSync.ts`);
+  - complaints -> replayed by `useComplaints.refresh` (`lib/complaints.ts`), not the mirror
+    queue; a permanent rejection deletes the row and is shown once;
+  - promo credits -> `replayPendingPromos` (`lib/walletApi.ts`); restock leads ->
+    `replayParkedRestockLeads` (`lib/leads.ts`).
+- **Owner-decided device-local items**: `user_location`, `milk_scans`, favorites, and the
+  local notices feed (`lib/notificationCenter.ts`).
+
+Everything else a screen shows in backend mode is an in-memory copy of a server read
+(profile, address book, plan list, delivery prefs, trial, mandate, wallet unlock, offer
+qualification), keyed by account and cleared on sign-out.
+
+Behaviour consequences the reviewer listed:
+
+- Offline in a session that has not yet read `GET /addresses`, the address list is the
+  outbox only. Nothing local stands in for the server's book; the next read retries.
+- `addVacation` needs a live plan on the server. With none it throws ("Start a
+  subscription first") instead of writing a local range.
+
+Also worth knowing:
+
+- Low-balance auto-pause is no longer decided on the phone. The server worker skips a
+  day the wallet cannot cover and the CRM's B-01 / B-02 triggers message the member; the
+  app only shows the reminder.
+- `PATCH /me` replaces the whole `delivery_prefs` document with what it is sent
+  (`service.go updateMe`), so the delivery-prefs replay lays the queued keys over a fresh
+  `GET /me` before it sends. A true partial PATCH needs the backend to merge.
+
 ## The backend now answers three of your §11 items
 
 - **`POST` / `GET /consumer/complaints`** exist, with an operator surface at
