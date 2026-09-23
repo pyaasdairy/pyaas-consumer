@@ -182,7 +182,9 @@ export async function fileComplaint(input: {
     title: `Complaint ${row.ref} registered`,
     body: `${categoryLabel(row.category)}. ${STATUS_COPY[row.status].sub}`,
     href: '/complaints',
-    dedupe: `complaint:${row.id}`,
+    // Keyed by the reference the server also knows (filing is idempotent per
+    // ref), so the feed can tell this notice and the server's row apart.
+    dedupe: `complaint:${row.ref}`,
     silent: true, // the member is looking at the screen that raised it
   });
   await useComplaints.getState().refresh();

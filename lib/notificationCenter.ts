@@ -13,10 +13,16 @@ import { notifyNow, setBadge, CHANNELS, type ChannelId } from './notifications';
  *   - LOCAL rows the app writes itself (an order moving, a delivery landing, a
  *     wallet under the floor, a recharge credited). These exist with no
  *     backend at all, which is why the bell is never empty on a fresh install
- *     the moment the member does something.
+ *     the moment the member does something. They are client-generated notices
+ *     with no server endpoint, so the local table is their feed cache (capped
+ *     at MAX_ROWS) and the dedupe record, not a copy of anything the server
+ *     holds.
  *   - CRM rows the backend's campaign engine delivers (GET /crm/inbox). Those
  *     already powered the Messages screen; they now share this feed so a
- *     member has ONE place to look instead of two.
+ *     member has ONE place to look instead of two. The backend also announces
+ *     order confirmed / out for delivery / delivered and complaint received /
+ *     resolved there, so when the two sources describe one event the local
+ *     notice is left out of the merge (dropNoticesTheServerSent).
  *
  * Every write goes through `notify()`, which:
  *   1. drops duplicates by `dedupe` (an order reaching 'out_for_delivery' is
@@ -107,6 +113,66 @@ type State = {
   reset: () => void;
 };
 
+/** The server's inbox triggers (crm_triggers.json ids) that announce the same
+ *  real-world event a local notice's dedupe key names. */
+const SERVER_TRIGGERS_FOR: Record<string, string[]> = {
+  'order:confirmed': ['D-01'],
+  'order:preparing': ['D-02'],
+  'order:assigned': ['D-02'],
+  'order:out_for_delivery': ['D-02'],
+  'order:delivered': ['D-06'],
+  complaint: ['E-02', 'E-04', 'E-05'],
+};
+
+/** How far apart the two rows for one event may be: the poll that raises the
+ *  local notice can run hours after the server emitted its row. */
+const SAME_EVENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** What a local dedupe key names: the event class (the key of
+ *  SERVER_TRIGGERS_FOR) and the order id or complaint ref. */
+export function eventOfDedupeKey(dedupe: string | null | undefined): { cls: string; ref: string } | null {
+  if (!dedupe) return null;
+  const order = /^order:(.+):([a-z_]+)$/.exec(dedupe);
+  if (order) return { cls: `order:${order[2]}`, ref: order[1] };
+  const complaint = /^complaint:(.+)$/.exec(dedupe);
+  if (complaint) return { cls: 'complaint', ref: complaint[1] };
+  return null;
+}
+
+/**
+ * The local notices minus those the server's inbox also announces, so a
+ * member never sees the app's own row and the CRM's row for one event. A
+ * server row whose text names the order id or complaint ref is that event
+ * outright. The rows the deployed backend emits carry no such token (the
+ * rendered bodies name the product and the ETA, not the ref), so a local
+ * notice is otherwise paired with the nearest unpaired server row of the
+ * same event class (by trigger id) within SAME_EVENT_WINDOW_MS, one to one.
+ * An unpaired local notice stays: the server said nothing about that event.
+ */
+export function dropNoticesTheServerSent(local: Notice[], inbox: CrmInboxItem[]): Notice[] {
+  const server = inbox.map((m) => ({ m, at: Date.parse(m.created_at) || 0, taken: false }));
+  const keep: Notice[] = [];
+  for (const n of local) {
+    const ev = eventOfDedupeKey(n.dedupe);
+    if (!ev) { keep.push(n); continue; }
+    const named = ev.ref.length >= 4
+      ? server.find((s) => !s.taken && ((s.m.body_en ?? '').includes(ev.ref) || (s.m.body_hi ?? '').includes(ev.ref)))
+      : undefined;
+    if (named) { named.taken = true; continue; }
+    const triggers = SERVER_TRIGGERS_FOR[ev.cls];
+    const at = Date.parse(n.created_at) || 0;
+    let nearest: (typeof server)[number] | null = null;
+    for (const s of server) {
+      if (s.taken || !triggers?.includes(s.m.trigger_id)) continue;
+      const gap = Math.abs(s.at - at);
+      if (gap <= SAME_EVENT_WINDOW_MS && (!nearest || gap < Math.abs(nearest.at - at))) nearest = s;
+    }
+    if (nearest) { nearest.taken = true; continue; }
+    keep.push(n);
+  }
+  return keep;
+}
+
 function sortAndCap(rows: Notice[]): Notice[] {
   const seen = new Set<string>();
   return rows
@@ -134,8 +200,10 @@ export const useNotifications = create<State>((set, get) => ({
     set({ loading: true });
     const local = await getRows<Notice>(TABLE, uid).catch(() => [] as Notice[]);
     // CRM degrades to [] on an old backend / offline — never throws.
-    const crm = (await getCrmInbox()).map(fromCrm);
-    const rows = sortAndCap([...local, ...crm]);
+    const inbox = await getCrmInbox();
+    // One row per event: a local notice the server also announced is left
+    // out here (its table row stays, as the dedupe record for notify()).
+    const rows = sortAndCap([...dropNoticesTheServerSent(local, inbox), ...inbox.map(fromCrm)]);
     const unread = rows.filter((r) => !r.read_at).length;
     set({ rows, unread, loading: false });
     void setBadge(unread);
