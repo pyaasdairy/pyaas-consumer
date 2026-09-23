@@ -41,6 +41,7 @@ export default function Wallet() {
   const [threshold, setThreshold] = useState(TOPUP_THRESHOLDS[1]);
   const [topupAmt, setTopupAmt] = useState(TOPUP_AMOUNTS[1]);
   const [busy, setBusy] = useState(false);
+  const [autopayErr, setAutopayErr] = useState('');
   const [focused, setFocused] = useState(true);
   const [crmOffer, setCrmOffer] = useState<CrmOfferView | null>(null);
   const onScroll = useHideTabBarOnScroll();
@@ -101,9 +102,11 @@ export default function Wallet() {
   }
   async function turnOffTopup() {
     if (!autopay) return;
-    setBusy(true);
+    setBusy(true); setAutopayErr('');
     try { await cancelAutopay(autopay.id); await load(); }
-    catch { /* the mandate is still live; the next read shows it as it is */ }
+    // The mandate is still live; say why (the autopay screen does), and the
+    // next read shows it as it is.
+    catch (e: any) { setAutopayErr(e?.message ?? 'Could not turn off AutoPay.'); }
     finally { setBusy(false); }
   }
 
@@ -231,6 +234,7 @@ export default function Wallet() {
                   <Button title="Approve in Paytm" small style={{ flex: 1 }} loading={busy} onPress={approveInPaytm} />
                   <Button title="Cancel" variant="outline" small style={{ flex: 1 }} onPress={turnOffTopup} />
                 </View>
+                {autopayErr ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{autopayErr}</TextBody> : null}
               </>
             ) : autopayOn ? (
               <>
@@ -244,6 +248,7 @@ export default function Wallet() {
                   <Button title="Manage" variant="outline" small style={{ flex: 1 }} onPress={() => router.push('/autopay')} />
                   <Button title="Turn off" variant="outline" small style={{ flex: 1 }} loading={busy} onPress={turnOffTopup} />
                 </View>
+                {autopayErr ? <TextBody color={colors.danger} style={{ fontSize: 12.5 }}>{autopayErr}</TextBody> : null}
               </>
             ) : (
               <>
