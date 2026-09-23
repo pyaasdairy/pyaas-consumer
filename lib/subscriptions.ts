@@ -125,9 +125,14 @@ export function upcomingDeliveries(
 // 'vacations' table is local mode's only. Local mode keeps both tables as
 // the plan list, as before.
 let subsCache: { uid: string; rows: Subscription[] } | null = null;
+// Bumped by every invalidation. A fetch that began before the bump returns
+// its rows to its caller but does not keep them: a mutation landed while the
+// GET was in flight, so what it read is already stale.
+let subsGen = 0;
 
 export function invalidateSubscriptionCache(): void {
   subsCache = null;
+  subsGen += 1;
 }
 
 /** One plan as GET /subscriptions returns it. INVARIANT (G1, see
@@ -158,11 +163,12 @@ export function subscriptionFromRemote(w: Record<string, unknown>): Subscription
 }
 
 async function fetchSubscriptions(uid: string): Promise<Subscription[]> {
+  const gen = subsGen;
   const remote = await api.get<Record<string, unknown>[]>('/subscriptions');
   const rows = (Array.isArray(remote) ? remote : [])
     .map(subscriptionFromRemote)
     .filter((s): s is Subscription => s !== null);
-  subsCache = { uid, rows };
+  if (gen === subsGen) subsCache = { uid, rows };
   // Rows an older build kept as mirrors of server rows (backend_id set) and
   // its local vacations are stale copies of what was just fetched; drop them.
   // The outbox (rows without backend_id) stays.

@@ -29,6 +29,15 @@ const TABLE = 'delivery_prefs';
 // The local row exists in backend mode ONLY as the offline outbox: written
 // when PATCH /me fails, replayed by the mirror handler, then deleted.
 let cached: { uid: string; prefs: DeliveryPrefs } | null = null;
+// Bumped by every write to the copy. A GET that began before the bump
+// returns its answer to its caller but does not keep it: a save landed while
+// it was in flight, so what it read is already stale.
+let prefsGen = 0;
+
+function setCached(uid: string, prefs: DeliveryPrefs): void {
+  cached = { uid, prefs };
+  prefsGen += 1;
+}
 
 /** The request shape PATCH /me carries (field names the backend reads). */
 export function toWire(p: DeliveryPrefs): { call_before: boolean; ring_bell: boolean; notes: string } {
@@ -48,8 +57,9 @@ export function fromServer(me: Record<string, unknown> | null | undefined): Deli
 }
 
 async function fetchFromServer(uid: string): Promise<DeliveryPrefs> {
+  const gen = prefsGen;
   const prefs = fromServer(await api.get<Record<string, unknown>>('/me'));
-  cached = { uid, prefs };
+  if (gen === prefsGen) cached = { uid, prefs };
   return prefs;
 }
 
@@ -94,11 +104,11 @@ export async function saveDeliveryPrefs(prefs: Partial<DeliveryPrefs>): Promise<
   // dropped so its queued replay cannot overwrite this newer value.
   try {
     const me = await api.patch<Record<string, unknown>>('/me', { delivery_prefs: toWire(next) });
-    cached = { uid, prefs: me && typeof me === 'object' && 'delivery_prefs' in me ? fromServer(me) : next };
+    setCached(uid, me && typeof me === 'object' && 'delivery_prefs' in me ? fromServer(me) : next);
     await dropTable(TABLE, uid).catch(() => undefined);
   } catch {
     // Offline: the outbox row holds the edit until the mirror replays it.
-    cached = { uid, prefs: next };
+    setCached(uid, next);
     await putSingle<DeliveryPrefs>(TABLE, uid, next);
     await enqueueMirror('delivery-prefs');
   }
@@ -112,7 +122,7 @@ registerMirrorHandler('delivery-prefs', async (): Promise<MirrorOutcome> => {
   const p = await getSingle<DeliveryPrefs>(TABLE, uid);
   if (!p) return 'done';
   await api.patch('/me', { delivery_prefs: toWire(p) });
-  cached = { uid, prefs: p };
+  setCached(uid, p);
   await dropTable(TABLE, uid);
   return 'done';
 });

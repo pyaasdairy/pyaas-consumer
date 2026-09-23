@@ -166,9 +166,14 @@ export function deliveryFeeFor(subtotal: number, isPlus = false): number {
 // id ('addr-default' / 'addr-delete') and laid over this copy until it lands.
 // Local mode keeps the table as the address book, as before.
 let addressCache: { uid: string; rows: Address[] } | null = null;
+// Bumped by every invalidation. A fetch that began before the bump returns
+// its rows to its caller but does not keep them: a mutation landed while the
+// GET was in flight, so what it read is already stale.
+let addressGen = 0;
 
 export function invalidateAddressCache(): void {
   addressCache = null;
+  addressGen += 1;
 }
 
 /** One address as GET /addresses and POST /addresses return it. The server's
@@ -263,11 +268,12 @@ export function mergeAddressBook(
 }
 
 async function fetchAddresses(uid: string): Promise<Address[]> {
+  const gen = addressGen;
   const remote = await api.get<Array<Record<string, unknown>>>('/addresses');
   const rows = (Array.isArray(remote) ? remote : [])
     .map((r) => addressFromRemote(r, uid))
     .filter((r): r is Address => r !== null);
-  addressCache = { uid, rows };
+  if (gen === addressGen) addressCache = { uid, rows };
   // Rows an older build kept as mirrors of server rows (backend_id set) are
   // stale copies of what was just fetched; drop them. The outbox stays.
   await deleteRows<Address>('addresses', uid, (r) => !!r.backend_id).catch(() => undefined);
