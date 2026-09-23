@@ -28,10 +28,11 @@ export const STARTER_FREE_DAYS = 2;
 // never written again.
 const LEGACY_UNLOCK_KEY_PREFIX = 'pyaas_wallet_unlocked:';
 
-// The unlock as THIS SESSION knows it, per account: proven by the balance the
-// wallet store reads or by the ledger (GET /wallet/txns), never written to
-// the device. Only a proven unlock is remembered; a failed read answers
-// locked for that check and asks again next time (fail-closed).
+// The unlock as THIS SESSION knows it, per account: proven by a balance the
+// wallet store read from the server for the current account (syncWalletUnlock)
+// or by the ledger (GET /wallet/txns), never written to the device. Only a
+// proven unlock is remembered; a failed read answers locked for that check
+// and asks again next time (fail-closed).
 let unlocked: { uid: string } | null = null;
 let legacyFlagDropped: string | null = null;
 
@@ -46,10 +47,11 @@ export async function purchasesUnlocked(currentBalance?: number): Promise<boolea
   const uid = await getUserId();
   if (!uid) return false;
   dropLegacyFlag(uid);
-  if ((currentBalance ?? 0) >= WALLET_UNLOCK_TARGET) {
-    unlocked = { uid };
-    return true;
-  }
+  // A balance at the target answers this check, but it does not latch: the
+  // caller's number is whatever the wallet store holds, and only a refresh
+  // that succeeded for the current account may remember the unlock for the
+  // session (syncWalletUnlock, called from that success path).
+  if ((currentBalance ?? 0) >= WALLET_UNLOCK_TARGET) return true;
   if (unlocked?.uid === uid) return true;
   // Not proven this session: ask the ledger (below). Never reached once the
   // unlock is known, so the unlocked hot path is a memory read with no network.
@@ -113,21 +115,21 @@ export function onWalletUnlocked(cb: () => void): () => void {
 let syncInFlight: Promise<void> | null = null;
 
 /**
- * Called from the wallet store on every balance refresh. First time this
+ * Called from the wallet store after a balance refresh that succeeded for
+ * `uid`, the account the store verified is still signed in. First time this
  * session sees the balance at the target: remember the unlock and notify
- * listeners. Idempotent and serialized. Creates NO subscription and moves NO
+ * listeners. Idempotent and serialized; no await before the latch, so a
+ * sign-out cannot slip in between. Creates NO subscription and moves NO
  * money (see header).
  */
-export function syncWalletUnlock(balance: number): Promise<void> {
+export function syncWalletUnlock(balance: number, uid: string): Promise<void> {
   if (balance < WALLET_UNLOCK_TARGET) return Promise.resolve();
   if (syncInFlight) return syncInFlight;
-  syncInFlight = doSync(balance).finally(() => { syncInFlight = null; });
+  syncInFlight = doSync(uid).finally(() => { syncInFlight = null; });
   return syncInFlight;
 }
 
-async function doSync(_balance: number): Promise<void> {
-  const uid = await getUserId();
-  if (!uid) return;
+async function doSync(uid: string): Promise<void> {
   dropLegacyFlag(uid);
   if (unlocked?.uid === uid) return; // already unlocked this session
   unlocked = { uid };

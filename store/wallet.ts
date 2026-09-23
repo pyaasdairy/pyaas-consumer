@@ -20,11 +20,20 @@ type WalletState = {
   pending: number;
   locked: number;
   lowBalance: boolean;
+  /** The account whose balance is shown: set by a successful refresh for
+   *  it, null after sign-out and before the first successful read. */
+  loadedUid: string | null;
   loading: boolean;
   refresh: () => Promise<void>;
 };
 
-const ZERO = { balance: 0, cash: 0, promo: 0, pending: 0, locked: 0, lowBalance: false };
+const ZERO = { balance: 0, cash: 0, promo: 0, pending: 0, locked: 0, lowBalance: false, loadedUid: null as string | null };
+
+/** Sign-out: the next member on this phone never sees this balance, and
+ *  nothing reads the previous account's number as its own. */
+export function resetWallet(): void {
+  useWallet.setState({ ...ZERO, loading: false });
+}
 
 export const useWallet = create<WalletState>((set) => ({
   ...ZERO,
@@ -49,9 +58,14 @@ export const useWallet = create<WalletState>((set) => ({
       // exactly what was paid, nothing extra (idempotent, local mode only).
       await reverseRetiredRechargeBonuses().catch(() => { /* retried next refresh */ });
       const b = await getBalances();
-      // ₹500 gate: the first refresh that sees the balance at/over the target
-      // unlocks purchasing and auto-starts the 7-day starter plan (idempotent).
-      void syncWalletUnlock(b.available);
+      // The read was for `uid`. If the session changed while it was in
+      // flight (sign-out, another sign-in), the number is not this
+      // account's: keep nothing, latch nothing.
+      if ((await getUserId()) !== uid) return;
+      // Wallet gate: the first refresh that sees the balance at/over the
+      // target unlocks purchasing for this account (idempotent; creates
+      // nothing, see lib/walletGate).
+      void syncWalletUnlock(b.available, uid);
       // AUTO TOP-UP WATCH: if the member armed it and the balance has fallen
       // under their line, raise the one-a-day reminder (lib/autoTopup).
       void checkAutoTopup(b.available);
@@ -62,6 +76,7 @@ export const useWallet = create<WalletState>((set) => ({
         pending: b.pending,
         locked: b.locked,
         lowBalance: b.lowBalance,
+        loadedUid: uid,
         loading: false,
       });
     } catch {
