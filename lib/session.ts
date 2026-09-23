@@ -326,6 +326,14 @@ export async function signOut(): Promise<void> {
     const { clearAutoTopup } = await import('./autoTopup');
     await clearAutoTopup();
   } catch { /* best-effort */ }
+  // The taglines and the cart reminder are scheduled on the device for the
+  // member who is leaving; they are cancelled here, not in the auth provider,
+  // so deleteMyAccount (which ends in this signOut) cancels them too.
+  // Dynamic imports: both modules import session.
+  try {
+    const [taglines, cart] = await Promise.all([import('./taglines'), import('./cartReminder')]);
+    await Promise.all([taglines.cancelTaglines(), cart.cancelCartReminder()]);
+  } catch { /* best-effort */ }
   await AsyncStorage.removeItem(UID_KEY);
   await AsyncStorage.removeItem(LOGIN_PHONE_KEY);
   currentUid = null;

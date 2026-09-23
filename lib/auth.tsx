@@ -10,8 +10,6 @@ import {
 import { resetServiceability } from './serviceability';
 import { resetNotificationCenter } from './notificationCenter';
 import { announcePushForCurrentSession } from './notifications';
-import { cancelTaglines } from './taglines';
-import { cancelCartReminder } from './cartReminder';
 import { useUserLocation } from './userLocation';
 
 type AuthValue = {
@@ -86,15 +84,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // account's signature and inherits its verdict (fence lifted or lowered
     // for the wrong person). Reset both so the new session resolves fresh.
     resetServiceability();
-    // The feed and its badge belong to the account that just left.
+    // The feed and its badge belong to the account that just left. The push
+    // pairing, the taglines and the cart reminder are sessionSignOut's
+    // (lib/session.ts), so account deletion ends them the same way.
     resetNotificationCenter();
-    // The push pairing too: sessionSignOut already sent the DELETE that stops
-    // the row naming them (lib/session.ts); this settles the latch and is a
-    // no-op while signed out.
-    void announcePushForCurrentSession();
-    // Taglines are scheduled on the device for the member who just left.
-    void cancelTaglines();
-    void cancelCartReminder();
     useUserLocation.setState({ loc: null, ready: false });
   }, []);
 
