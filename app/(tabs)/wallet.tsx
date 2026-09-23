@@ -50,7 +50,9 @@ export default function Wallet() {
     // Campaign entitlement (Welcome Litre) — null everywhere except an
     // enrolled household on a CRM-enabled backend, so this line costs nothing.
     getCrmOffer().then(setCrmOffer);
-    const [ap, spend] = await Promise.all([getAutopay(), getSpendSummary()]);
+    // getAutopay throws on a failed mandate read (account deletion relies on
+    // that); on this tab a failed read shows as no AutoPay card.
+    const [ap, spend] = await Promise.all([getAutopay().catch(() => null), getSpendSummary()]);
     setAutopay(ap && ap.status !== 'cancelled' ? ap : null);
     setDays(spend.daysRemaining);
     setBurn(spend.dailyBurn);

@@ -8,7 +8,7 @@ import {
 import { getSingle, putSingle, dropTable } from './localStore';
 import { api, isBackendConfigured } from './apiClient';
 import { registerMirrorHandler, enqueueMirror, mirrorOutcomeFor, type MirrorOutcome } from './mirrorQueue';
-import { getAutopay, cancelAutopay } from './walletApi';
+import { getAutopay, cancelAutopay, type AutopayMandate } from './walletApi';
 import { listSubscriptions, setSubscriptionStatus } from './subscriptions';
 import { removeFreePackClaimsForUser } from './freePack';
 
@@ -67,8 +67,17 @@ export async function deleteMyAccount(): Promise<void> {
   // ordering here is load-bearing, not best-effort decoration. A cancel that
   // throws still lets deletion proceed, but it is attempted against a live
   // session rather than a half-erased one.
+  // The mandate READ is not best-effort. In backend mode getAutopay reads
+  // GET /mandate/me; if that read fails, deletion STOPS here, before
+  // /me/erasure, because the alternative is erasing the account under a
+  // mandate nobody could see.
+  let autopay: AutopayMandate | null;
   try {
-    const autopay = await getAutopay();
+    autopay = await getAutopay();
+  } catch {
+    throw new Error('Could not check your AutoPay mandate, so nothing was deleted. Check your connection and try again.');
+  }
+  try {
     if (autopay?.id && autopay.status !== 'cancelled') await cancelAutopay(autopay.id);
   } catch { /* nothing to cancel, or offline */ }
   try {

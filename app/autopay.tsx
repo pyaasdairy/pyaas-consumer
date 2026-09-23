@@ -43,8 +43,12 @@ export default function Autopay() {
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
-    const m = await getAutopay();
-    setMandate(m && m.status !== 'cancelled' ? m : null);
+    // A failed mandate read throws (getAutopay is strict so that account
+    // deletion can trust it); here it shows as an error over the setup card.
+    try {
+      const m = await getAutopay();
+      setMandate(m && m.status !== 'cancelled' ? m : null);
+    } catch (e: any) { setErr(e?.message ?? 'Could not read your AutoPay mandate.'); }
     setLoading(false);
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));

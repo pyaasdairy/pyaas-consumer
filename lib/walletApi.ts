@@ -8,7 +8,9 @@ import {
   approveMandate as approveMandateOnPsp,
   cancelMandate as cancelMandateOnPsp,
   executeMandate,
+  type UpiMandate,
 } from './autopay';
+import { getAutoTopup, hydrateAutoTopup, setAutoTopup } from './autoTopup';
 
 /**
  * PYAAS wallet — APPEND-ONLY LEDGER model.
@@ -620,9 +622,11 @@ function isRefType(v: string | undefined): v is LedgerRefType {
 // ── AutoPay · Paytm UPI mandate ──────────────────────────────────────────────
 // With the shared backend configured this is the REAL mechanism: a UPI AutoPay
 // mandate (NPCI lifecycle, UMN, per-debit cap, AS_PRESENTED recurrence) lives
-// server-side in `consumer_mandates`; the local 'autopay' row only caches the
-// app-side auto-top-up policy (threshold + amount). Without a backend the old
-// on-device placeholder behaviour is preserved.
+// server-side in `consumer_mandates` and is read from GET /mandate/me every
+// time; nothing about it is mirrored on the device. The app-side top-up
+// policy (threshold + amount) is the low-balance reminder preference
+// (lib/autoTopup), a UI setting. Without a backend the old on-device
+// placeholder behaviour is preserved in the local 'autopay' row.
 
 function mandateStateToStatus(state: string): AutopayMandate['status'] {
   return state === 'PENDING_APPROVAL' ? 'pending'
@@ -631,29 +635,44 @@ function mandateStateToStatus(state: string): AutopayMandate['status'] {
     : 'cancelled';
 }
 
-export async function getAutopay(): Promise<AutopayMandate | null> {
-  const uid = await requireUserId();
-  const local = await getSingle<AutopayMandate>('autopay', uid);
-  if (!isBackendConfigured()) return local;
-  const m = await currentMandate().catch(() => null);
-  if (!m) return null;
+/** The server's mandate as the screens read it: every mandate field from the
+ *  server, the top-up policy from the low-balance reminder preference. */
+function fromMandate(m: UpiMandate): AutopayMandate {
+  const policy = getAutoTopup();
   return {
     id: m.id,
     status: mandateStateToStatus(m.state),
     upi_id: m.payer_vpa,
     max_amount: m.max_amount,
     next_charge_date: null,
-    threshold: local?.threshold,
-    recharge_amount: local?.recharge_amount,
+    threshold: policy.threshold,
+    recharge_amount: policy.amount,
     umn: m.umn,
   };
 }
 
 /**
+ * The member's AutoPay. Backend mode: every mandate field comes from
+ * GET /mandate/me (nothing is mirrored on the device) and only the top-up
+ * policy from the low-balance reminder preference. A failed read THROWS
+ * rather than answering "no mandate": deleteMyAccount cancels the mandate
+ * off this answer before /me/erasure, and a live mandate must never outlive
+ * the account. Local mode keeps the on-device placeholder row.
+ */
+export async function getAutopay(): Promise<AutopayMandate | null> {
+  const uid = await requireUserId();
+  if (!isBackendConfigured()) return getSingle<AutopayMandate>('autopay', uid);
+  const m = await currentMandate();
+  if (!m) return null;
+  await hydrateAutoTopup();
+  return fromMandate(m);
+}
+
+/**
  * Set up AutoPay. Backend mode: registers a UPI AutoPay mandate with Paytm
  * (state PENDING_APPROVAL until the customer approves it in the Paytm app —
- * see approveAutopay) and caches the top-up policy locally. Local mode keeps
- * the previous immediately-active placeholder.
+ * see approveAutopay) and records the top-up policy in the low-balance
+ * reminder preference. Local mode keeps the previous placeholder row.
  */
 export async function setupAutopay(params: {
   maxAmount: number;
@@ -662,23 +681,19 @@ export async function setupAutopay(params: {
   rechargeAmount?: number;
 }): Promise<AutopayMandate> {
   const uid = await requireUserId();
-  const existing = await getSingle<AutopayMandate>('autopay', uid);
   if (isBackendConfigured()) {
     const live = await currentMandate().catch(() => null);
     const m = live ?? (await createMandate({ maxAmount: params.maxAmount, upiId: params.upiId }));
-    const record: AutopayMandate = {
-      id: m.id,
-      status: mandateStateToStatus(m.state),
-      upi_id: m.payer_vpa,
-      max_amount: m.max_amount,
-      next_charge_date: null,
-      threshold: params.threshold ?? existing?.threshold,
-      recharge_amount: params.rechargeAmount ?? existing?.recharge_amount,
-      umn: m.umn,
-    };
-    await putSingle<AutopayMandate>('autopay', uid, record);
-    return record;
+    // The top-up policy is the low-balance reminder preference, the UI's
+    // own (hydrated first, or the write would reset its switch); the
+    // mandate itself is never mirrored on the device.
+    await hydrateAutoTopup();
+    if (params.threshold != null || params.rechargeAmount != null) {
+      await setAutoTopup({ threshold: params.threshold, amount: params.rechargeAmount });
+    }
+    return fromMandate(m);
   }
+  const existing = await getSingle<AutopayMandate>('autopay', uid);
   const record: AutopayMandate = {
     id: existing?.id ?? newId('mandate'),
     // 'pending', never 'active'. With no backend there is no PSP call, so no UPI
@@ -706,15 +721,15 @@ export async function setupAutopay(params: {
 export async function approveAutopay(id: string): Promise<AutopayMandate | null> {
   if (!isBackendConfigured()) return getAutopay();
   await approveMandateOnPsp(id);
-  const uid = await requireUserId();
-  const fresh = await getAutopay();
-  if (fresh) await putSingle<AutopayMandate>('autopay', uid, fresh);
-  return fresh;
+  return getAutopay();
 }
 
 export async function cancelAutopay(id: string): Promise<void> {
+  if (isBackendConfigured()) {
+    await cancelMandateOnPsp(id).catch(() => { /* already revoked / offline */ });
+    return;
+  }
   const uid = await requireUserId();
-  if (isBackendConfigured()) await cancelMandateOnPsp(id).catch(() => { /* already revoked / offline */ });
   const existing = await getSingle<AutopayMandate>('autopay', uid);
   if (existing) await putSingle<AutopayMandate>('autopay', uid, { ...existing, status: 'cancelled' });
 }
