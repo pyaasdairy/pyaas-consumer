@@ -61,6 +61,11 @@ export async function deleteRows<T>(table: string, ownerId: string, match: (row:
   if (next.length !== rows.length) await setRows(table, ownerId, next);
 }
 
+/** Remove a whole table for an owner: a key delete, not an empty-array write. */
+export async function dropTable(table: string, ownerId: string): Promise<void> {
+  await AsyncStorage.removeItem(key(table, ownerId));
+}
+
 /** Single-row tables (profile, wallet, delivery prefs). */
 export async function getSingle<T>(table: string, ownerId: string): Promise<T | null> {
   const rows = await getRows<T>(table, ownerId);

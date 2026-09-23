@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getRows, insertRow, setRows, getSingle, putSingle, newId } from './localStore';
+import { getRows, insertRow, setRows, getSingle, putSingle, newId, dropTable } from './localStore';
 import { requireUserId, getUserId, getProfile } from './session';
 import { getLedger, rechargeWallet } from './walletApi';
 import { WALLET_TEST_TOPUP, testTopup } from './razorpay';
@@ -101,6 +101,24 @@ export async function removeFreePackClaimsForUser(uid: string): Promise<void> {
   const claims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
   const kept = claims.filter((c) => c.user_id !== uid);
   if (kept.length !== claims.length) await setRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER, kept);
+}
+
+const CLAIMS_PURGED_KEY = 'pyaas_free_pack_claims_purged';
+
+/**
+ * Backend mode never writes the claims table any more (the server is the
+ * gate: CRM offer / welcome funnel state), so the rows older builds left
+ * behind hold raw mobile numbers in cleartext for nothing. Drop the whole
+ * table once per local-data version stamp; a key delete, never a write of
+ * an empty table. Local mode keeps its rows: there the table IS the gate.
+ */
+export async function purgeFreePackClaimRows(stamp: string): Promise<void> {
+  if (!isBackendConfigured()) return;
+  try {
+    if ((await AsyncStorage.getItem(CLAIMS_PURGED_KEY)) === stamp) return;
+    await dropTable(CLAIMS_TABLE, DEVICE_OWNER);
+    await AsyncStorage.setItem(CLAIMS_PURGED_KEY, stamp);
+  } catch { /* retried on the next launch */ }
 }
 
 /** Stable-ish device id (persisted in secure store). The real cross-reinstall
@@ -224,12 +242,17 @@ export async function attachTrialAfterSubscribe(productId: string, frequency: st
   if (await offerCompleted()) return;
   if (!(await offerQualified())) return;
   const p = normPhone(phone);
-  const deviceId = await getDeviceId();
-  const claims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
-  if (!claims.some((c) => normPhone(c.phone) === p)) {
-    await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
-      phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
-    });
+  // The claim row (raw mobile in cleartext AsyncStorage) is local mode's
+  // gate only. In backend mode the server gates the offer, so no phone is
+  // written to the device.
+  if (!isBackendConfigured()) {
+    const deviceId = await getDeviceId();
+    const claims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
+    if (!claims.some((c) => normPhone(c.phone) === p)) {
+      await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
+        phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
+      });
+    }
   }
   await beginTrial(tomorrowISO());
   notifyFreePackChanged();
@@ -263,18 +286,22 @@ async function doClaimFreePack(phone: string): Promise<{ ok: boolean; value: num
   if (!(await offerQualified())) {
     return { ok: false, value: 0, reason: `Add ₹${OFFER_QUALIFY_RECHARGE} in one recharge to unlock this offer.` };
   }
-  const deviceId = await getDeviceId();
   const p = normPhone(phone);
   // NO money is credited for the trial — the offer is GOODIES (free milk), not
   // rupees. The member pays their first 2 delivered days; the BACKEND zeroes
   // the debits for the 2 free days (trial engine, isTrialProduct). The wallet
   // is never touched here. Record the claim once (a RESUME after a mid-trial
-  // pause/cancel re-enters here and must not duplicate the row).
-  const priorClaims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
-  if (!priorClaims.some((c) => normPhone(c.phone) === p)) {
-    await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
-      phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
-    });
+  // pause/cancel re-enters here and must not duplicate the row). Local mode
+  // only: in backend mode the server gates the offer and no phone is written
+  // to the device.
+  if (!isBackendConfigured()) {
+    const deviceId = await getDeviceId();
+    const priorClaims = await getRows<Claim>(CLAIMS_TABLE, DEVICE_OWNER);
+    if (!priorClaims.some((c) => normPhone(c.phone) === p)) {
+      await insertRow<Claim>(CLAIMS_TABLE, DEVICE_OWNER, {
+        phone: p, device_id: deviceId, claimed_at: new Date().toISOString(), user_id: uid,
+      });
+    }
   }
   // (b) Auto-start the daily subscription (first delivery tomorrow) and anchor
   // the trial. Days 1–2 are paid; days 3–4 are free (the backend zeroes those

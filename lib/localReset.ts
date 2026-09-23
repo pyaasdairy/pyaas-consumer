@@ -52,6 +52,14 @@ export function runOneTimeLocalReset(): Promise<boolean> {
   if (resetRan) return Promise.resolve(false); // layer 2: once per process
   if (resetInFlight) return resetInFlight; // layer 3: concurrent callers share one run
   resetInFlight = (async () => {
+    // Backend mode no longer writes the device-global free-pack claims table
+    // (raw mobile numbers in cleartext). Drop what older builds left, once per
+    // LOCAL_DATA_VERSION; a key delete, and independent of the wipe below so
+    // it runs without bumping the version (which would also reset the cart).
+    try {
+      const { purgeFreePackClaimRows } = await import('./freePack');
+      await purgeFreePackClaimRows(LOCAL_DATA_VERSION);
+    } catch { /* retried on the next launch */ }
     try {
       const seen = await AsyncStorage.getItem(VERSION_KEY);
       if (seen === LOCAL_DATA_VERSION) return false; // layer 1: already done, forever
