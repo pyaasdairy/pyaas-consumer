@@ -143,6 +143,13 @@ export const useNotifications = create<State>((set, get) => ({
   markAllRead: async () => {
     const uid = await getUserId();
     const now = new Date().toISOString();
+    // Capture the CRM rows that are STILL unread before the optimistic set
+    // below stamps every row read; only those are posted. Reading the store
+    // after the set found nothing unread and posted every CRM row, on every
+    // focus of the notifications screen.
+    const unreadCrm = get().rows
+      .filter((r) => r.source === 'crm' && !r.read_at)
+      .map((r) => r.id.replace(/^crm:/, ''));
     const rows = get().rows.map((r) => (r.read_at ? r : { ...r, read_at: now }));
     set({ rows, unread: 0 });
     void setBadge(0);
@@ -150,11 +157,7 @@ export const useNotifications = create<State>((set, get) => ({
       await updateRows<Notice>(TABLE, uid, (r) => !r.read_at, { read_at: now }).catch(() => {});
     }
     // CRM keeps its own read state server-side.
-    await Promise.all(
-      get().rows
-        .filter((r) => r.source === 'crm')
-        .map((r) => markCrmRead(r.id.replace(/^crm:/, ''))),
-    ).catch(() => {});
+    await Promise.all(unreadCrm.map((id) => markCrmRead(id))).catch(() => {});
   },
   markRead: async (id) => {
     const uid = await getUserId();
