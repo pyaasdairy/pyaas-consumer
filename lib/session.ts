@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getSingle, putSingle } from './localStore';
+import { getSingle, putSingle, dropTable } from './localStore';
 
 /** New accounts start with an EMPTY wallet. Money only ever enters the wallet
  *  through a real Razorpay top-up (see lib/razorpay.ts) or the one legit Rs29
@@ -124,6 +124,32 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
+// ── Backend mode: the hydrated profile ──────────────────────────────────────
+// The server owns the profile; what the app shows in backend mode is this
+// in-memory copy. It is seeded synchronously from the OTP sign-in response
+// (before the emit, so the router gate sees a returning member's name at
+// once), refreshed from GET /me by profileApi.hydrateProfileFromServer, and
+// cleared on sign-out. It is never written to the device: the local 'profile'
+// row is local mode's store, and in backend mode the only local row is the
+// OUTBOX below, holding a PATCH /me that failed until it is replayed.
+let hydratedProfile: { uid: string; profile: Profile } | null = null;
+
+/** Backend mode's offline outbox: the merged patch of a PATCH /me that failed,
+ *  replayed by profileApi's 'profile' mirror handler and deleted once it lands. */
+export const PROFILE_OUTBOX_TABLE = 'profile_outbox';
+
+/** The in-memory profile held for `uid`, or null when none was hydrated yet. */
+export function getHydratedProfile(uid: string): Profile | null {
+  return hydratedProfile?.uid === uid ? hydratedProfile.profile : null;
+}
+
+/** Replace the in-memory profile for `uid` (backend mode) and tell the auth
+ *  gate, the same way saveProfile does after a local write. */
+export function setHydratedProfile(uid: string, profile: Profile): void {
+  hydratedProfile = { uid, profile: { ...profile, id: uid } };
+  emit();
+}
+
 /** Load the persisted session on cold start. */
 export async function loadSession(): Promise<Session> {
   currentUid = await AsyncStorage.getItem(UID_KEY);
@@ -175,10 +201,11 @@ export async function signInWithPhone(phone: string, fullName?: string | null, s
   // this; it is not reachable from profile-edit).
   await AsyncStorage.setItem(LOGIN_PHONE_KEY, digits);
   const legacyUid = `u_${digits}`;
+  const sid = typeof serverId === 'string' ? serverId.trim() : '';
   let uid: string;
-  if (serverId && typeof serverId === 'string' && serverId.trim()) {
+  if (sid) {
     // Backend mode: the server's own profile id IS the account identity.
-    uid = serverId.trim();
+    uid = sid;
   } else {
     const idx = await readUidIndex();
     uid = idx[hash10(digits)] ?? '';
@@ -194,21 +221,34 @@ export async function signInWithPhone(phone: string, fullName?: string | null, s
   await AsyncStorage.setItem(UID_KEY, uid);
   currentUid = uid;
   const nm = fullName?.trim() || null;
-  const existing = await getSingle<Profile>('profile', uid);
-  if (!existing) {
-    await putSingle<Profile>('profile', uid, {
-      id: uid,
-      full_name: nm,
-      phone: `+91${digits}`,
-      email: null,
-    });
-    // Seed a demo wallet balance so the prepaid order flow works offline.
-    // Local mode only: with a server id the wallet lives on the server and a
-    // local row would be a second, never-read copy.
-    if (!serverId) await putSingle<{ balance: number }>('wallet', uid, { balance: DEMO_WALLET_SEED });
-  } else if (nm && !existing.full_name) {
-    // Returning member, fresh install: hydrate the server-known name pre-emit.
-    await putSingle<Profile>('profile', uid, { ...existing, full_name: nm });
+  if (sid) {
+    // Backend mode: the server owns the profile and nothing is written to
+    // the device. The sign-in response seeds the in-memory copy BEFORE the
+    // emit, so the router gate sees a returning member's name at once. A
+    // server-known name also marks setup done for this account: on a cold
+    // start the copy is empty until GET /me answers (and stays so offline),
+    // and that flag is what keeps the gate from routing to complete-profile.
+    hydratedProfile = { uid, profile: { id: uid, full_name: nm, phone: `+91${digits}`, email: null } };
+    if (nm) {
+      try { await AsyncStorage.setItem(`pyaas_setup_done:${uid}`, '1'); } catch { /* set again from GET /me */ }
+    }
+  } else {
+    const existing = await getSingle<Profile>('profile', uid);
+    if (!existing) {
+      await putSingle<Profile>('profile', uid, {
+        id: uid,
+        full_name: nm,
+        phone: `+91${digits}`,
+        email: null,
+      });
+      // Seed a demo wallet balance so the prepaid order flow works offline.
+      // Local mode only: with a server id the wallet lives on the server and
+      // a local row would be a second, never-read copy.
+      await putSingle<{ balance: number }>('wallet', uid, { balance: DEMO_WALLET_SEED });
+    } else if (nm && !existing.full_name) {
+      // Returning member, fresh install: hydrate the server-known name pre-emit.
+      await putSingle<Profile>('profile', uid, { ...existing, full_name: nm });
+    }
   }
   emit();
 }
@@ -289,6 +329,7 @@ export async function signOut(): Promise<void> {
   await AsyncStorage.removeItem(UID_KEY);
   await AsyncStorage.removeItem(LOGIN_PHONE_KEY);
   currentUid = null;
+  hydratedProfile = null; // the next member on this phone never sees this one's profile
   // Shared/resold devices must not retain the previous member's phone, exact
   // home coordinates and spend history after sign-out. In backend mode the
   // server is the source of truth, so the local rows are just cache — purge
@@ -342,11 +383,40 @@ export async function signOut(): Promise<void> {
 export async function getProfile(): Promise<Profile | null> {
   const uid = await getUserId();
   if (!uid) return null;
-  return getSingle<Profile>('profile', uid);
+  const { isBackendConfigured } = await import('./apiClient');
+  if (!isBackendConfigured()) return getSingle<Profile>('profile', uid);
+  // Backend mode: the in-memory copy. Nothing is fetched here: the auth gate
+  // reads this before the consent overlay has cleared, and GET /me runs from
+  // hydrateProfileFromServer once it has. Until then (and offline) the copy
+  // can be empty, so an older build's local profile row is adopted once as
+  // the seed (its name came from the server) and deleted, and failing that a
+  // stub carrying the id is returned so the gate can read this account's
+  // setup-done flag. An edit still waiting in the outbox is the member's
+  // latest word either way.
+  const held = getHydratedProfile(uid);
+  if (held) return held;
+  const outbox = (await getSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid).catch(() => null)) ?? {};
+  const legacy = await getSingle<Profile>('profile', uid).catch(() => null);
+  if (legacy) {
+    if (legacy.full_name?.trim()) {
+      try { await AsyncStorage.setItem(`pyaas_setup_done:${uid}`, '1'); } catch { /* set again from GET /me */ }
+    }
+    await dropTable('profile', uid).catch(() => undefined);
+    hydratedProfile = { uid, profile: { ...legacy, ...outbox, id: uid } };
+    return hydratedProfile.profile;
+  }
+  const phone = await AsyncStorage.getItem(LOGIN_PHONE_KEY).catch(() => null);
+  return { full_name: null, phone: phone ? `+91${phone}` : null, email: null, ...outbox, id: uid };
 }
 
 export async function saveProfile(patch: Partial<Profile>): Promise<void> {
   const uid = await requireUserId();
+  const { isBackendConfigured } = await import('./apiClient');
+  if (isBackendConfigured()) {
+    // Backend mode: the in-memory copy only; PATCH /me is profileApi's job.
+    setHydratedProfile(uid, { ...(getHydratedProfile(uid) ?? { id: uid, full_name: null, phone: null }), ...patch });
+    return;
+  }
   const existing = (await getSingle<Profile>('profile', uid)) ?? {
     id: uid,
     full_name: null,

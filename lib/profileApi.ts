@@ -1,8 +1,13 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { requireUserId, getProfile, saveProfile, signOut, removeAccountEntry, type Profile } from './session';
+import {
+  requireUserId, getUserId, getProfile, saveProfile, signOut, removeAccountEntry,
+  getHydratedProfile, setHydratedProfile, PROFILE_OUTBOX_TABLE, type Profile,
+} from './session';
+import { getSingle, putSingle, dropTable } from './localStore';
 import { api, isBackendConfigured } from './apiClient';
+import { registerMirrorHandler, enqueueMirror, mirrorOutcomeFor, type MirrorOutcome } from './mirrorQueue';
 import { getAutopay, cancelAutopay } from './walletApi';
 import { listSubscriptions, setSubscriptionStatus } from './subscriptions';
 import { removeFreePackClaimsForUser } from './freePack';
@@ -119,47 +124,112 @@ export async function getFullProfile(): Promise<FullProfile | null> {
   return toFull(await getProfile());
 }
 
+/** The profile as GET /me and PATCH /me return it (the server's field names;
+ *  an absent or empty field is null, the server having no value for it). */
+export function profileFromMe(me: Record<string, unknown>, uid: string): Profile {
+  const str = (k: string): string | null => {
+    const v = me[k];
+    return typeof v === 'string' && v.trim() !== '' ? v : null;
+  };
+  const n = me.family_member_count;
+  return {
+    id: uid,
+    full_name: str('full_name'),
+    phone: str('phone'),
+    email: str('email'),
+    alternate_phone: str('alternate_phone'),
+    family_member_count: typeof n === 'number' && n > 0 ? n : null,
+    milk_preference: str('milk_preference'),
+    avatar_url: str('avatar_url'),
+    referral_code: str('referral_code'),
+    delivery_slot: str('delivery_slot'),
+  };
+}
+
+/** The server's answer becomes the in-memory profile. An edit still waiting in
+ *  the outbox is laid over it (newer than what the server holds), a
+ *  server-known name marks setup done for this account (the cold-start gate,
+ *  see session.signInWithPhone), and an older build's local profile row, now
+ *  a stale copy of what was just fetched, is dropped. */
+async function adoptServerProfile(uid: string, me: Record<string, unknown>): Promise<void> {
+  const outbox = await getSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid).catch(() => null);
+  const profile: Profile = { ...profileFromMe(me, uid), ...(outbox ?? {}), id: uid };
+  if (profile.full_name?.trim()) {
+    try { await AsyncStorage.setItem(`pyaas_setup_done:${uid}`, '1'); } catch { /* the gate also accepts the name itself */ }
+  }
+  await dropTable('profile', uid).catch(() => undefined);
+  setHydratedProfile(uid, profile);
+}
+
 /**
- * Pull the server's profile into the local cache (reinstall / second device:
- * the account remembered everything, the app just never asked). Merge is
- * server-wins per field, but a non-empty local value never becomes empty —
- * an offline edit that has not PATCHed yet must not be wiped by older truth.
+ * Pull the server's profile into the in-memory copy (cold start, reinstall,
+ * second device: the account remembered everything, the app just never
+ * asked). Server-wins per field; a PATCH still waiting in the outbox is laid
+ * over it, so an offline edit is never wiped by older truth.
  */
 export async function hydrateProfileFromServer(): Promise<void> {
   if (!isBackendConfigured()) return;
   try {
+    const uid = await getUserId();
+    if (!uid) return;
     const me = await api.get<Record<string, unknown>>('/me');
-    if (!me) return;
-    const patch: Partial<Profile> = {};
-    const take = (k: string) => {
-      const v = me[k];
-      if (typeof v === 'string' && v.trim() !== '') (patch as Record<string, unknown>)[k] = v;
-    };
-    take('full_name');
-    take('email');
-    take('alternate_phone');
-    take('milk_preference');
-    take('avatar_url');
-    take('delivery_slot');
-    if (typeof me.family_member_count === 'number' && me.family_member_count > 0) {
-      (patch as Record<string, unknown>).family_member_count = me.family_member_count;
-    }
-    if (Object.keys(patch).length) await saveProfile(patch);
+    if (!me || typeof me !== 'object') return;
+    await adoptServerProfile(uid, me);
   } catch {
     /* offline — the next session start retries */
   }
 }
 
 export async function updateProfile(patch: Partial<Omit<FullProfile, 'id' | 'referral_code'>>): Promise<void> {
-  // Push to the SERVER first (PATCH /me) so the profile — especially full_name —
-  // survives reinstalls and new devices: OTP verify hydrates it back, and a
-  // registered member is NEVER asked their name again. Best-effort: offline
-  // still saves locally below and re-syncs on the next profile edit.
-  if (isBackendConfigured()) {
-    try { await api.patch('/me', patch); } catch { /* offline — local save still lands */ }
+  if (!isBackendConfigured()) {
+    await saveProfile(patch as Partial<Profile>);
+    return;
   }
-  await saveProfile(patch as Partial<Profile>);
+  // PATCH /me is authoritative: the server's answer becomes the in-memory
+  // profile, so full_name survives reinstalls and new devices and a
+  // registered member is NEVER asked their name again. An edit still waiting
+  // in the outbox from an earlier failure rides along, so nothing typed
+  // offline is overtaken by a later edit. Only when the PATCH fails is
+  // anything written to the device: the merged edit goes to the outbox,
+  // shows at once from memory, and the 'profile' mirror handler below
+  // replays it. A permanent rejection is surfaced, not queued.
+  const uid = await requireUserId();
+  const queued = await getSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid).catch(() => null);
+  const body: Partial<Profile> = { ...(queued ?? {}), ...(patch as Partial<Profile>) };
+  const shown = (): Profile => ({ ...(getHydratedProfile(uid) ?? { id: uid, full_name: null, phone: null }), ...body });
+  try {
+    const me = await api.patch<Record<string, unknown>>('/me', body);
+    await dropTable(PROFILE_OUTBOX_TABLE, uid).catch(() => undefined);
+    if (me && typeof me === 'object') await adoptServerProfile(uid, me);
+    else setHydratedProfile(uid, shown());
+  } catch (e) {
+    if (mirrorOutcomeFor(e) === 'drop') throw e;
+    setHydratedProfile(uid, shown());
+    await putSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid, body);
+    await enqueueMirror('profile');
+  }
 }
+
+// The outbox replay: the queued edit reaches PATCH /me and the row is deleted;
+// no row means it already landed (a later online save carried it).
+registerMirrorHandler('profile', async (): Promise<MirrorOutcome> => {
+  const uid = await getUserId();
+  if (!uid) return 'done';
+  const queued = await getSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid);
+  if (!queued) return 'done';
+  let me: Record<string, unknown>;
+  try {
+    me = await api.patch<Record<string, unknown>>('/me', queued);
+  } catch (e) {
+    const outcome = mirrorOutcomeFor(e);
+    // A permanent rejection must not leave the edit shown as pending forever.
+    if (outcome === 'drop') await dropTable(PROFILE_OUTBOX_TABLE, uid).catch(() => undefined);
+    return outcome;
+  }
+  await dropTable(PROFILE_OUTBOX_TABLE, uid);
+  if (me && typeof me === 'object') await adoptServerProfile(uid, me);
+  return 'done';
+});
 
 /**
  * Let the user pick a photo and set it as their avatar. Returns the new avatar
