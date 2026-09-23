@@ -472,6 +472,11 @@ export async function placeOrder(params: {
       consumer_name: prof?.full_name ?? undefined,
       phone: (prof as { phone?: string } | null)?.phone ?? undefined,
       geo: geo.lat != null && geo.lng != null ? { lat: geo.lat, lng: geo.lng } : undefined,
+      // The server twin of the chosen address. The backend resolves the
+      // delivery door by this id; address_label stays for older deployments
+      // that still match on it, and two rows both called "Home" can no longer
+      // stamp the wrong flat on the task.
+      address_id: address.backend_id ?? undefined,
       // The doorstep promises (ring-bell / call-before / drop note) — the
       // backend copies these onto the store delivery task so the RIDER sees
       // what the customer was told. Previously built by the cart and dropped
