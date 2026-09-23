@@ -36,6 +36,10 @@ function freqLabel(f: Frequency): string {
 export default function Subscriptions() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // Backend mode: the server owns low balance (it skips a day it cannot
+  // bill, never pauses the plan), so a resume always proceeds and the
+  // wallet only decides the wording of the notice.
+  const backend = isBackendConfigured();
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [upcoming, setUpcoming] = useState<{ date: string; count: number; items: Subscription[] }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,10 +207,10 @@ export default function Subscriptions() {
                   </Tap>
                   <Tap
                     onPress={() => {
-                      // Resuming a paused-but-underfunded sub would just be auto-paused
-                      // again by reconcile — the tap would look dead. Open the manage
-                      // sheet instead so we can guide them to recharge.
-                      if (s.status !== 'active' && useWallet.getState().balance < perDeliveryCost(s)) { setDetailSub(s); return; }
+                      // Local mode: resuming a paused-but-underfunded sub would just be
+                      // auto-paused again by reconcile, so the tap would look dead. Open
+                      // the manage sheet instead to guide them to recharge.
+                      if (!backend && s.status !== 'active' && useWallet.getState().balance < perDeliveryCost(s)) { setDetailSub(s); return; }
                       toggle(s);
                     }}
                     disabled={busy}
@@ -262,7 +266,10 @@ export default function Subscriptions() {
         const p = resolveProduct(d.product_id);
         const cost = perDeliveryCost(d);
         const bal = useWallet.getState().balance;
-        const underfunded = d.status === 'paused' && bal < cost;
+        // Local mode only: the phone paused the plan for the wallet and only
+        // a recharge resumes it. Backend mode never pauses for balance.
+        const underfunded = !backend && d.status === 'paused' && bal < cost;
+        const mayBeSkipped = backend && bal < cost;
         const close = () => setDetailSub(null);
         const goRecharge = () => {
           close();
@@ -306,7 +313,6 @@ export default function Subscriptions() {
         };
         // Backend mode: only the server's cadences can be chosen, and a
         // server plan somehow on another cadence is shown, not edited.
-        const backend = isBackendConfigured();
         const freqChoices = backend ? FREQS.filter((f) => SERVER_FREQS.includes(f.key)) : FREQS;
         const freqReadOnly = backend && !SERVER_FREQS.includes(d.frequency);
         const editFreq = async (f: Frequency) => {
@@ -347,7 +353,7 @@ export default function Subscriptions() {
                 ) : (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.cream, borderRadius: radius.md, padding: 12 }}>
                     <Ionicons name="pause-circle" size={20} color={colors.inkSoft} />
-                    <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.inkSoft}>Paused. Resume whenever you are ready.</TextMed>
+                    <TextMed style={{ flex: 1, fontSize: 13 }} color={colors.inkSoft}>{mayBeSkipped ? `Paused. Resume whenever you are ready. Your wallet (${rupee(bal)}) is under a ${rupee(cost)} delivery, so a delivery may be skipped until you add money.` : 'Paused. Resume whenever you are ready.'}</TextMed>
                   </View>
                 )}
 
