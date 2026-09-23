@@ -1,5 +1,5 @@
 import { getUserId } from './session';
-import { getRows, setRows } from './localStore';
+import { getRows, setRows, dropTable } from './localStore';
 import { isBackendConfigured } from './apiClient';
 
 /**
@@ -82,12 +82,18 @@ export async function getQualityTests(): Promise<QualityTest[]> {
   // A read must never throw just because nobody is signed in; the dashboard is
   // reachable before the profile gate on a cold start.
   const uid = await getUserId();
-  if (!uid) return devDemoTests();
 
   if (isBackendConfigured()) {
+    // No /quality/tests on the backend yet, so there is nothing honest to
+    // show: the screen renders its empty state. The local table is never the
+    // display source here (older builds seeded it with invented lab results)
+    // and is dropped on the first read. Not even the dev sample rows show.
     // TODO(api): const { data } = await api.get<QualityTest[]>('/quality/tests');
-    // return data; -- until the endpoint exists there is nothing honest to show.
+    if (uid) await dropTable(TABLE, uid).catch(() => undefined);
+    return [];
   }
+
+  if (!uid) return devDemoTests();
 
   const rows = await getRows<QualityTest>(TABLE, uid);
   // Installs that ran a build with the fabricated seed still carry those rows in

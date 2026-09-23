@@ -8,7 +8,7 @@
  * is live, swap the local reads/writes for the apiClient seam noted below.
  */
 import { getUserId, requireUserId } from './session';
-import { getSingle, putSingle } from './localStore';
+import { getSingle, putSingle, dropTable } from './localStore';
 import { isBackendConfigured } from './apiClient';
 import { getBalances, debitWallet } from './walletApi';
 
@@ -80,7 +80,14 @@ export type VipMembership = {
 export async function getVip(): Promise<VipMembership | null> {
   const uid = await getUserId();
   if (!uid) return null;
-  // TODO(api): GET /membership/me when EXPO_PUBLIC_API_URL is set.
+  if (isBackendConfigured()) {
+    // Backend mode: membership is not the phone's to hold (isPlusActive is
+    // false here until the server owns it, and joining is closed). A local
+    // row an older build left is a stale domain fact: dropped, never read.
+    // TODO(api): GET /membership/me when the backend owns the membership.
+    await dropTable('vip', uid).catch(() => undefined);
+    return null;
+  }
   return getSingle<VipMembership>('vip', uid);
 }
 
