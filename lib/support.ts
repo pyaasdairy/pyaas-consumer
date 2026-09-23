@@ -1,6 +1,8 @@
 import { Linking } from 'react-native';
 import { getUserId } from './session';
 import { insertRow, newId } from './localStore';
+import { isBackendConfigured } from './apiClient';
+import type { ComplaintCategory } from './complaints';
 
 /**
  * PYAAS consumer support contacts — single source of truth so the founder can
@@ -116,13 +118,14 @@ export function emailCare(subject = 'PYAAS support', body = ''): Promise<boolean
   return Linking.openURL(`mailto:${SUPPORT.appEmail}?${q}`).then(() => true).catch(() => false);
 }
 
-// ── Support chat tickets (local queue) ───────────────────────────────────────
-// The in-app chat is a scripted bot and there is NO support backend, so a saved
-// ticket never leaves the handset — it is a record for the customer, not a
-// message to us. Screens must therefore hand the user on to email/phone and
-// must never say "our team will be in touch" off the back of this write.
-// When the backend is live, POST these to a /support/tickets endpoint instead
-// of (or in addition to) storing on device.
+// ── Support chat tickets ─────────────────────────────────────────────────────
+// The in-app chat is a scripted bot. With a backend, a finished chat is filed
+// on the COMPLAINTS REGISTER (POST /complaints through lib/complaints, so it
+// appears under "My complaints" with a PYS reference and a status the team
+// updates). Without one there is NO support backend: the ticket never leaves
+// the handset, it is a record for the customer, not a message to the team,
+// and screens must hand the user on to email/phone rather than say "our team
+// will be in touch" off the back of that write.
 export type SupportTicket = {
   id: string;
   topic: string;
@@ -130,11 +133,42 @@ export type SupportTicket = {
   transcript: { from: 'bot' | 'user'; text: string }[];
   rating?: number; // 1-5, the user's rating of the chat experience
   createdAt: string;
+  /** The complaint reference (PYS-XXXXX) when the chat was filed on the register. */
+  ref?: string;
+  /** True once the register accepted it; false = saved on the phone, waiting to send. */
+  registered?: boolean;
 };
 
-export async function saveSupportTicket(t: Omit<SupportTicket, 'id' | 'createdAt'>): Promise<SupportTicket | null> {
+/** The closest complaint category for a support-chat topic (key or label). */
+export function complaintCategoryForTopic(topic: string): ComplaintCategory {
+  const t = topic.toLowerCase();
+  if (t.includes('missing')) return 'missing';
+  if (t.includes('quality') || t.includes('wrong') || t.includes('damaged')) return 'quality';
+  if (t.includes('payment') || t.includes('wallet')) return 'payment';
+  if (t.includes('timing') || t.includes('late')) return 'late';
+  return 'other';
+}
+
+/** The register entry for a finished chat: topic, the member's own words, rating. */
+export function supportTicketSummary(t: { topic: string; detail: string; rating?: number }): string {
+  return [
+    `Support chat: ${t.topic}`,
+    t.detail.trim(),
+    t.rating ? `Chat rating: ${t.rating}/5` : '',
+  ].filter(Boolean).join('\n');
+}
+
+export async function saveSupportTicket(t: Omit<SupportTicket, 'id' | 'createdAt' | 'ref' | 'registered'>): Promise<SupportTicket | null> {
   const uid = await getUserId();
   if (!uid) return null;
+  if (isBackendConfigured()) {
+    // Backend mode: file it on the complaints register (never throws; a dead
+    // network leaves it queued there and retried). Dynamic import: complaints
+    // imports emailCare from this module.
+    const { fileComplaint } = await import('./complaints');
+    const c = await fileComplaint({ category: complaintCategoryForTopic(t.topic), detail: supportTicketSummary(t) });
+    return { ...t, id: c.id, createdAt: c.created_at, ref: c.ref, registered: c.status !== 'queued' };
+  }
   const row: SupportTicket = { ...t, id: newId('ticket'), createdAt: new Date().toISOString() };
   await insertRow('support_tickets', uid, row);
   return row;

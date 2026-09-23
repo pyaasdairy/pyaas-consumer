@@ -7,6 +7,7 @@ import { colors, radius, spacing, shadow, fonts } from '../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, BackButton } from '../components/ui';
 import { haptics } from '../lib/haptics';
 import { CARE_EMAIL, HAS_CARE_PHONE, SUPPORT, callCare, emailCare, saveSupportTicket } from '../lib/support';
+import { isBackendConfigured } from '../lib/apiClient';
 
 type From = 'bot' | 'user';
 type Msg = { id: string; from: From; text: string };
@@ -63,10 +64,13 @@ export default function SupportChat() {
     setInput('');
     setDetailChips([]);
     setTimeout(() => {
-      // This bot is scripted and saveSupportTicket() only writes to this phone —
-      // it used to promise a reply "within 24 hours" that nobody at PYAAS could
-      // ever have seen. Say what actually happens instead.
-      push('bot', 'Thanks. I have written this down on your phone. I cannot reach the team by myself yet, so one more tap sends it to them.');
+      // This bot is scripted. With a backend the finished chat is filed on the
+      // complaints register; without one saveSupportTicket() only writes to
+      // this phone, and it used to promise a reply "within 24 hours" that
+      // nobody at PYAAS could ever have seen. Say what actually happens.
+      push('bot', isBackendConfigured()
+        ? 'Thanks. Rate this chat and it goes on our complaints register for the team.'
+        : 'Thanks. I have written this down on your phone. I cannot reach the team by myself yet, so one more tap sends it to them.');
       setTimeout(() => push('bot', 'How was this chat experience?'), 500);
       setStage('rate');
     }, 300);
@@ -76,8 +80,13 @@ export default function SupportChat() {
     haptics.success();
     push('user', `${stars} star${stars === 1 ? '' : 's'}`);
     setStage('done');
-    await saveSupportTicket({ topic: topicLabel || topicKey, detail, transcript: transcriptRef.current, rating: stars });
-    setTimeout(() => push('bot', stars >= 4 ? 'Thank you, that means a lot. Now send this to the team below and we will pick it up from there.' : 'Thank you for the honest feedback. Send this to the team below and a human will take it from here.'), 350);
+    const ticket = await saveSupportTicket({ topic: topicLabel || topicKey, detail, transcript: transcriptRef.current, rating: stars });
+    const thanks = stars >= 4 ? 'Thank you, that means a lot.' : 'Thank you for the honest feedback.';
+    setTimeout(() => push('bot', ticket?.ref
+      ? (ticket.registered
+        ? `${thanks} This is registered as ${ticket.ref}. Follow it under My complaints, or also send the chat to the team below.`
+        : `${thanks} Saved as ${ticket.ref}; it reaches the team the moment you are back online. Follow it under My complaints.`)
+      : stars >= 4 ? 'Thank you, that means a lot. Now send this to the team below and we will pick it up from there.' : 'Thank you for the honest feedback. Send this to the team below and a human will take it from here.'), 350);
   };
 
   /** Hand the whole conversation to the inbox a human reads — the only real exit. */
