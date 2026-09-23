@@ -226,7 +226,7 @@ export async function setBadge(count: number): Promise<void> {
   try { await m.setBadgeCountAsync(Math.max(0, Math.round(count))); } catch { /* best-effort */ }
 }
 
-// ── Notification taps ────────────────────────────────────────────────────────
+// -- Notification taps --------------------------------------------------------
 
 /** The in-app href packed into a notification's data, or null. Every local
  *  notice carries one (notifyNow puts it under data.href); a server push that
