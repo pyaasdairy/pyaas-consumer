@@ -340,12 +340,12 @@ export async function signOut(): Promise<void> {
   hydratedProfile = null; // the next member on this phone never sees this one's profile
   // Every other in-memory copy of this account's server state goes with it
   // (address book, plan list, trial answer, delivery prefs, wallet unlock,
-  // offer qualification, wallet balance), so the same account signing back
+  // offer qualification, wallet balance, referral code), so the same account signing back
   // in refetches instead of reading the previous session. Dynamic imports:
   // these modules import session.
   try {
-    const [addr, subs, trial, prefs, gate, pack, wallet] = await Promise.all([
-      import('./api'), import('./subscriptions'), import('./trial'), import('./deliveryPrefs'), import('./walletGate'), import('./freePack'), import('../store/wallet'),
+    const [addr, subs, trial, prefs, gate, pack, wallet, refs] = await Promise.all([
+      import('./api'), import('./subscriptions'), import('./trial'), import('./deliveryPrefs'), import('./walletGate'), import('./freePack'), import('../store/wallet'), import('./referrals'),
     ]);
     addr.invalidateAddressCache();
     subs.invalidateSubscriptionCache();
@@ -354,6 +354,7 @@ export async function signOut(): Promise<void> {
     gate.clearWalletGateSession();
     pack.clearFreePackSession();
     wallet.resetWallet();
+    refs.clearReferralCache();
   } catch { /* best-effort */ }
   // Shared/resold devices must not retain the previous member's phone, exact
   // home coordinates and spend history after sign-out. In backend mode the

@@ -57,6 +57,12 @@ export async function preserveReferralCode(fromUid: string, toUid: string): Prom
  *  code; never written to the device, the server being the only issuer. */
 let codeCache: { uid: string; code: string } | null = null;
 
+/** Forget the session's copy of the code; called from sign-out with the
+ *  other in-memory server copies so a re-login refetches. */
+export function clearReferralCache(): void {
+  codeCache = null;
+}
+
 /** The signed-in user's shareable referral code (deterministic, offline-safe;
  *  a stored code — e.g. carried over a uid migration — takes precedence). */
 export async function getReferralCode(): Promise<string> {
