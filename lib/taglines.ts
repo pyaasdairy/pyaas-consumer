@@ -3,7 +3,9 @@ import { getUserId } from './session';
 import { listOrders } from './api';
 import { listSubscriptions } from './subscriptions';
 import { useCart } from '../store/cart';
-import { defaultChoices, type ConsentRecord } from '../components/ConsentSheet';
+import { type ConsentRecord } from '../components/ConsentSheet';
+import { isBackendConfigured } from './apiClient';
+import { consentMirrorPending, readServerConsents } from './consentSync';
 import { CHANNELS, cancelScheduledWhere, notificationsSupported, permissionState, scheduleAt } from './notifications';
 
 /**
@@ -77,10 +79,26 @@ export async function cancelTaglines(): Promise<void> {
   await cancelScheduledWhere(isTagline);
 }
 
-/** Is the member's "Offers and updates" preference on? */
+/** Is the member's "Offers and updates" preference on? Backend mode: the
+ *  server's consent record (GET /users/me/consents) decides; the local rows
+ *  answer only while the route is not deployed or a recorded choice is still
+ *  waiting to reach the server. A server that cannot be asked, or an empty
+ *  local table, is "not granted": a marketing line is never sent on a
+ *  default. */
 export async function offersOn(uid: string): Promise<boolean> {
+  if (isBackendConfigured()) {
+    const pending = await consentMirrorPending().catch(() => false);
+    if (!pending) {
+      try {
+        const server = await readServerConsents();
+        if (server.deployed) return !!server.choices?.marketing;
+      } catch {
+        return false;
+      }
+    }
+  }
   const rows = await getRows<ConsentRecord>('consents', uid).catch(() => [] as ConsentRecord[]);
-  if (rows.length === 0) return defaultChoices().marketing;
+  if (rows.length === 0) return false;
   rows.sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
   return !!rows[0].choices?.marketing;
 }
