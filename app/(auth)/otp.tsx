@@ -12,6 +12,7 @@ import { signInWithPhone, saveProfile, getUserId, DEMO_OTP } from '../../lib/ses
 import { api, isBackendConfigured, setTokens } from '../../lib/apiClient';
 import { requestPhoneHint, startSmsRetriever, hasNativeConvenience } from '../../lib/nativeConvenience';
 import { hasAcceptedDataDisclosure, recordDataDisclosureAccepted, linkDisclosureToAccount } from '../../lib/dataConsent';
+import { registerForPush } from '../../lib/notifications';
 import { DataDisclosure } from '../../components/DataDisclosure';
 import { discStrings, getDiscLang, useDiscLang } from '../../lib/i18n';
 import { ConsentWelcome } from '../../components/ConsentWelcome';
@@ -328,6 +329,10 @@ export default function OtpLogin() {
         const uid = await getUserId();
         if (uid) await linkDisclosureToAccount(uid);
       } catch { /* non-fatal */ }
+      // Bind this device's push token to the account that just signed in
+      // (a second member on the same handset gets their own registration).
+      // Silent unless permission was already granted; never blocks sign-in.
+      void registerForPush();
     } catch (e: any) {
       setError(friendly(e, 'Could not sign you in. Please try again.'));
     } finally { verifyingRef.current = false; setLoading(false); }

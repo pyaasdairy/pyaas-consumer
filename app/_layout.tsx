@@ -21,7 +21,7 @@ import { runOneTimeLocalReset } from '../lib/localReset';
 import { drainMirrorQueue } from '../lib/mirrorQueue';
 import { warmBackend } from '../lib/warmup';
 import { ToastHost } from '../components/Toast';
-import { ensureChannels, installForegroundHandler } from '../lib/notifications';
+import { ensureChannels, installForegroundHandler, installTapHandler, registerForPush } from '../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hydrateProfileFromServer } from '../lib/profileApi';
 // Importing consentSync also registers the 'consents' mirror handler at boot,
@@ -119,6 +119,14 @@ function RootNavigator() {
     return () => { clearTimeout(min); clearTimeout(max); };
   }, []);
 
+  // Notification taps land on the screen the notice was about: every local
+  // notice packs an in-app href (data.href), and a server push that carries
+  // the same key routes identically. Installed once per process.
+  useEffect(() => {
+    const off = installTapHandler((href) => { router.push(href); });
+    return off;
+  }, [router]);
+
   useEffect(() => {
     if (loading) return;
     const inAuthGroup = segments[0] === '(auth)';
@@ -182,6 +190,11 @@ function RootNavigator() {
           // server truths a reinstall forgets (profile fields). Error-soft.
           void drainMirrorQueue().catch(() => undefined);
           void hydrateProfileFromServer();
+          // Push, the app's half: (re)register this device's token for the
+          // signed-in account once the session is known. Asks for nothing;
+          // it returns null until the member granted permission from the
+          // notifications screen, and re-runs after every sign-in.
+          void registerForPush();
           // Fire-and-forget, never blocks session start: reinstall hydration
           // of channel consents (GET /users/me/consents). Silent no-op against
           // the deployed backend (404) and offline; skipped while a local

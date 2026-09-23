@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { api, isBackendConfigured } from './apiClient';
+import { logDiag } from './diag';
 
 /**
  * OS NOTIFICATIONS — the thin, fail-soft seam over expo-notifications.
@@ -39,7 +41,15 @@ type NotificationsModule = {
   getExpoPushTokenAsync?: (opts?: unknown) => Promise<{ data: string }>;
   setBadgeCountAsync?: (n: number) => Promise<boolean>;
   dismissAllNotificationsAsync?: () => Promise<void>;
+  addNotificationResponseReceivedListener?: (
+    listener: (response: NotificationResponse) => void,
+  ) => { remove: () => void };
   AndroidImportance?: Record<string, number>;
+};
+
+/** The slice of expo-notifications' NotificationResponse a tap handler reads. */
+export type NotificationResponse = {
+  notification?: { request?: { content?: { data?: Record<string, unknown> | null } } };
 };
 
 let cached: NotificationsModule | null | undefined;
@@ -216,25 +226,97 @@ export async function setBadge(count: number): Promise<void> {
   try { await m.setBadgeCountAsync(Math.max(0, Math.round(count))); } catch { /* best-effort */ }
 }
 
+// ── Notification taps ────────────────────────────────────────────────────────
+
+/** The in-app href packed into a notification's data, or null. Every local
+ *  notice carries one (notifyNow puts it under data.href); a server push that
+ *  packs the same key lands on the same screen. */
+export function hrefFromResponse(r: NotificationResponse | null | undefined): string | null {
+  const href = r?.notification?.request?.content?.data?.href;
+  return typeof href === 'string' && href.startsWith('/') ? href : null;
+}
+
+let tapHandlerInstalled = false;
+
+/**
+ * Route notification taps. Installed ONCE at boot by the root layout; the
+ * returned function removes the listener (and re-arms the latch) on unmount.
+ * No-op on a binary without the module.
+ */
+export function installTapHandler(onHref: (href: string) => void): () => void {
+  const m = mod();
+  if (!m?.addNotificationResponseReceivedListener || tapHandlerInstalled) return () => {};
+  tapHandlerInstalled = true;
+  try {
+    const sub = m.addNotificationResponseReceivedListener((r) => {
+      const href = hrefFromResponse(r);
+      if (href) onHref(href);
+    });
+    return () => {
+      tapHandlerInstalled = false;
+      try { sub.remove(); } catch { /* already gone */ }
+    };
+  } catch {
+    tapHandlerInstalled = false;
+    return () => {};
+  }
+}
+
 // ── Push token registration (the backend's half) ─────────────────────────────
+// Per SESSION, not per process: the latch is reset by unregisterPush() on
+// sign-out, so a second account on the same handset registers its own token
+// instead of inheriting the first one's silence.
 let registered = false;
+/** The token minted this session; what sign-out unbinds (contract C2). */
+let mintedToken: string | null = null;
+/** Concurrent callers (boot + sign-in) share one registration. */
+let registering: Promise<string | null> | null = null;
+let projectIdWarned = false;
+
+/** EAS project id from app config. Expo push tokens cannot be minted without
+ *  it; `eas init` writes it. Never invented here. */
+function easProjectId(): string | null {
+  try {
+    const id = Constants.expoConfig?.extra?.eas?.projectId as unknown;
+    return typeof id === 'string' && id.trim() ? id.trim() : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Mint this device's push token and hand it to the backend. Fire-and-forget:
  * a 404 (endpoint not deployed yet) is the EXPECTED answer today and must be
  * silent. Returns the token so the diagnostics screen can show it.
  *
- * Requires a projectId in app config for Expo push; without one the mint
- * throws and we simply return null.
+ * Without an EAS projectId in app config the mint would throw on every
+ * device; that case is logged once to diagnostics and returns null.
  */
-export async function registerForPush(): Promise<string | null> {
+export function registerForPush(): Promise<string | null> {
+  if (registering) return registering;
+  registering = doRegister().finally(() => {
+    registering = null;
+  });
+  return registering;
+}
+
+async function doRegister(): Promise<string | null> {
   const m = mod();
   if (!m?.getExpoPushTokenAsync || registered) return null;
   try {
     if ((await permissionState()) !== 'granted') return null;
-    const { data: token } = await m.getExpoPushTokenAsync();
+    const projectId = easProjectId();
+    if (!projectId) {
+      if (!projectIdWarned) {
+        projectIdWarned = true;
+        logDiag({ kind: 'event', message: 'Push: no EAS projectId in app config (eas init pending); no token minted.' });
+      }
+      return null;
+    }
+    const { data: token } = await m.getExpoPushTokenAsync({ projectId });
     if (!token) return null;
     registered = true;
+    mintedToken = token;
     if (isBackendConfigured()) {
       try {
         await api.post('/push/register', {
@@ -249,5 +331,24 @@ export async function registerForPush(): Promise<string | null> {
     return token;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Sign-out (contract C2): tell the backend this device no longer belongs to
+ * the account, and re-arm registration so the next sign-in mints and
+ * registers afresh. Call BEFORE the session tokens are cleared (the DELETE is
+ * authenticated). A 404 (older backend) or a dead network is tolerated: the
+ * backend moves a token to its newest owner on the next register anyway.
+ */
+export async function unregisterPush(): Promise<void> {
+  const token = mintedToken;
+  registered = false;
+  mintedToken = null;
+  if (!token || !isBackendConfigured()) return;
+  try {
+    await api.del('/push/register', { token });
+  } catch {
+    /* best-effort */
   }
 }

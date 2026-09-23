@@ -294,6 +294,14 @@ export async function signOut(): Promise<void> {
       if (doomed.length) await AsyncStorage.multiRemove(doomed);
     }
   } catch { /* best-effort — the uid pointer is already cleared above */ }
+  // Unbind this device's push token from the account (contract C2) while the
+  // access token is still valid, or a shared phone keeps notifying the
+  // previous member. Best-effort; also re-arms registration for the next
+  // sign-in. Dynamic import: session must not statically pull the OS layer.
+  try {
+    const { unregisterPush } = await import('./notifications');
+    await unregisterPush();
+  } catch { /* best-effort */ }
   // Also wipe the JWT access/refresh tokens from SecureStore — otherwise they
   // linger after sign-out and the next account on a shared device inherits the
   // previous session. Dynamic import avoids a session↔apiClient require cycle.
