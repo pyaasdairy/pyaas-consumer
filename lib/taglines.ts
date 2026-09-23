@@ -1,6 +1,6 @@
 import { getRows } from './localStore';
 import { getUserId } from './session';
-import { listOrders } from './api';
+import { fetchOrders } from './api';
 import { listSubscriptions } from './subscriptions';
 import { useCart } from '../store/cart';
 import { type ConsentRecord } from '../components/ConsentSheet';
@@ -131,7 +131,9 @@ export function rescheduleTaglines(): Promise<void> {
       if (!(await offersOn(uid))) return;
 
       const hasCart = useCart.getState().lines.length > 0;
-      const orders = await listOrders().catch(() => null);
+      // A read, never listOrders: that one runs the wallet settle sweep, and
+      // this planner runs on every backgrounding.
+      const orders = await fetchOrders().catch(() => null);
       const subs = await listSubscriptions().catch(() => []);
       const hasSub = subs.some((s) => s.status === 'active' || s.status === 'paused');
       // Unknown order history (offline) → do not assume they only browsed.
