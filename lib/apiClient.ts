@@ -126,6 +126,25 @@ export async function clearTokens(): Promise<void> {
   await SecureStore.deleteItemAsync(REFRESH_KEY);
 }
 
+/**
+ * Sign-out: revoke the refresh token server-side (POST /auth/logout), so a
+ * signed-out session cannot be resumed from a copied token until its TTL.
+ * Best-effort and never throws: an older backend, a dead network or an
+ * already-rotated token all just leave the token to expire on its own.
+ * Call BEFORE clearTokens(); the token is read at call time so a refresh
+ * that rotated it moments earlier is revoked too.
+ */
+export async function revokeSession(): Promise<void> {
+  if (!isBackendConfigured()) return;
+  try {
+    const refresh = await SecureStore.getItemAsync(REFRESH_KEY);
+    if (!refresh) return;
+    await request<void>('POST', '/auth/logout', { refresh_token: refresh }, false);
+  } catch {
+    /* best-effort */
+  }
+}
+
 // Single-flight the refresh: if two authed requests 401 at once, both must
 // await ONE /auth/refresh — otherwise both replay the same (single-use) refresh
 // token, the backend rotates it, the second replay 401s, and the loser's

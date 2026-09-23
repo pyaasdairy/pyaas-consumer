@@ -306,7 +306,10 @@ export async function signOut(): Promise<void> {
   // linger after sign-out and the next account on a shared device inherits the
   // previous session. Dynamic import avoids a session↔apiClient require cycle.
   try {
-    const { clearTokens } = await import('./apiClient');
+    const { revokeSession, clearTokens } = await import('./apiClient');
+    // Revoke the refresh token on the server first (POST /auth/logout,
+    // best-effort), then drop both tokens locally.
+    await revokeSession();
     await clearTokens();
   } catch { /* best-effort — local session is already cleared above */ }
   emit();
