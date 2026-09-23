@@ -162,9 +162,11 @@ export async function saveSupportTicket(t: Omit<SupportTicket, 'id' | 'createdAt
   const uid = await getUserId();
   if (!uid) return null;
   if (isBackendConfigured()) {
-    // Backend mode: file it on the complaints register (never throws; a dead
-    // network leaves it queued there and retried). Dynamic import: complaints
-    // imports emailCare from this module.
+    // Backend mode: file it on the complaints register. A dead network leaves
+    // it queued there and retried; a permanent rejection by the register
+    // throws with the reason (fileComplaint), for the screen to show next to
+    // the email escalation. Dynamic import: complaints imports emailCare from
+    // this module.
     const { fileComplaint } = await import('./complaints');
     const c = await fileComplaint({ category: complaintCategoryForTopic(t.topic), detail: supportTicketSummary(t) });
     return { ...t, id: c.id, createdAt: c.created_at, ref: c.ref, registered: c.status !== 'queued' };

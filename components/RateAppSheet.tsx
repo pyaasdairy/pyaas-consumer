@@ -35,13 +35,14 @@ export function RateAppSheet({ visible, onClose }: { visible: boolean; onClose: 
   const [detail, setDetail] = useState('');
   const [busy, setBusy] = useState(false);
   const [sentRef, setSentRef] = useState<string | null>(null);
+  const [err, setErr] = useState('');
 
   const happy = stars >= 4;
 
   function close() {
     onClose();
     // Reset so a later ask opens clean.
-    setTimeout(() => { setStars(0); setDetail(''); setSentRef(null); }, 250);
+    setTimeout(() => { setStars(0); setDetail(''); setSentRef(null); setErr(''); }, 250);
   }
 
   async function later() {
@@ -58,6 +59,7 @@ export function RateAppSheet({ visible, onClose }: { visible: boolean; onClose: 
   async function sendFeedback() {
     if (!detail.trim()) return;
     setBusy(true);
+    setErr('');
     try {
       const c = await fileComplaint({
         category: 'app',
@@ -66,6 +68,12 @@ export function RateAppSheet({ visible, onClose }: { visible: boolean; onClose: 
       await markRatingSettled();
       haptics.confirm();
       setSentRef(c.ref);
+    } catch (e: any) {
+      // The register rejected the feedback for good (a dead network queues it
+      // instead). The member has answered the ask, so the prompt is settled
+      // either way; the reason shows and the sheet stays open.
+      await markRatingSettled();
+      setErr(e?.message ?? 'Could not send your feedback.');
     } finally {
       setBusy(false);
     }
@@ -160,6 +168,7 @@ export function RateAppSheet({ visible, onClose }: { visible: boolean; onClose: 
                       )}
                     </View>
                   </Tap>
+                  {err ? <TextBody color={colors.danger} style={{ fontSize: 13, textAlign: 'center' }}>{err}</TextBody> : null}
                 </Animated.View>
               )}
 

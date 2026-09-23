@@ -80,8 +80,17 @@ export default function SupportChat() {
     haptics.success();
     push('user', `${stars} star${stars === 1 ? '' : 's'}`);
     setStage('done');
-    const ticket = await saveSupportTicket({ topic: topicLabel || topicKey, detail, transcript: transcriptRef.current, rating: stars });
     const thanks = stars >= 4 ? 'Thank you, that means a lot.' : 'Thank you for the honest feedback.';
+    let ticket: Awaited<ReturnType<typeof saveSupportTicket>> = null;
+    try {
+      ticket = await saveSupportTicket({ topic: topicLabel || topicKey, detail, transcript: transcriptRef.current, rating: stars });
+    } catch (e: any) {
+      // The register rejected the chat for good (a dead network queues it
+      // instead). Say why; the email below is still the way to the team.
+      const why = e?.message ? ` ${e.message}` : '';
+      setTimeout(() => push('bot', `${thanks}${why} Send this chat to the team below and a human will take it from here.`), 350);
+      return;
+    }
     setTimeout(() => push('bot', ticket?.ref
       ? (ticket.registered
         ? `${thanks} This is registered as ${ticket.ref}. Follow it under My complaints, or also send the chat to the team below.`
