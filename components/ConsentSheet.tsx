@@ -7,7 +7,8 @@ import { colors, radius, spacing } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Tap } from './ui';
 import { getUserId } from '../lib/session';
 import { getRows, insertRow } from '../lib/localStore';
-import { queueConsentMirror } from '../lib/consentSync';
+import { isBackendConfigured } from '../lib/apiClient';
+import { queueConsentMirror, readServerConsents, consentMirrorPending, flushConsentMirror } from '../lib/consentSync';
 
 /**
  * Reusable consent capture for signup / onboarding.
@@ -82,22 +83,51 @@ export async function recordConsents(choices: ConsentChoices): Promise<ConsentRe
   return rec;
 }
 
-/** Read consent history + the latest choices for the signed-in user. */
+const CONSENTS_UNAVAILABLE = 'Could not load your message preferences. Check your connection and try again.';
+
+/**
+ * Read consent history + the latest choices for the signed-in user. The
+ * history is the local audit trail either way. `latest`, what the screen
+ * renders, is the server's answer in backend mode (GET /users/me/consents);
+ * the latest local record stands in only while a recorded choice is still
+ * waiting to reach the server, or when the backend has no consent route
+ * (404). Any other failure sets `error` and leaves `latest` null: unknown,
+ * not a local row shown as the server's state.
+ */
 export function useConsents(): {
   latest: ConsentChoices | null;
   history: ConsentRecord[];
   loading: boolean;
+  error: string | null;
   reload: () => Promise<void>;
   save: (choices: ConsentChoices) => Promise<void>;
 } {
   const [history, setHistory] = useState<ConsentRecord[]>([]);
+  const [latest, setLatest] = useState<ConsentChoices | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const uid = (await getUserId()) ?? 'anon';
     const rows = await getRows<ConsentRecord>('consents', uid);
     rows.sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
     setHistory(rows);
+    const local = rows[0]?.choices ?? null;
+    if (!isBackendConfigured()) {
+      setLatest(local);
+      setError(null);
+    } else {
+      try {
+        const server = await readServerConsents();
+        const pending = await consentMirrorPending();
+        setLatest(!server.deployed || pending ? local : server.choices);
+        setError(null);
+      } catch {
+        const pending = await consentMirrorPending();
+        setLatest(pending ? local : null);
+        setError(pending ? null : CONSENTS_UNAVAILABLE);
+      }
+    }
     setLoading(false);
   }, []);
 
@@ -107,10 +137,13 @@ export function useConsents(): {
 
   const save = useCallback(async (choices: ConsentChoices) => {
     await recordConsents(choices);
+    // Let the queued batch reach the server before reading it back, so the
+    // toggle the member just set is what the server then answers with.
+    if (isBackendConfigured()) await flushConsentMirror();
     await reload();
   }, [reload]);
 
-  return { latest: history[0]?.choices ?? null, history, loading, reload, save };
+  return { latest, history, loading, error, reload, save };
 }
 
 /** Are the required consents (privacy + terms) all granted? */

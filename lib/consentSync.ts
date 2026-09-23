@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { getUserId } from './session';
 import { getRows, insertRow } from './localStore';
 import { api, isBackendConfigured, HttpError } from './apiClient';
-import { registerMirrorHandler, enqueueMirror, mirrorPending, type MirrorOutcome } from './mirrorQueue';
+import { registerMirrorHandler, enqueueMirror, mirrorPending, drainMirrorQueue, type MirrorOutcome } from './mirrorQueue';
 import { getDataDisclosureRecord } from './dataConsent';
 import { getLocationDisclosureRecord } from './locationConsent';
 import type { ConsentChoices, ConsentKey, ConsentRecord } from '../components/ConsentSheet';
@@ -155,6 +155,60 @@ export async function queueConsentMirror(): Promise<void> {
   } catch {
     /* never block or fail the consent UX over the mirror */
   }
+}
+
+/** The server's consent map as ConsentSheet choices: privacy and terms from
+ *  privacy_terms, each channel from its own type. A type the server has never
+ *  seen is not granted (its promo guard is fail-closed, so that is the state
+ *  in force); null when the server has seen none of the sheet's types. */
+export function choicesFromServerMap(map: ServerConsentMap): ConsentChoices | null {
+  const next: ConsentChoices = { privacy: false, terms: false, marketing: false, whatsapp: false, sms: false, email: false };
+  let touched = false;
+  const pt = map['privacy_terms'];
+  if (typeof pt?.granted === 'boolean') {
+    next.privacy = pt.granted;
+    next.terms = pt.granted;
+    touched = true;
+  }
+  for (const { key, type } of CHANNEL_TYPES) {
+    const entry = map[type];
+    if (typeof entry?.granted === 'boolean') {
+      next[key] = entry.granted;
+      touched = true;
+    }
+  }
+  return touched ? next : null;
+}
+
+export type ServerConsents = { deployed: true; choices: ConsentChoices | null } | { deployed: false };
+
+/**
+ * GET /users/me/consents as the preferences screen renders it (backend
+ * mode). `deployed: false` is the 404 of a backend without the route (the
+ * deployed release still answers so; the local trail renders then). Any other
+ * failure throws, so the screen can say the state is unknown rather than
+ * show a local row as the server's answer.
+ */
+export async function readServerConsents(): Promise<ServerConsents> {
+  try {
+    const res = await api.get<{ consents?: ServerConsentMap }>('/users/me/consents');
+    return { deployed: true, choices: res?.consents ? choicesFromServerMap(res.consents) : null };
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 404) return { deployed: false };
+    throw e;
+  }
+}
+
+/** True while a recorded choice is still waiting to reach the server; until
+ *  it lands, the latest local record is the member's word, not the server's. */
+export function consentMirrorPending(): Promise<boolean> {
+  return mirrorPending(CONSENTS_MIRROR_KIND);
+}
+
+/** Try to land the queued consent batch now (shares any drain in flight);
+ *  never throws. The screen reads the server after this. */
+export function flushConsentMirror(): Promise<void> {
+  return drainMirrorQueue().catch(() => undefined);
 }
 
 /**

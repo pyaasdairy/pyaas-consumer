@@ -24,7 +24,7 @@ import { CONSENT_META, defaultChoices, useConsents, type ConsentChoices, type Co
 export default function MessagePreferences() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { latest, loading, save } = useConsents();
+  const { latest, loading, error, save } = useConsents();
   const optional = useMemo(() => CONSENT_META.filter((m) => !m.required), []);
   const [busyKey, setBusyKey] = useState<ConsentKey | null>(null);
 
@@ -76,7 +76,7 @@ export default function MessagePreferences() {
               </View>
               <Switch
                 value={!!current[m.key]}
-                disabled={loading || busyKey === m.key}
+                disabled={loading || !!error || busyKey === m.key}
                 onValueChange={() => toggle(m.key)}
                 trackColor={{ true: colors.flameDeep, false: colors.line }}
                 thumbColor={colors.white}
@@ -84,6 +84,8 @@ export default function MessagePreferences() {
             </View>
           ))}
         </View>
+
+        {error ? <TextBody color={colors.dangerDeep} style={{ fontSize: 13 }}>{error}</TextBody> : null}
 
         <TextBody color={colors.inkMute} style={{ fontSize: 11.5, lineHeight: 16 }}>
           Changes apply immediately and are saved to your account, so they follow
