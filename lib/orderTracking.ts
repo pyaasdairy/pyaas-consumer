@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchOrders, type Order, type OrderStatus } from './api';
 import { STATUS_LABEL } from './orderStatus';
 import { notify } from './notificationCenter';
+import { getUserId } from './session';
 
 /**
  * LIVE ORDER TRACKING — the Blinkit-shaped half of the app: while an order is
@@ -21,7 +22,15 @@ import { notify } from './notificationCenter';
  */
 
 const POLL_MS = 15000;
-const SEEN_KEY = (id: string) => `pyaas_order_seen_status:${id}`;
+// The last-announced status marker, keyed PER ACCOUNT. It was keyed by order
+// id alone, so it lived outside the account's cache: sign-out purged the
+// account's notification rows (the dedupe) but not these, and on a shared
+// phone one member's markers sat next to the next member's. Scoping it like
+// every other per-account key means it is purged with the rest on sign-out
+// and can never be read for the wrong account.
+const SEEN_KEY = (uid: string, id: string) => `pyaas_order_seen_status:${uid}:${id}`;
+/** A finished order older than this on FIRST sighting is history, not news. */
+const FRESH_MS = 24 * 60 * 60 * 1000;
 
 /** Truly-instant = the express lane AND the "by HH:MM" window shape. */
 export function isInstantOrder(o: Order): boolean {
@@ -130,12 +139,30 @@ function noticeFor(o: Order): { title: string; body: string } | null {
 }
 
 /**
- * Announce a status change exactly once per order per state. Persisted, so it
- * survives a relaunch and a fresh poll loop.
+ * Whether an order seen for the FIRST time is old news: a delivered or
+ * cancelled order whose event (delivered_at, else placed_at) is more than
+ * FRESH_MS ago, or has no usable timestamp at all. The first poll after a
+ * switch to an account this handset has never tracked sees that account's
+ * whole history with no markers; announcing every delivered row in it as
+ * "Delivered" was the stale burst. This morning's delivery, seen for the
+ * first time when the member opens the app, is still fresh and still lands.
  */
-async function announce(o: Order): Promise<void> {
+export function isStaleOnFirstSight(o: Order, now: number = Date.now()): boolean {
+  if (o.status !== 'delivered' && o.status !== 'cancelled') return false;
+  const deliveredAt = Date.parse(String((o as { delivered_at?: string }).delivered_at ?? '')) || 0;
+  const at = deliveredAt || Date.parse(o.placed_at) || 0;
+  return !at || now - at > FRESH_MS;
+}
+
+/**
+ * Announce a status change exactly once per order per state. Persisted, so it
+ * survives a relaunch and a fresh poll loop. `uid` is the account the poll
+ * was made for, so a sign-out mid-flight can never write the notice under
+ * the next account.
+ */
+async function announce(uid: string, o: Order): Promise<void> {
   try {
-    const key = SEEN_KEY(o.id);
+    const key = SEEN_KEY(uid, o.id);
     const seen = await AsyncStorage.getItem(key);
     if (seen === o.status) return;
     const first = seen == null;
@@ -144,8 +171,11 @@ async function announce(o: Order): Promise<void> {
     // member just placed it and is looking at the confirmation screen; a
     // notification for 'placed' would be noise.
     if (first && (o.status === 'placed' || o.status === 'confirmed')) return;
+    // ...and a finished order we never watched is history, not a delivery.
+    if (first && isStaleOnFirstSight(o)) return;
     const n = noticeFor(o);
     if (!n) return;
+    if ((await getUserId()) !== uid) return; // the account changed under the poll
     await notify({
       kind: isInstantOrder(o) ? 'order' : 'delivery',
       title: n.title,
@@ -181,6 +211,10 @@ export function useLiveOrders(enabled = true): LiveOrders {
 
   const load = useCallback(async () => {
     try {
+      // The account this poll is for; captured BEFORE the fetch so a switch
+      // while the request is in flight cannot attribute its rows elsewhere.
+      const uid = await getUserId();
+      if (!uid) return;
       // fetchOrders, not listOrders: a poll four times a minute must not
       // carry the settle sweep (a wallet debit per delivered row) with it.
       const all = await fetchOrders();
@@ -189,7 +223,7 @@ export function useLiveOrders(enabled = true): LiveOrders {
       setOrders(active);
       // Announce transitions for everything we can see, including the ones
       // that just finished (so "Delivered" still reaches the member).
-      for (const o of all.slice(0, 8)) void announce(o);
+      for (const o of all.slice(0, 8)) void announce(uid, o);
     } catch {
       /* signed out / offline — keep whatever we had */
     } finally {
