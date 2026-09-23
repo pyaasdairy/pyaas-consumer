@@ -1,7 +1,7 @@
 import { requireUserId, getUserId } from './session';
 import { getSingle, putSingle, dropTable } from './localStore';
 import { api, isBackendConfigured } from './apiClient';
-import { registerMirrorHandler, enqueueMirror, type MirrorOutcome } from './mirrorQueue';
+import { registerMirrorHandler, enqueueMirror, mirrorOutcomeFor, type MirrorOutcome } from './mirrorQueue';
 
 export type DeliveryPrefs = {
   call_before: boolean;
@@ -129,12 +129,15 @@ export async function saveDeliveryPrefs(prefs: Partial<DeliveryPrefs>): Promise<
   // preference that only lives in this phone is a promise the doorstep never
   // receives (call-before, ring-bell, drop notes). On success nothing is
   // written locally, and a stale outbox row from an earlier offline save is
-  // dropped so its queued replay cannot overwrite this newer value.
+  // dropped so its queued replay cannot overwrite this newer value. A
+  // permanent rejection is surfaced, not queued (the profile and address
+  // saves keep the same rule).
   try {
     const me = await api.patch<Record<string, unknown>>('/me', { delivery_prefs: toWire(next) });
     setCached(uid, me && typeof me === 'object' && 'delivery_prefs' in me ? fromServer(me) : next);
     await dropTable(TABLE, uid).catch(() => undefined);
-  } catch {
+  } catch (e) {
+    if (mirrorOutcomeFor(e) === 'drop') throw e;
     // Offline: the outbox row holds the changed keys until the mirror
     // replays them.
     setCached(uid, next);
@@ -154,8 +157,16 @@ registerMirrorHandler('delivery-prefs', async (): Promise<MirrorOutcome> => {
   // the defaults: PATCH /me replaces the whole delivery_prefs document, so
   // a key the member never touched must arrive as the server already holds
   // it. A failed read is a failed replay; the next drain retries.
-  const next: DeliveryPrefs = { ...fromServer(await api.get<Record<string, unknown>>('/me')), ...p };
-  await api.patch('/me', { delivery_prefs: toWire(next) });
+  let next: DeliveryPrefs;
+  try {
+    next = { ...fromServer(await api.get<Record<string, unknown>>('/me')), ...p };
+    await api.patch('/me', { delivery_prefs: toWire(next) });
+  } catch (e) {
+    const outcome = mirrorOutcomeFor(e);
+    // A permanent rejection must not leave the edit queued forever.
+    if (outcome === 'drop') await dropTable(TABLE, uid).catch(() => undefined);
+    return outcome;
+  }
   setCached(uid, next);
   await dropTable(TABLE, uid);
   return 'done';
