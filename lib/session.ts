@@ -364,13 +364,13 @@ export async function signOut(): Promise<void> {
     const { isBackendConfigured } = await import('./apiClient');
     if (uid && isBackendConfigured()) {
       const keys = await AsyncStorage.getAllKeys();
-      // NOT everything is "just cache": a few uid-keyed tables are the ONLY
-      // copy of their data (no backend persistence yet — TODO(api) seams).
-      // Purging them destroys paid state: `vip` is a PYAAS Plus membership
-      // already debited from the SERVER wallet, `referral_meta` the applied
-      // referred-by attribution. Spare those; everything else re-hydrates
-      // from the server on the next sign-in.
-      const KEEP = /^parag:(?:vip|referral_meta):/;
+      // NOT everything is "just cache": `vip` is the ONLY copy of a PYAAS
+      // Plus membership already debited from the SERVER wallet (no backend
+      // persistence yet), and purging it destroys paid state, so it is
+      // spared as the evidence row. Referrals are server-first now (the
+      // applied code goes to POST /referrals/apply, never a local row), so
+      // everything else re-hydrates from the server on the next sign-in.
+      const KEEP = /^parag:vip:/;
       const doomed = keys.filter((k) => k.includes(uid) && !KEEP.test(k));
       if (doomed.length) await AsyncStorage.multiRemove(doomed);
     }
