@@ -98,6 +98,11 @@ async function runSweep(): Promise<number> {
   // full price + fee, because those orders carry no subscription linkage).
   // The local sweep still owns everything in offline/local mode, and the
   // never-mirrored cadences (one_time/custom) everywhere.
+  // INVARIANT (G1): every subscription the backend lists reaches this filter
+  // with backend_id = the server's id (syncServerSubscriptions writes it on
+  // read-back, the create mirror when it lands). A backend-listed row that
+  // arrived here without one would be ordered twice this morning: once by
+  // the server worker, once below.
   const due = subs.filter(
     (s) =>
       s.status === 'active' &&
