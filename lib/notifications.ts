@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { api, isBackendConfigured } from './apiClient';
 import { logDiag } from './diag';
+import { getUserId } from './session';
 
 /**
  * OS NOTIFICATIONS — the thin, fail-soft seam over expo-notifications.
@@ -262,15 +263,24 @@ export function installTapHandler(onHref: (href: string) => void): () => void {
   }
 }
 
-// ── Push token registration (the backend's half) ─────────────────────────────
-// Per SESSION, not per process: the latch is reset by unregisterPush() on
-// sign-out, so a second account on the same handset registers its own token
-// instead of inheriting the first one's silence.
-let registered = false;
-/** The token minted this session; what sign-out unbinds (contract C2). */
+// -- Push token registration (the backend's half) -----------------------------
+// The server keys a push row by device token and moves it to whoever registers
+// it last (POST /push/register upserts by token). The latch below is therefore
+// WHICH MEMBER the server holds this device for, not a bare boolean: a handset
+// is shared, and one member's wallet balance and delivery OTP must never land
+// on the next member's phone. It is set only once the server has confirmed the
+// pairing, cleared by unregisterPush() on sign-out (DELETE /push/register,
+// contract C2), and compared against the signed-in account on every call, so
+// an account switch unregisters the old member and registers the new one
+// exactly once.
+let registeredFor: string | null = null;
+/** The token minted for the current pairing; what sign-out unbinds. */
 let mintedToken: string | null = null;
-/** Concurrent callers (boot + sign-in) share one registration. */
-let registering: Promise<string | null> | null = null;
+/** Registrations run one at a time, in call order: a run for the account that
+ *  just signed out settles before the run for the one signing in, so the
+ *  server holds the later verdict. A repeat caller for the same account finds
+ *  the latch set and sends nothing. */
+let chain: Promise<unknown> = Promise.resolve();
 let projectIdWarned = false;
 
 /** EAS project id from app config. Expo push tokens cannot be minted without
@@ -285,25 +295,30 @@ function easProjectId(): string | null {
 }
 
 /**
- * Mint this device's push token and hand it to the backend. Fire-and-forget:
- * a 404 (endpoint not deployed yet) is the EXPECTED answer today and must be
- * silent. Returns the token so the diagnostics screen can show it.
+ * Mint this device's push token and hand it to the backend for the member who
+ * is signed in NOW. Fire-and-forget: a 404 (endpoint not deployed yet) is the
+ * EXPECTED answer today and must be silent. Returns the token so the
+ * diagnostics screen can show it; null while signed out, without permission,
+ * or when nothing could be minted.
  *
  * Without an EAS projectId in app config the mint would throw on every
  * device; that case is logged once to diagnostics and returns null.
  */
 export function registerForPush(): Promise<string | null> {
-  if (registering) return registering;
-  registering = doRegister().finally(() => {
-    registering = null;
-  });
-  return registering;
+  const run = chain.then(doRegister);
+  chain = run.catch(() => null);
+  return run;
 }
 
 async function doRegister(): Promise<string | null> {
   const m = mod();
-  if (!m?.getExpoPushTokenAsync || registered) return null;
+  if (!m?.getExpoPushTokenAsync) return null;
   try {
+    // Signed out: nothing to bind. Sign-out unbinds through unregisterPush
+    // (session.signOut), never by registering the device to no one.
+    const uid = await getUserId();
+    if (!uid) return null;
+    if (registeredFor === uid) return mintedToken;
     if ((await permissionState()) !== 'granted') return null;
     const projectId = easProjectId();
     if (!projectId) {
@@ -315,19 +330,32 @@ async function doRegister(): Promise<string | null> {
     }
     const { data: token } = await m.getExpoPushTokenAsync({ projectId });
     if (!token) return null;
-    registered = true;
     mintedToken = token;
-    if (isBackendConfigured()) {
-      try {
-        await api.post('/push/register', {
-          token,
-          platform: Platform.OS,
-          provider: 'expo',
-        });
-      } catch {
-        /* endpoint not live yet — the token is still valid for a later retry */
-      }
+    if (!isBackendConfigured()) {
+      registeredFor = uid; // no backend to tell; the token is still useful locally
+      return token;
     }
+    try {
+      await api.post('/push/register', {
+        token,
+        platform: Platform.OS,
+        provider: 'expo',
+      });
+    } catch {
+      // Unreachable (offline, a 404 from a build predating the endpoint, a
+      // 401 from a session that ended mid-flight). Deliberately NOT latched:
+      // the next call offers the token again, and the server upserts by
+      // token, so the retry costs nothing. mintedToken stays so a sign-out
+      // can still unbind whatever the server may hold.
+      return token;
+    }
+    // The pairing the server now holds is for the account whose access token
+    // signed the request. If the session changed during the call, that is
+    // not necessarily `uid`: leave the latch clear so the next announce
+    // settles it, and if the member signed out meanwhile unbind at once.
+    const now = await getUserId();
+    if (now === uid) registeredFor = uid;
+    else if (!now) await unregisterPush();
     return token;
   } catch {
     return null;
@@ -336,19 +364,46 @@ async function doRegister(): Promise<string | null> {
 
 /**
  * Sign-out (contract C2): tell the backend this device no longer belongs to
- * the account, and re-arm registration so the next sign-in mints and
- * registers afresh. Call BEFORE the session tokens are cleared (the DELETE is
+ * the account, and clear the latch so the next sign-in mints and registers
+ * afresh. Call BEFORE the session tokens are cleared (the DELETE is
  * authenticated). A 404 (older backend) or a dead network is tolerated: the
  * backend moves a token to its newest owner on the next register anyway.
  */
 export async function unregisterPush(): Promise<void> {
   const token = mintedToken;
-  registered = false;
+  registeredFor = null;
   mintedToken = null;
   if (!token || !isBackendConfigured()) return;
   try {
     await api.del('/push/register', { token });
   } catch {
     /* best-effort */
+  }
+}
+
+/**
+ * Re-announce this device for the member who is signed in NOW. Driven by the
+ * auth provider on every session change (lib/auth.tsx). The permission primer
+ * that owns the only other explicit call site is hidden once permission
+ * exists (it renders only while `perm !== 'granted'`), and OS permission is
+ * per-APP, not per-account, so without this a second member on a shared
+ * handset had no way at all to claim the device.
+ *
+ * While signed out it does nothing: the sign-out leg is unregisterPush, which
+ * session.signOut fires while the access token is still valid. Safe to call
+ * freely: it no-ops without permission, registerForPush sends nothing for an
+ * account already latched, and the server upserts by token.
+ */
+export async function announcePushForCurrentSession(): Promise<void> {
+  try {
+    if (!notificationsSupported()) return;
+    if (!(await getUserId())) return;
+    if ((await permissionState()) !== 'granted') {
+      registeredFor = null; // nothing to announce; a later grant registers
+      return;
+    }
+    await registerForPush();
+  } catch {
+    /* never block a session change on a push bookkeeping call */
   }
 }
