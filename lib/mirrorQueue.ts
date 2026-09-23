@@ -50,12 +50,30 @@ export function registerMirrorHandler(kind: string, fn: MirrorHandler): void {
   handlers.set(kind, fn);
 }
 
-/** Classify an error: permanent client errors drop, everything else retries. */
+/**
+ * Classify an error thrown by a replay. The row is a queued intent; only a
+ * rejection OF THE ROW may discard it.
+ *
+ *   network, timeout, no status   retry   the request never reached a verdict
+ *   5xx                           retry   the server failed, not the row
+ *   408, 429                      retry   transient by definition
+ *   401                           retry   session state: the token refresh
+ *                                         failed or timed out (apiClient
+ *                                         tryRefresh); the row is fine and
+ *                                         replays after the next sign-in
+ *   403                           retry   session state: a stale or wrong
+ *                                         app key, a misconfig this project
+ *                                         has shipped; the row is fine
+ *   every other 4xx               drop    the server rejected this payload;
+ *                                         a retry can never land it
+ *
+ * consentSync and leads keep the same 401/403 rule in their own handlers.
+ */
 export function mirrorOutcomeFor(e: unknown): MirrorOutcome {
-  if (e instanceof HttpError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429) {
-    return 'drop';
-  }
-  return 'retry';
+  if (!(e instanceof HttpError)) return 'retry';
+  if (e.status < 400 || e.status >= 500) return 'retry';
+  if (e.status === 401 || e.status === 403 || e.status === 408 || e.status === 429) return 'retry';
+  return 'drop';
 }
 
 /** Persist the intent, then try to flush immediately (error-soft). */
