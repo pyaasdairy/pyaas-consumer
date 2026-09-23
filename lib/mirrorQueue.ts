@@ -117,6 +117,15 @@ export function drainMirrorQueue(): Promise<void> {
   return draining;
 }
 
+/** The targets of every op of `kind` still queued, in queue order, so a read
+ *  can lay a not-yet-landed intent over the server's answer. */
+export async function pendingMirrorTargets(kind: string): Promise<string[]> {
+  const uid = await getUserId();
+  if (!uid) return [];
+  const rows = await getRows<MirrorOp>(TABLE, uid);
+  return rows.filter((r) => r.kind === kind).map((r) => r.target);
+}
+
 /** True when a mirror is still pending for this key — server-wins refreshes
  *  must not clobber a local intent that has not landed yet. */
 export async function mirrorPending(kind: string, target = ''): Promise<boolean> {

@@ -24,6 +24,7 @@ import { ToastHost } from '../components/Toast';
 import { ensureChannels, installForegroundHandler, installTapHandler, registerForPush } from '../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hydrateProfileFromServer } from '../lib/profileApi';
+import { hydrateAddressCache } from '../lib/api';
 // Importing consentSync also registers the 'consents' mirror handler at boot,
 // before any drain can encounter (and would otherwise drop) a queued consent op.
 import { hydrateConsentsFromServer } from '../lib/consentSync';
@@ -190,6 +191,10 @@ function RootNavigator() {
           // server truths a reinstall forgets (profile fields). Error-soft.
           void drainMirrorQueue().catch(() => undefined);
           void hydrateProfileFromServer();
+          // The address book (backend mode): the exact-location gate and
+          // checkout read the session's copy, so it is warmed here rather
+          // than at the first subscribe tap. Error-soft.
+          void hydrateAddressCache();
           // Push, the app's half: (re)register this device's token for the
           // signed-in account once the session is known. Asks for nothing;
           // it returns null until the member granted permission from the

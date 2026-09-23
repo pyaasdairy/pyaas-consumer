@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api, isBackendConfigured } from './apiClient';
 import { getUserId } from './session';
 import { setRows, newId } from './localStore';
-import type { Address } from './api';
 import type { Subscription } from './subscriptions';
 
 /**
@@ -12,10 +11,12 @@ import type { Subscription } from './subscriptions';
  * retired flags) that confuse flows after an update. On the FIRST launch of a
  * build whose LOCAL_DATA_VERSION differs from the stored one, this clears the
  * app's local data EXCEPT the session (the member stays signed in), stamps the
- * new version, and immediately RE-HYDRATES addresses + subscriptions from the
- * backend — so server truth survives and nothing user-critical is lost. The
- * cart and soft flags reset once; the wallet is server-read anyway; the funnel
- * flags re-derive from their server fallbacks (ledger / trial / gold-sub).
+ * new version, and immediately RE-HYDRATES subscriptions from the backend -
+ * so server truth survives and nothing user-critical is lost. (Addresses are
+ * read from the server in backend mode, lib/api.listAddresses, so no local
+ * table needs re-seeding.) The cart and soft flags reset once; the wallet is
+ * server-read anyway; the funnel flags re-derive from their server fallbacks
+ * (ledger / trial / gold-sub).
  *
  * Bump LOCAL_DATA_VERSION whenever shipped local-data semantics change enough
  * that stale rows would mislead the flows.
@@ -69,8 +70,7 @@ export function runOneTimeLocalReset(): Promise<boolean> {
       // Stamp IMMEDIATELY after the wipe — from this moment the reset can
       // never run again, whatever happens to the hydration below.
       await AsyncStorage.setItem(VERSION_KEY, LOCAL_DATA_VERSION);
-      // Server truth back into the local cache — best-effort, each independent.
-      try { await hydrateAddresses(); } catch { /* re-captured on next flow */ }
+      // Server truth back into the local cache - best-effort.
       try { await hydrateSubscriptions(); } catch { /* backend worker unaffected */ }
       return true;
     } catch {
@@ -81,32 +81,6 @@ export function runOneTimeLocalReset(): Promise<boolean> {
     }
   })();
   return resetInFlight;
-}
-
-/** Pull the member's saved addresses (the DB copy) into the local cache, so
- *  the address gate still passes right after the reset. */
-async function hydrateAddresses(): Promise<void> {
-  if (!isBackendConfigured()) return;
-  const uid = await getUserId();
-  if (!uid) return;
-  const remote = await api.get<Record<string, unknown>[]>('/addresses');
-  const rows: Address[] = (remote ?? []).map((w) => ({
-    id: newId('addr'),
-    user_id: uid,
-    label: (w.label as string) || 'Home',
-    line1: (w.line1 as string) || '',
-    line2: (w.line2 as string) || null,
-    city: (w.city as string) || '',
-    pincode: (w.pincode as string) || '',
-    is_default: !!w.is_default,
-    created_at: (w.created_at as string) || new Date().toISOString(),
-    // The pin — what the address gate and store routing check.
-    ...(typeof w.lat === 'number' && typeof w.lng === 'number' && !(w.lat === 0 && w.lng === 0)
-      ? { lat: w.lat, lng: w.lng }
-      : {}),
-    backend_id: (w.id as string) || null,
-  }) as Address);
-  await setRows<Address>('addresses', uid, rows);
 }
 
 /** Pull the member's server-owned subscriptions into the local cache with

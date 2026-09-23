@@ -1,8 +1,8 @@
 import * as Location from 'expo-location';
 import { getUserId } from './session';
-import { getRows, updateRows, getSingle } from './localStore';
+import { getRows, getSingle } from './localStore';
 import type { Address } from './api';
-import { api, isBackendConfigured } from './apiClient';
+import { isBackendConfigured } from './apiClient';
 
 /**
  * Location helper. Reads device GPS (for the delivery address) and remembers the
@@ -53,7 +53,7 @@ export async function getDeviceCoordsIfGranted(): Promise<Coords | null> {
 export async function hasExactLocation(): Promise<boolean> {
   const uid = await getUserId();
   if (!uid) return false;
-  const addrs = await getRows<Address & { lat?: number | null; lng?: number | null }>('addresses', uid);
+  const addrs = await savedAddresses(uid);
   if (addrs.some((a) => a.lat != null && a.lng != null)) return true;
   // A chosen delivery location counts as exact when it's a precise point (device
   // GPS, a dropped map pin, or a geocoded SEARCHED address) — flagged `exact`.
@@ -62,27 +62,15 @@ export async function hasExactLocation(): Promise<boolean> {
   return row?.loc?.exact === true && !!row?.loc?.coords;
 }
 
-/** Persist coordinates onto a saved address (and its backend twin, so the DB
- *  copy carries the exact pin the store routing + subscription worker read). */
-export async function setAddressCoords(addressId: string, c: Coords): Promise<void> {
-  const uid = await getUserId();
-  if (!uid) return;
-  await updateRows<Address>('addresses', uid, (r) => r.id === addressId, { lat: c.lat, lng: c.lng } as Partial<Address>);
-  if (isBackendConfigured()) {
-    const bid = (await getRows<Address>('addresses', uid)).find((r) => r.id === addressId)?.backend_id;
-    if (bid) {
-      // Awaited first (the pin should land before a following subscription
-      // mirror asks the backend for an address WITH coordinates) — and queued
-      // durably if the attempt drops, because a server address without a pin
-      // blocks subscribing and breaks store routing.
-      try {
-        await api.patch(`/addresses/${bid}`, { lat: c.lat, lng: c.lng });
-      } catch {
-        const { enqueueMirror } = await import('./mirrorQueue');
-        await enqueueMirror('addr-coords', addressId);
-      }
-    }
-  }
+/** The member's saved addresses, for the gate above and the map below. Backend
+ *  mode reads the server's book (api.listAddresses: the session's in-memory
+ *  copy, fetched on a cold start before this can answer, plus any create still
+ *  in the outbox); local mode reads the table. Dynamic import: api imports
+ *  serviceability, which imports this module. */
+async function savedAddresses(uid: string): Promise<Address[]> {
+  if (!isBackendConfigured()) return getRows<Address>('addresses', uid);
+  const { listAddresses } = await import('./api');
+  return listAddresses().catch(() => [] as Address[]);
 }
 
 /**
@@ -99,7 +87,7 @@ export async function getUserCoords(): Promise<Coords> {
   if (device) return device;
   const uid = await getUserId();
   if (uid) {
-    const rows = await getRows<Address & { lat?: number | null; lng?: number | null }>('addresses', uid);
+    const rows = await savedAddresses(uid);
     const withCoords = rows
       .filter((a) => a.lat != null && a.lng != null)
       .sort((a, b) => (a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1));

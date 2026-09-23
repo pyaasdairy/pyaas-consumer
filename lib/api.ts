@@ -1,12 +1,14 @@
 import type { CartLine } from '../store/cart';
 import { cartTotals } from './pricing';
-import { requireUserId, getProfile } from './session';
-import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
+import { requireUserId, getUserId, getProfile } from './session';
+import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 import { debitWallet, autoSettleTopUp, refundToWallet } from './walletApi';
 import { isPlusActive, memberLinePrice } from './vip';
 import { getProduct } from '../constants/products';
 import { api, isBackendConfigured, HttpError } from './apiClient';
-import { registerMirrorHandler, enqueueMirror, drainMirrorQueue, type MirrorOutcome } from './mirrorQueue';
+import {
+  registerMirrorHandler, enqueueMirror, drainMirrorQueue, mirrorOutcomeFor, pendingMirrorTargets, type MirrorOutcome,
+} from './mirrorQueue';
 import { instantEtaHHMM, INSTANT_ETA_MINUTES, MORNING_WINDOW } from './deliveryMode';
 import { getServiceabilitySnapshot } from './serviceability';
 
@@ -27,6 +29,10 @@ export type Address = {
   pincode: string;
   is_default: boolean;
   created_at: string;
+  /** The map pin, captured with the address; the server stores it on the row
+   *  (store routing and the subscription worker read it). */
+  lat?: number | null;
+  lng?: number | null;
   /** Who receives the delivery at this door (mandatory in the capture flow). */
   receiver_name?: string | null;
   /** Reverse-geocoded label of the pinned spot ("4JCJ+52Q, Kattigenahalli…"). */
@@ -147,69 +153,185 @@ export function deliveryFeeFor(subtotal: number, isPlus = false): number {
   return subtotal >= FREE_DELIVERY_OVER ? 0 : DELIVERY_FEE;
 }
 
-// ── Addresses ────────────────────────────────────────────────────────────────
-export async function listAddresses(): Promise<Address[]> {
-  const uid = await requireUserId();
-  // BACKEND-FIRST HYDRATION — the address-persistence fix. Saves have always
-  // MIRRORED to the server (mirrorAddressCreate below), but reads were
-  // local-only: every reinstall wiped AsyncStorage and the member "lost" the
-  // address they had saved again and again. Pull the server rows and upsert
-  // them into the local cache (idempotent by backend_id); offline or on any
-  // failure the local cache answers exactly as before.
-  if (isBackendConfigured()) {
-    try {
-      const remote = await api.get<Array<Record<string, unknown>>>('/addresses');
-      if (Array.isArray(remote)) {
-        const local = await getRows<Address>('addresses', uid);
-        for (const r of remote) {
-          const bid = String((r as { id?: unknown }).id ?? '');
-          if (!bid) continue;
-          const patch = {
-            backend_id: bid,
-            label: String(r.label ?? 'Home'),
-            line1: String(r.line1 ?? ''),
-            line2: (r.line2 as string) || null,
-            city: String(r.city ?? ''),
-            pincode: String(r.pincode ?? ''),
-            is_default: !!r.is_default,
-            lat: (r.lat as number | null) ?? null,
-            lng: (r.lng as number | null) ?? null,
-            receiver_name: (r.receiver_name as string) || null,
-            geo_label: (r.geo_label as string) || null,
-            ring_bell: !!r.ring_bell,
-            call_before: !!r.call_before,
-            instructions: (r.instructions as string) || null,
-            door_photo_uri: (r.door_photo_uri as string) || null,
-            society: (r.society as string) || null,
-            society_id: (r.society_id as string) || null,
-            tower: (r.tower as string) || null,
-            floor: (r.floor as number | null) ?? null,
-            unit: (r.unit as string) || null,
-          } as Partial<Address>;
-          const existing = local.find((l) => l.backend_id === bid);
-          if (existing) {
-            await updateRows<Address>('addresses', uid, (x) => x.id === existing.id, patch);
-          } else {
-            await insertRow<Address>('addresses', uid, {
-              ...(patch as Address),
-              id: newId('addr'),
-              user_id: uid,
-              created_at: String(r.created_at ?? new Date().toISOString()),
-            });
-          }
-        }
-      }
-    } catch { /* offline / endpoint unavailable — the local cache answers */ }
-  }
-  const rows = await getRows<Address>('addresses', uid);
+// -- Addresses ---------------------------------------------------------------
+// Backend mode: GET /addresses is the address book. It is held in this
+// in-memory copy for the session (keyed by uid, so an account switch never
+// shows the previous member's doors), warmed at boot and sign-in
+// (hydrateAddressCache) and dropped on every mutation so the next read
+// refetches. Nothing about it is written to the device. The local 'addresses'
+// table exists in backend mode ONLY as the offline OUTBOX: a create that could
+// not reach the server (backend_id null) is shown as pending and replayed by
+// the 'addr-create' handler, which deletes it once the server has it. A
+// set-default or delete that could not reach the server is queued by server
+// id ('addr-default' / 'addr-delete') and laid over this copy until it lands.
+// Local mode keeps the table as the address book, as before.
+let addressCache: { uid: string; rows: Address[] } | null = null;
+
+export function invalidateAddressCache(): void {
+  addressCache = null;
+}
+
+/** One address as GET /addresses and POST /addresses return it. The server's
+ *  id is both `id` and `backend_id`, so the screens, the mutations below and
+ *  placeOrder's address_id all read the same value. */
+export function addressFromRemote(r: Record<string, unknown>, uid: string): Address | null {
+  const id = String(r.id ?? '');
+  if (!id) return null;
+  return {
+    id,
+    backend_id: id,
+    user_id: uid,
+    label: String(r.label ?? 'Home'),
+    line1: String(r.line1 ?? ''),
+    line2: (r.line2 as string) || null,
+    city: String(r.city ?? ''),
+    pincode: String(r.pincode ?? ''),
+    is_default: !!r.is_default,
+    created_at: String(r.created_at ?? new Date().toISOString()),
+    lat: typeof r.lat === 'number' ? r.lat : null,
+    lng: typeof r.lng === 'number' ? r.lng : null,
+    receiver_name: (r.receiver_name as string) || null,
+    geo_label: (r.geo_label as string) || null,
+    ring_bell: !!r.ring_bell,
+    call_before: !!r.call_before,
+    instructions: (r.instructions as string) || null,
+    door_photo_uri: (r.door_photo_uri as string) || null,
+    society: (r.society as string) || null,
+    society_id: (r.society_id as string) || null,
+    tower: (r.tower as string) || null,
+    floor: typeof r.floor === 'number' ? r.floor : null,
+    unit: (r.unit as string) || null,
+  };
+}
+
+/** The request body POST /addresses reads (the field names the backend expects). */
+export function addressWire(row: Address): Record<string, unknown> {
+  return {
+    label: row.label,
+    line1: row.line1,
+    line2: row.line2 ?? '',
+    city: row.city,
+    pincode: row.pincode,
+    is_default: row.is_default,
+    lat: row.lat ?? undefined,
+    lng: row.lng ?? undefined,
+    receiver_name: row.receiver_name ?? '',
+    geo_label: row.geo_label ?? '',
+    ring_bell: row.ring_bell,
+    call_before: row.call_before,
+    instructions: row.instructions ?? '',
+    door_photo_uri: row.door_photo_uri ?? '',
+    // Structured society parts - the rider app groups by tower + floor.
+    society: row.society ?? undefined,
+    society_id: row.society_id ?? undefined,
+    tower: row.tower ?? undefined,
+    floor: row.floor ?? undefined,
+    unit: row.unit ?? undefined,
+  };
+}
+
+function sortAddresses(rows: Address[]): Address[] {
   return rows.sort((a, b) => {
     if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
     return b.created_at.localeCompare(a.created_at);
   });
 }
 
+/** The outbox: local rows the server does not have yet (backend_id null). */
+async function addressOutbox(uid: string): Promise<Address[]> {
+  const rows = await getRows<Address>('addresses', uid).catch(() => [] as Address[]);
+  return rows.filter((r) => !r.backend_id);
+}
+
+/**
+ * The server's rows as the screens should see them while this session still
+ * has intents to land: a queued set-default is the default, a queued delete
+ * hides its row (a refetch would otherwise resurrect it until the replay
+ * lands), and a pending create that is to be the default clears the rest.
+ */
+export function mergeAddressBook(
+  server: Address[],
+  outbox: Address[],
+  queuedDefault: string[],
+  queuedDelete: string[],
+): Address[] {
+  let rows = server.filter((r) => !queuedDelete.includes(r.id));
+  const def = queuedDefault[queuedDefault.length - 1];
+  if (def && rows.some((r) => r.id === def)) rows = rows.map((r) => ({ ...r, is_default: r.id === def }));
+  if (outbox.some((r) => r.is_default)) rows = rows.map((r) => ({ ...r, is_default: false }));
+  return [...rows, ...outbox];
+}
+
+async function fetchAddresses(uid: string): Promise<Address[]> {
+  const remote = await api.get<Array<Record<string, unknown>>>('/addresses');
+  const rows = (Array.isArray(remote) ? remote : [])
+    .map((r) => addressFromRemote(r, uid))
+    .filter((r): r is Address => r !== null);
+  addressCache = { uid, rows };
+  // Rows an older build kept as mirrors of server rows (backend_id set) are
+  // stale copies of what was just fetched; drop them. The outbox stays.
+  await deleteRows<Address>('addresses', uid, (r) => !!r.backend_id).catch(() => undefined);
+  return rows;
+}
+
+/** Backend mode: warm the in-memory address book (boot, sign-in) so the
+ *  exact-location gate and checkout answer from it. Error-soft. */
+export async function hydrateAddressCache(): Promise<void> {
+  if (!isBackendConfigured()) return;
+  try {
+    const uid = await getUserId();
+    if (!uid || addressCache?.uid === uid) return;
+    await fetchAddresses(uid);
+  } catch { /* the next read retries */ }
+}
+
+export async function listAddresses(): Promise<Address[]> {
+  const uid = await requireUserId();
+  if (!isBackendConfigured()) {
+    return sortAddresses(await getRows<Address>('addresses', uid));
+  }
+  // The session's copy, fetched on the first read (a cold start hydrates here
+  // before any subscribe path can ask hasExactLocation). Offline before any
+  // read this session, only what this phone still has to send is known;
+  // nothing local stands in for the server's book, and the next read retries.
+  let server: Address[] = [];
+  if (addressCache?.uid === uid) {
+    server = addressCache.rows;
+  } else {
+    try { server = await fetchAddresses(uid); } catch { /* offline */ }
+  }
+  const [outbox, queuedDefault, queuedDelete] = await Promise.all([
+    addressOutbox(uid),
+    pendingMirrorTargets('addr-default'),
+    pendingMirrorTargets('addr-delete'),
+  ]);
+  return sortAddresses(mergeAddressBook(server, outbox, queuedDefault, queuedDelete));
+}
+
 export async function addAddress(a: Omit<Address, 'id' | 'user_id' | 'created_at'>): Promise<Address> {
   const uid = await requireUserId();
+  if (isBackendConfigured()) {
+    // POST /addresses FIRST: the server's row is the address (its id is the
+    // server's, and the pin rides in the same body, so a server address can
+    // never exist without one). Only when the request cannot reach the server
+    // does anything land on the device: the row goes to the outbox, shows as
+    // pending, and the 'addr-create' handler replays it. A permanent
+    // rejection is surfaced, not queued.
+    const row: Address = { ...a, id: newId('addr'), user_id: uid, created_at: new Date().toISOString(), backend_id: null };
+    let created: Record<string, unknown>;
+    try {
+      created = await api.post<Record<string, unknown>>('/addresses', addressWire(row));
+    } catch (e) {
+      if (mirrorOutcomeFor(e) === 'drop') throw e;
+      await insertRow<Address>('addresses', uid, row);
+      await enqueueMirror('addr-create', row.id);
+      return row;
+    }
+    invalidateAddressCache();
+    const saved = created && typeof created === 'object' ? addressFromRemote(created, uid) : null;
+    if (!saved) throw new Error('The address was saved but could not be read back. Please refresh.');
+    return saved;
+  }
   const existing = await getRows<Address>('addresses', uid);
   const is_default = existing.length === 0 ? true : a.is_default;
   if (is_default) {
@@ -222,109 +344,91 @@ export async function addAddress(a: Omit<Address, 'id' | 'user_id' | 'created_at
     user_id: uid,
     created_at: new Date().toISOString(),
   };
-  const saved = await insertRow<Address>('addresses', uid, row);
-  // Mirror the COMPLETE address into the backend DB (consumer_addresses) —
-  // awaited so anything that immediately follows (pin patch, a subscription
-  // mirror) finds it server-side. If the attempt fails, the DURABLE queue op
-  // replays it until the twin exists — a silently local-only address once
-  // meant the backend sweep kept routing milk to the customer's OLD door.
-  await mirrorAddressCreate(uid, saved);
-  const mirrored = (await getRows<Address>('addresses', uid)).find((r) => r.id === saved.id)?.backend_id;
-  if (!mirrored) await enqueueMirror('addr-create', saved.id);
-  return saved;
+  return insertRow<Address>('addresses', uid, row);
 }
 
-// ── Address mirror-queue handlers (durable replays; see lib/mirrorQueue.ts) ──
+// -- Address mirror-queue handlers (durable replays; see lib/mirrorQueue.ts) --
 
+// The outbox replay: the queued create reaches POST /addresses and the row is
+// deleted (the server has it now); a row with backend_id is an older build's
+// mirror, not an intent.
 registerMirrorHandler('addr-create', async (localId): Promise<MirrorOutcome> => {
   const uid = await requireUserId();
   const row = (await getRows<Address>('addresses', uid)).find((r) => r.id === localId);
   if (!row || row.backend_id) return 'done';
-  await mirrorAddressCreate(uid, row, /*throwOnFailure*/ true);
-  const bid = (await getRows<Address>('addresses', uid)).find((r) => r.id === localId)?.backend_id;
-  if (bid && row.is_default) await enqueueMirror('addr-default', localId);
-  return 'done';
-});
-
-registerMirrorHandler('addr-default', async (localId): Promise<MirrorOutcome> => {
-  const uid = await requireUserId();
-  const row = (await getRows<Address>('addresses', uid)).find((r) => r.id === localId);
-  if (!row || !row.is_default) return 'done'; // superseded by a later choice
-  if (!row.backend_id) return 'done'; // create replay will re-enqueue this
-  await api.post(`/addresses/${row.backend_id}/default`);
-  return 'done';
-});
-
-registerMirrorHandler('addr-delete', async (backendId): Promise<MirrorOutcome> => {
-  if (!backendId) return 'done';
-  await api.del(`/addresses/${backendId}`);
-  return 'done';
-});
-
-registerMirrorHandler('addr-coords', async (localId): Promise<MirrorOutcome> => {
-  const uid = await requireUserId();
-  const row = (await getRows<Address>('addresses', uid)).find((r) => r.id === localId);
-  const geo = row as unknown as { lat?: number | null; lng?: number | null } | undefined;
-  if (!row || !row.backend_id || geo?.lat == null || geo?.lng == null) return 'done';
-  await api.patch(`/addresses/${row.backend_id}`, { lat: geo.lat, lng: geo.lng });
-  return 'done';
-});
-
-/** Backend twin of a local address row, if it was mirrored. */
-async function addressBackendId(uid: string, id: string): Promise<string | null> {
-  const rows = await getRows<Address>('addresses', uid);
-  return rows.find((r) => r.id === id)?.backend_id ?? null;
-}
-
-async function mirrorAddressCreate(uid: string, row: Address, throwOnFailure = false): Promise<void> {
-  if (!isBackendConfigured()) return;
   try {
-    const geo = row as unknown as { lat?: number | null; lng?: number | null };
-    const created = await api.post<{ id: string }>('/addresses', {
-      label: row.label,
-      line1: row.line1,
-      line2: row.line2 ?? '',
-      city: row.city,
-      pincode: row.pincode,
-      is_default: row.is_default,
-      lat: geo.lat ?? undefined,
-      lng: geo.lng ?? undefined,
-      receiver_name: row.receiver_name ?? '',
-      geo_label: row.geo_label ?? '',
-      ring_bell: row.ring_bell,
-      call_before: row.call_before,
-      instructions: row.instructions ?? '',
-      door_photo_uri: row.door_photo_uri ?? '',
-      // Structured society parts — the rider app groups by tower + floor.
-      society: row.society ?? undefined,
-      society_id: row.society_id ?? undefined,
-      tower: row.tower ?? undefined,
-      floor: row.floor ?? undefined,
-      unit: row.unit ?? undefined,
-    });
-    if (created?.id) {
-      await updateRows<Address>('addresses', uid, (r) => r.id === row.id, { backend_id: created.id });
-    }
+    await api.post('/addresses', addressWire(row));
   } catch (e) {
-    if (throwOnFailure) throw e; // queue path: classify + replay
-    /* interactive path: local-only for now — the queued op replays it */
+    const outcome = mirrorOutcomeFor(e);
+    // A permanent rejection must not leave the row shown as pending forever.
+    if (outcome === 'drop') await deleteRows<Address>('addresses', uid, (r) => r.id === localId).catch(() => undefined);
+    return outcome;
   }
-}
+  await deleteRows<Address>('addresses', uid, (r) => r.id === localId);
+  invalidateAddressCache();
+  return 'done';
+});
+
+registerMirrorHandler('addr-default', async (id): Promise<MirrorOutcome> => {
+  if (!id) return 'done';
+  await api.post(`/addresses/${id}/default`);
+  invalidateAddressCache();
+  return 'done';
+});
+
+registerMirrorHandler('addr-delete', async (id): Promise<MirrorOutcome> => {
+  if (!id) return 'done';
+  await api.del(`/addresses/${id}`);
+  invalidateAddressCache();
+  return 'done';
+});
 
 export async function setDefaultAddress(id: string): Promise<void> {
   const uid = await requireUserId();
+  if (isBackendConfigured()) {
+    if ((await addressOutbox(uid)).some((r) => r.id === id)) {
+      // Not on the server yet: the create carries is_default when it lands.
+      await updateRows<Address>('addresses', uid, (r) => !r.backend_id, { is_default: false });
+      await updateRows<Address>('addresses', uid, (r) => r.id === id, { is_default: true });
+      return;
+    }
+    try {
+      await api.post(`/addresses/${id}/default`);
+      invalidateAddressCache();
+    } catch (e) {
+      if (mirrorOutcomeFor(e) === 'drop') throw e;
+      await enqueueMirror('addr-default', id); // durable - the sweep bills against the server's default
+    }
+    return;
+  }
   await updateRows<Address>('addresses', uid, () => true, { is_default: false });
   await updateRows<Address>('addresses', uid, (r) => r.id === id, { is_default: true });
-  await enqueueMirror('addr-default', id); // durable — the sweep bills against the server's default
 }
 
 export async function deleteAddress(id: string): Promise<void> {
   const uid = await requireUserId();
-  const bid = await addressBackendId(uid, id); // capture BEFORE the local delete
+  if (isBackendConfigured()) {
+    if ((await addressOutbox(uid)).some((r) => r.id === id)) {
+      // Never reached the server: dropping the outbox row is the whole delete
+      // (the queued create then finds no row and completes).
+      await deleteRows<Address>('addresses', uid, (r) => r.id === id);
+      return;
+    }
+    try {
+      await api.del(`/addresses/${id}`);
+    } catch (e) {
+      // Already gone server-side is the outcome asked for.
+      if (!(e instanceof HttpError && e.status === 404)) {
+        if (mirrorOutcomeFor(e) === 'drop') throw e;
+        await enqueueMirror('addr-delete', id); // durable - else the row stays the sweep's door
+        return;
+      }
+    }
+    invalidateAddressCache();
+    return;
+  }
   await deleteRows<Address>('addresses', uid, (r) => r.id === id);
-  if (bid) await enqueueMirror('addr-delete', bid); // durable — else the twin resurrects on hydration
 }
-
 // ── Orders ───────────────────────────────────────────────────────────────────
 export async function placeOrder(params: {
   lines: CartLine[];

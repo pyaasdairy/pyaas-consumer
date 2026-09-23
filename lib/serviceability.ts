@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { api, isBackendConfigured } from './apiClient';
-import { getRows } from './localStore';
 import { getUserId } from './session';
 import { DEFAULT_REGION } from './location';
 import { currentUserLoc, CITIES } from './userLocation';
@@ -224,7 +223,11 @@ async function resolvePoint(): Promise<Required<CheckPoint> & { signature: strin
   const uid = await getUserId();
   if (uid) {
     try {
-      const rows = await getRows<Address & { lat?: number | null; lng?: number | null }>('addresses', uid);
+      // The saved address book (backend mode: the server's, held in memory
+      // for the session; local mode: the table). Dynamic import: api imports
+      // this module.
+      const { listAddresses } = await import('./api');
+      const rows: Address[] = await listAddresses();
       const def = rows.find((a) => a.is_default) ?? rows[0];
       // 2) Fall back to a saved delivery-address coordinate (returning member).
       //    Only attach that address's pincode when we ALSO adopt its coordinates —

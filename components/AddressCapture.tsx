@@ -12,7 +12,7 @@ import MapPicker from './MapPicker';
 import { addAddress, type Address } from '../lib/api';
 import { isBackendConfigured } from '../lib/apiClient';
 import { uploadPhoto } from '../lib/uploads';
-import { setAddressCoords, type Coords } from '../lib/location';
+import { type Coords } from '../lib/location';
 import { geoAddress, placeLabelFromCoords, useUserLocation } from '../lib/userLocation';
 import { getServiceability, joinWaitlist } from '../lib/serviceability';
 import { useAuth } from '../lib/auth';
@@ -88,8 +88,8 @@ export function AddressCaptureSheet({
   visible: boolean;
   onClose: () => void;
   /** The saved address AND the pin it was saved with — callers that resume a
-   *  gate chain must consume these instead of re-fetching, so a lagging or
-   *  failed coords write can never send them back into the capture loop. */
+   *  gate chain must consume these instead of re-fetching, so a lagging
+   *  backend read can never send them back into the capture loop. */
   onSaved: (address: Address, coords: Coords | null) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -335,9 +335,13 @@ export function AddressCaptureSheet({
         call_before: callBefore,
         instructions: instructions.trim() || null,
         door_photo_uri: doorPhotoUrl,
+        // The pin travels with the create: the server stores it on the row in
+        // the same write, so no second request can leave a server address
+        // without the coordinates the subscription worker needs.
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
       });
       if (coords && created?.id) {
-        try { await setAddressCoords(created.id, coords); } catch { /* pin retried on next edit */ }
         // The saved door IS the member's delivery location now (exact).
         // Pass the society's own area so the header reads "Deliver to Sushant
         // Golf City" rather than "Deliver to Lucknow".
