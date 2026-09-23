@@ -400,8 +400,15 @@ export async function setSubscriptionStatus(id: string, status: Subscription['st
     else await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
     return;
   }
-  await api.post(`/subscriptions/${id}/${STATUS_ACTION[status]}`);
-  invalidateSubscriptionCache();
+  // The copy is dropped whether or not the call landed: a 409
+  // SUBSCRIPTION_STATE means the server's row is not what the session shows
+  // (the plan was cancelled or paused elsewhere), and a timeout may have
+  // landed; either way the next read must come from the server.
+  try {
+    await api.post(`/subscriptions/${id}/${STATUS_ACTION[status]}`);
+  } finally {
+    invalidateSubscriptionCache();
+  }
 }
 
 /** Edit a live subscription's plan (quantity / frequency / delivery slot). */

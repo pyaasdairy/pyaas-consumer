@@ -76,7 +76,13 @@ export default function Subscriptions() {
     try {
       await setSubscriptionStatus(s.id, s.status === 'active' ? 'paused' : 'active');
       await load();
-    } catch (e: any) { setErr(e?.message ?? 'Could not update the subscription.'); }
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not update the subscription.');
+      // The server may have refused because the plan is no longer in the
+      // state shown (cancelled or paused elsewhere): reload so the list is
+      // the server's, not the copy the tap was made on.
+      await load();
+    }
     finally { setBusy(false); }
   }
 
@@ -273,7 +279,7 @@ export default function Subscriptions() {
         const doCancel = async () => {
           close(); setBusy(true); setErr('');
           try { await setSubscriptionStatus(d.id, 'cancelled'); await load(); }
-          catch (e: any) { setErr(e?.message ?? 'Could not cancel the subscription.'); }
+          catch (e: any) { setErr(e?.message ?? 'Could not cancel the subscription.'); await load(); }
           finally { setBusy(false); }
         };
         // Confirm first — the backend is only hit after "Cancel subscription".
