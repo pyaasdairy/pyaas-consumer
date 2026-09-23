@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { api, isBackendConfigured } from './apiClient';
+import { api, isBackendConfigured, HttpError } from './apiClient';
+import { mirrorOutcomeFor } from './mirrorQueue';
 import { getRows, insertRow, deleteRows, newId } from './localStore';
 import { getUserId } from './session';
 import { notify } from './notificationCenter';
@@ -25,10 +26,12 @@ import { uploadPhoto } from './uploads';
  *     The server's rows lead on every refresh; a failed GET keeps the last
  *     fetched server rows on screen with an error, and only outbox rows are
  *     ever added from the device.
- *   - Without one (or on a failure) the row is marked `queued` and retried on
- *     the next refresh, and the member is told plainly that it is waiting to
- *     reach the team, with a one-tap email escalation that carries the same
- *     reference.
+ *   - Without one (or on a network failure) the row is marked `queued` and
+ *     retried on the next refresh, and the member is told plainly that it is
+ *     waiting to reach the team, with a one-tap email escalation that carries
+ *     the same reference. A permanent rejection (a 4xx from the register,
+ *     the other outboxes' rule) deletes the row and is surfaced once instead
+ *     of being retried forever.
  *
  * BACKEND CONTRACT (co-dev — see the handoff):
  *   POST /consumer/complaints { ref, category, order_id?, detail, photo_uri? }
@@ -139,8 +142,10 @@ async function postComplaint(c: Complaint): Promise<string | null> {
 }
 
 /**
- * File a complaint. Never throws: the local row is the promise we can keep.
- * Returns the row so the screen can show the reference straight away.
+ * File a complaint. A network failure never throws: the local row is the
+ * promise we can keep. A permanent rejection by the register throws with
+ * the reason and leaves nothing behind. Returns the row so the screen can
+ * show the reference straight away.
  */
 export async function fileComplaint(input: {
   category: ComplaintCategory;
@@ -165,7 +170,9 @@ export async function fileComplaint(input: {
   const uid = await getUserId();
   // The outbox row goes in first so a dead network cannot lose the complaint.
   if (uid) await insertRow<Complaint>(TABLE, uid, row).catch(() => {});
-  // Try the server immediately; a failure leaves it queued for the next refresh.
+  // Try the server immediately; a network failure leaves it queued for the
+  // next refresh. A permanent rejection is not a complaint the register will
+  // ever take: the row goes, and the member is told why.
   try {
     const backendId = await postComplaint(row);
     if (backendId) {
@@ -174,7 +181,11 @@ export async function fileComplaint(input: {
       // The server has it now: the outbox row is deleted, not kept as a mirror.
       if (uid) await deleteRows<Complaint>(TABLE, uid, (r) => r.id === row.id).catch(() => {});
     }
-  } catch {
+  } catch (e) {
+    if (mirrorOutcomeFor(e) === 'drop') {
+      if (uid) await deleteRows<Complaint>(TABLE, uid, (r) => r.id === row.id).catch(() => {});
+      throw new Error(rejectionMessage(e));
+    }
     /* stays queued */
   }
   await notify({
@@ -212,6 +223,12 @@ type State = {
 };
 
 const REGISTER_UNREACHABLE = 'Could not reach the complaints register. Showing what is saved on this phone.';
+const REGISTER_REJECTED = 'A complaint saved on this phone was not accepted by the register and has been removed. Please file it again.';
+
+function rejectionMessage(e: unknown): string {
+  const why = e instanceof HttpError && e.message ? ` ${e.message}` : '';
+  return `The register did not accept this complaint.${why} It was not saved.`;
+}
 
 /**
  * The register. Server rows lead (they carry the real status); the local
@@ -230,15 +247,21 @@ export const useComplaints = create<State>((set, get) => ({
     set({ loading: true });
 
     // Replay the outbox: a row the server accepts is deleted here (the server
-    // has it now); one it still cannot take stays queued for the next refresh.
-    // Only rows that never synced are ever posted.
+    // has it now); one the network could not carry stays queued for the next
+    // refresh; one the register rejects for good is deleted and reported
+    // once. Only rows that never synced are ever posted.
     const outbox = (await getRows<Complaint>(TABLE, uid).catch(() => [] as Complaint[])).filter((r) => !r.backend_id);
+    let rejected = 0;
     for (const q of outbox) {
       try {
         const id = await postComplaint(q);
         if (id) await deleteRows<Complaint>(TABLE, uid, (r) => r.id === q.id).catch(() => {});
-      } catch {
-        /* still offline — next refresh */
+      } catch (e) {
+        if (mirrorOutcomeFor(e) === 'drop') {
+          await deleteRows<Complaint>(TABLE, uid, (r) => r.id === q.id).catch(() => {});
+          rejected += 1;
+        }
+        /* else still offline - next refresh */
       }
     }
 
@@ -278,6 +301,6 @@ export const useComplaints = create<State>((set, get) => ({
     const pending = (await getRows<Complaint>(TABLE, uid).catch(() => [] as Complaint[]))
       .filter((r) => r.backend_id == null && !leadRefs.has(r.ref));
     const rows = [...lead, ...pending].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-    set({ rows, loading: false, error: unreachable ? REGISTER_UNREACHABLE : null, forUid: uid });
+    set({ rows, loading: false, error: unreachable ? REGISTER_UNREACHABLE : rejected > 0 ? REGISTER_REJECTED : null, forUid: uid });
   },
 }));
