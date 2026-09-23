@@ -60,7 +60,8 @@ app still keeps on the device in backend mode is:
   - address create -> `addr-create` (`lib/api.ts`); a set-default or delete that could not
     reach the server is queued by server id (`addr-default`, `addr-delete`);
   - subscription create -> `sub-create` (`lib/subscriptions.ts`); `sub-status` and
-    `sub-edit` only drain ops queued by older builds;
+    `sub-edit` drop any op an older build queued (the server is the source of truth; a
+    queued auto-resume must not land on a plan the server has since paused);
   - profile edit -> `profile` (`lib/profileApi.ts`);
   - delivery preferences -> `delivery-prefs` (`lib/deliveryPrefs.ts`), the changed keys only;
   - consents -> `consents` (`lib/consentSync.ts`);
@@ -68,8 +69,12 @@ app still keeps on the device in backend mode is:
     queue; a permanent rejection deletes the row and is shown once;
   - promo credits -> `replayPendingPromos` (`lib/walletApi.ts`); restock leads ->
     `replayParkedRestockLeads` (`lib/leads.ts`).
-- **Owner-decided device-local items**: `user_location`, `milk_scans`, favorites, and the
-  local notices feed (`lib/notificationCenter.ts`).
+- **Owner-decided device-local items**: `user_location`, `milk_scans`, favorites, the
+  local notices feed (`lib/notificationCenter.ts`), and the `vip` row (`lib/vip.ts`): no
+  `GET /membership` exists, so a row an older build wrote is the only evidence anywhere of
+  a Plus month that build debited from the server wallet. Backend mode ignores it
+  (`getVip` null, `isPlusActive` false) and sign-out spares it (`lib/session.ts`); it is
+  neither read nor deleted until the server owns membership.
 
 Everything else a screen shows in backend mode is an in-memory copy of a server read
 (profile, address book, plan list, delivery prefs, trial, mandate, wallet unlock, offer
@@ -90,6 +95,19 @@ Also worth knowing:
 - `PATCH /me` replaces the whole `delivery_prefs` document with what it is sent
   (`service.go updateMe`), so the delivery-prefs replay lays the queued keys over a fresh
   `GET /me` before it sends. A true partial PATCH needs the backend to merge.
+- How a replay classifies an error (`mirrorOutcomeFor`, `lib/mirrorQueue.ts`): network,
+  timeout, no status, 5xx, 408 and 429 retry; 401 (a token refresh that failed or timed
+  out) and 403 (a stale app key) also retry, because they are session states, not
+  verdicts on the row; every other 4xx drops the row, since a retry can never land it.
+  Every outbox keeps its row on 401/403 (complaints, addresses, subscriptions, profile,
+  delivery prefs, consents, leads); promos never drop. The saves that feed the outboxes
+  throw a drop to the screen instead of queuing it, and each replay deletes its row on
+  a drop; delivery prefs now follow that rule too.
+- Sign-out zeroes the wallet store (`resetWallet`, `store/wallet.ts`), so the next member
+  never sees the previous balance. The store records the account a successful refresh was
+  for (`loadedUid`) and discards a read whose account changed in flight, and the purchase
+  unlock (`lib/walletGate.ts`) latches for the session only from such a refresh or from
+  the ledger; a balance a caller passes in answers that one check and never latches.
 
 ## The backend now answers three of your §11 items
 
