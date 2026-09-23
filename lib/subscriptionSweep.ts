@@ -90,19 +90,24 @@ async function runSweep(): Promise<number> {
     await drainMirrorQueue().catch(() => undefined);
   }
   const [subs, vacations] = await Promise.all([listSubscriptions(), listVacations()]);
-  // A subscription mirrored to the backend (backend_id) is ordered by the
-  // SERVER's daily worker — sweeping it here too would place the same morning
-  // order twice. In backend mode the RECURRING cadences are exclusively the
-  // server's: an unmirrored recurring row waits for its queued mirror to land
-  // (placing it from the phone via POST /orders billed trial-free days at
-  // full price + fee, because those orders carry no subscription linkage).
-  // The local sweep still owns everything in offline/local mode, and the
-  // never-mirrored cadences (one_time/custom) everywhere.
+  // A subscription the server holds (backend_id) is ordered by the SERVER's
+  // daily worker - sweeping it here too would place the same morning order
+  // twice. In backend mode the RECURRING cadences are exclusively the
+  // server's: a recurring row still in the create outbox waits for its
+  // queued create to land (placing it from the phone via POST /orders billed
+  // trial-free days at full price + fee, because those orders carry no
+  // subscription linkage). The local sweep still owns everything in
+  // offline/local mode, and the never-mirrored cadences (one_time/custom)
+  // everywhere.
   // INVARIANT (G1): every subscription the backend lists reaches this filter
-  // with backend_id = the server's id (syncServerSubscriptions writes it on
-  // read-back, the create mirror when it lands). A backend-listed row that
-  // arrived here without one would be ordered twice this morning: once by
-  // the server worker, once below.
+  // with backend_id = the server's id. In backend mode listSubscriptions
+  // returns GET /subscriptions mapped by subscriptionFromRemote, which sets
+  // backend_id = id on EVERY server row; the only rows without one are the
+  // create outbox (never yet on the server, so the worker cannot ship them),
+  // and a recurring outbox row is excluded by the cadence test below. No
+  // backend-listed subscription can reach the phone-side order path. A
+  // backend-listed row that arrived here without backend_id would be ordered
+  // twice this morning: once by the server worker, once below.
   const due = subs.filter(
     (s) =>
       s.status === 'active' &&

@@ -34,7 +34,7 @@ import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../.
 import { getWelcomeFunnelState, type WelcomeFunnelState } from '../../lib/crm';
 import { PREPAID_TARGET } from '../../lib/prepaid';
 import { balanceTier, MIN_RECHARGE } from '../../lib/pricing';
-import { listSubscriptions, syncServerSubscriptions } from '../../lib/subscriptions';
+import { listSubscriptions } from '../../lib/subscriptions';
 import { sweepDueSubscriptions } from '../../lib/subscriptionSweep';
 import { useWallet } from '../../store/wallet';
 import { useFavorites } from '../../store/favorites';
@@ -201,8 +201,8 @@ export default function Shop() {
   // Subscription presence (server-synced) — the low-wallet delivery nudge keys
   // off ANY ongoing subscription; a one-time order is not an ongoing plan.
   const recheckFresh = useCallback(() => {
-    syncServerSubscriptions()
-      .then(() => listSubscriptions())
+    // A fresh read: a plan the server minted (Welcome Litre) becomes visible.
+    listSubscriptions({ refresh: true })
       .then((subs) => {
         const anySub = subs.some((s) => (s.status === 'active' || s.status === 'paused') && s.frequency !== 'one_time');
         setHasSub(anySub);

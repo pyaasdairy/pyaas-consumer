@@ -1,8 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api, isBackendConfigured } from './apiClient';
-import { getUserId } from './session';
-import { setRows, newId } from './localStore';
-import type { Subscription } from './subscriptions';
 
 /**
  * ONE-TIME VERSIONED LOCAL RESET — never a per-launch wipe.
@@ -10,13 +6,13 @@ import type { Subscription } from './subscriptions';
  * Old builds leave stale local rows (pre-mirror addresses/subscriptions,
  * retired flags) that confuse flows after an update. On the FIRST launch of a
  * build whose LOCAL_DATA_VERSION differs from the stored one, this clears the
- * app's local data EXCEPT the session (the member stays signed in), stamps the
- * new version, and immediately RE-HYDRATES subscriptions from the backend -
- * so server truth survives and nothing user-critical is lost. (Addresses are
- * read from the server in backend mode, lib/api.listAddresses, so no local
- * table needs re-seeding.) The cart and soft flags reset once; the wallet is
- * server-read anyway; the funnel flags re-derive from their server fallbacks
- * (ledger / trial / gold-sub).
+ * app's local data EXCEPT the session (the member stays signed in) and stamps
+ * the new version. Nothing is re-seeded: in backend mode addresses and
+ * subscriptions are read from the server (lib/api.listAddresses,
+ * lib/subscriptions.listSubscriptions), so no local table stands in for
+ * them. The cart and soft flags reset once; the wallet is server-read anyway;
+ * the funnel flags re-derive from their server fallbacks (ledger / trial /
+ * gold-sub).
  *
  * Bump LOCAL_DATA_VERSION whenever shipped local-data semantics change enough
  * that stale rows would mislead the flows.
@@ -36,8 +32,7 @@ const PRESERVE = new Set<string>([
 
 // ── STRICT ONCE-ONLY GUARDS (three independent layers) ──────────────────────
 // 1. PERSISTED: the stored VERSION_KEY — once stamped, every future launch of
-//    this version is a read-and-return no-op. The stamp is written BEFORE the
-//    best-effort hydration, so a hydration failure can never re-arm the wipe.
+//    this version is a read-and-return no-op.
 // 2. PER-PROCESS: `resetRan` — even if the boot effect re-mounts within one
 //    app session, the second call returns immediately without touching storage.
 // 3. CONCURRENCY: `resetInFlight` — simultaneous callers (e.g. a double-fired
@@ -68,10 +63,8 @@ export function runOneTimeLocalReset(): Promise<boolean> {
       const drop = keys.filter((k) => !PRESERVE.has(k));
       if (drop.length > 0) await AsyncStorage.multiRemove(drop);
       // Stamp IMMEDIATELY after the wipe — from this moment the reset can
-      // never run again, whatever happens to the hydration below.
+      // never run again.
       await AsyncStorage.setItem(VERSION_KEY, LOCAL_DATA_VERSION);
-      // Server truth back into the local cache - best-effort.
-      try { await hydrateSubscriptions(); } catch { /* backend worker unaffected */ }
       return true;
     } catch {
       return false; // never block boot on a storage blip
@@ -81,30 +74,4 @@ export function runOneTimeLocalReset(): Promise<boolean> {
     }
   })();
   return resetInFlight;
-}
-
-/** Pull the member's server-owned subscriptions into the local cache with
- *  their backend ids, so the UI lists them and the on-device sweep keeps
- *  skipping them (the server worker owns their orders). */
-async function hydrateSubscriptions(): Promise<void> {
-  if (!isBackendConfigured()) return;
-  const uid = await getUserId();
-  if (!uid) return;
-  const remote = await api.get<Record<string, unknown>[]>('/subscriptions');
-  const rows: Subscription[] = (remote ?? []).map((w) => ({
-    id: (w.id as string) || newId('sub'),
-    product_id: (w.product_id as string) || '',
-    variant: (w.variant as string) || null,
-    qty: typeof w.qty === 'number' && w.qty >= 1 ? (w.qty as number) : 1,
-    unit_price: typeof w.unit_price === 'number' ? (w.unit_price as number) : 0,
-    frequency: ((w.frequency as string) || 'daily') as Subscription['frequency'],
-    delivery_slot: (w.delivery_slot as string) || null,
-    pay_from_wallet: true,
-    status: ((w.status as string) || 'active') as Subscription['status'],
-    start_date: (w.start_date as string) || new Date().toISOString().slice(0, 10),
-    next_delivery_date: (w.start_date as string) || null,
-    created_at: (w.created_at as string) || new Date().toISOString(),
-    backend_id: (w.id as string) || null,
-  }));
-  await setRows<Subscription>('subscriptions', uid, rows);
 }

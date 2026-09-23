@@ -203,11 +203,11 @@ export async function startWelcomeLitre(plan: WelcomePlan = {}): Promise<{
     pack1_order_id: string;
     pack1_scheduled_for: string;
   }>('/crm/enrol/self', plan);
-  // Pull the server-created plan into the local cache and light the bell.
+  // The server-created plan shows on the next subscription read, and the bell lights.
   try {
-    const { syncServerSubscriptions } = await import('./subscriptions');
-    await syncServerSubscriptions();
-  } catch { /* the next home focus syncs anyway */ }
+    const { invalidateSubscriptionCache } = await import('./subscriptions');
+    invalidateSubscriptionCache();
+  } catch { /* the next home focus refreshes anyway */ }
   void refreshCrmUnread();
   return res;
 }

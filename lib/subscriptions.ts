@@ -1,10 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { parseISO, addDaysISO, todayISO } from './dates';
 import { requireUserId } from './session';
-import { getRows, setRows, insertRow, updateRows, deleteRows, newId } from './localStore';
+import { getRows, insertRow, updateRows, deleteRows, dropTable, newId } from './localStore';
 import { hasExactLocation } from './location';
-import { api, isBackendConfigured } from './apiClient';
-import { registerMirrorHandler, enqueueMirror, drainMirrorQueue, mirrorPending, mirrorOutcomeFor, type MirrorOutcome } from './mirrorQueue';
+import { api, isBackendConfigured, HttpError } from './apiClient';
+import { registerMirrorHandler, enqueueMirror, mirrorOutcomeFor, type MirrorOutcome } from './mirrorQueue';
 import { getProduct } from '../constants/products';
 
 /** Thrown by createSubscription when no exact delivery point is on file. */
@@ -35,7 +35,12 @@ export type Subscription = {
    *  subscription's daily order is created by the BACKEND worker (store manager
    *  sees it without this app opening); the on-device sweep skips it. */
   backend_id?: string | null;
+  /** Backend mode only: the holiday ranges the server holds on this row
+   *  (listVacations reads them). Absent on local rows. */
+  vacations?: VacationRange[];
 };
+
+export type VacationRange = { start: string; end: string };
 
 export type Vacation = {
   id: string;
@@ -107,91 +112,97 @@ export function upcomingDeliveries(
   return out;
 }
 
-/**
- * Pull server-CREATED subscriptions the local cache has never seen (today:
- * the CRM Welcome Litre campaign plan, minted by the backend at enrolment —
- * the first subscription in the product's life that this app did not create
- * itself). ADD-ONLY by design: rows the app already holds are never touched,
- * so no local pause/cancel state can be clobbered, and a backend outage
- * changes nothing (error-soft, next call retries). Runs where subscription
- * lists are actually read (home + status card), not on a timer.
- */
-export async function syncServerSubscriptions(): Promise<void> {
-  if (!isBackendConfigured()) return;
-  let uid: string;
-  try { uid = await requireUserId(); } catch { return; }
-  // Local intents land FIRST — a pending pause must reach the server before
-  // the server's (older) status is allowed to refresh the local row.
-  await drainMirrorQueue().catch(() => undefined);
-  try {
-    const remote = await api.get<Record<string, unknown>[]>('/subscriptions');
-    if (!Array.isArray(remote)) return;
-    const rows = await getRows<Subscription>('subscriptions', uid);
-    const byBackend = new Map(rows.map((r) => [r.backend_id ?? r.id, r]));
-    const queueEmpty = !(await mirrorPending('*'));
-    let changed = false;
-    for (const w of remote) {
-      const sid = (w.id as string) || '';
-      if (!sid) continue;
-      const local = byBackend.get(sid);
-      if (!local) {
-        // Server-created plan (Welcome Litre campaign) — add it (ADD-ONLY).
-        rows.push({
-          id: sid,
-          product_id: (w.product_id as string) || '',
-          variant: (w.variant as string) || null,
-          qty: typeof w.qty === 'number' && w.qty >= 1 ? (w.qty as number) : 1,
-          unit_price: typeof w.unit_price === 'number' ? (w.unit_price as number) : 0,
-          frequency: ((w.frequency as string) || 'daily') as Frequency,
-          delivery_slot: null,
-          pay_from_wallet: true,
-          status: ((w.status as string) || 'active') as Subscription['status'],
-          start_date: (w.start_date as string) || todayISO(),
-          next_delivery_date: (w.start_date as string) || null,
-          created_at: (w.created_at as string) || new Date().toISOString(),
-          backend_id: sid,
-        });
-        changed = true;
-        continue;
-      }
-      // SERVER-WINS refresh for mirrored rows — but only once every queued
-      // local intent has drained, so a not-yet-landed pause is never clobbered
-      // back to active by the server's older truth.
-      if (queueEmpty && local.backend_id) {
-        const st = ((w.status as string) || local.status) as Subscription['status'];
-        const qty = typeof w.qty === 'number' && w.qty >= 1 ? (w.qty as number) : local.qty;
-        const price = typeof w.unit_price === 'number' ? (w.unit_price as number) : local.unit_price;
-        if (st !== local.status || qty !== local.qty || price !== local.unit_price) {
-          local.status = st;
-          local.qty = qty;
-          local.unit_price = price;
-          changed = true;
-        }
-      }
-      // Vacation READ-BACK: server ranges the device has never seen become
-      // local rows (add-only, keyed by exact range). Without this, a
-      // reinstall's first vacation edit wholesale-replaced the server's
-      // array with an empty one — silently erasing the customer's holiday.
-      const ranges = Array.isArray(w.vacations) ? (w.vacations as { start?: string; end?: string }[]) : [];
-      if (ranges.length) {
-        const vacs = await getRows<Vacation>('vacations', uid);
-        const have = new Set(vacs.map((v) => `${v.start_date}|${v.end_date}`));
-        const fresh = ranges.filter((r) => r.start && r.end && !have.has(`${r.start}|${r.end}`));
-        if (fresh.length) {
-          for (const r of fresh) {
-            vacs.push({ id: newId('vac'), subscription_id: local.id, start_date: r.start!, end_date: r.end!, reason: null });
-          }
-          await setRows<Vacation>('vacations', uid, vacs);
-        }
-      }
-    }
-    if (changed) await setRows<Subscription>('subscriptions', uid, rows);
-  } catch { /* offline / old backend — the next read retries */ }
+// -- Backend mode: the server's subscriptions ---------------------------------
+// GET /subscriptions is the member's plan list (the app's own plans and the
+// ones the server minted, such as the Welcome Litre campaign plan). It is
+// held in this in-memory copy for the session (keyed by uid), refetched when
+// a screen asks for a fresh read (home focus, the status card) and dropped on
+// every mutation. It is never written to the device. The local
+// 'subscriptions' table exists in backend mode ONLY as the offline OUTBOX: a
+// create that could not reach the server (backend_id null) is shown as
+// pending and replayed by the 'sub-create' handler, which deletes it once the
+// server has it. Vacations are the ranges on the server's rows; the local
+// 'vacations' table is local mode's only. Local mode keeps both tables as
+// the plan list, as before.
+let subsCache: { uid: string; rows: Subscription[] } | null = null;
+
+export function invalidateSubscriptionCache(): void {
+  subsCache = null;
 }
 
-export async function listSubscriptions(): Promise<Subscription[]> {
+/** One plan as GET /subscriptions returns it. INVARIANT (G1, see
+ *  lib/subscriptionSweep.ts): backend_id is the server's id on EVERY row, so
+ *  the phone-side sweep never orders a plan the server worker ships. */
+export function subscriptionFromRemote(w: Record<string, unknown>): Subscription | null {
+  const sid = typeof w.id === 'string' ? w.id : '';
+  if (!sid) return null;
+  const ranges = Array.isArray(w.vacations) ? (w.vacations as { start?: unknown; end?: unknown }[]) : [];
+  return {
+    id: sid,
+    product_id: (w.product_id as string) || '',
+    variant: (w.variant as string) || null,
+    qty: typeof w.qty === 'number' && w.qty >= 1 ? (w.qty as number) : 1,
+    unit_price: typeof w.unit_price === 'number' ? (w.unit_price as number) : 0,
+    frequency: ((w.frequency as string) || 'daily') as Frequency,
+    delivery_slot: (w.delivery_slot as string) || null,
+    pay_from_wallet: true,
+    status: ((w.status as string) || 'active') as Subscription['status'],
+    start_date: (w.start_date as string) || todayISO(),
+    next_delivery_date: (w.start_date as string) || null,
+    created_at: (w.created_at as string) || new Date().toISOString(),
+    backend_id: sid,
+    vacations: ranges
+      .filter((r): r is { start: string; end: string } => typeof r.start === 'string' && typeof r.end === 'string')
+      .map((r) => ({ start: r.start, end: r.end })),
+  };
+}
+
+async function fetchSubscriptions(uid: string): Promise<Subscription[]> {
+  const remote = await api.get<Record<string, unknown>[]>('/subscriptions');
+  const rows = (Array.isArray(remote) ? remote : [])
+    .map(subscriptionFromRemote)
+    .filter((s): s is Subscription => s !== null);
+  subsCache = { uid, rows };
+  // Rows an older build kept as mirrors of server rows (backend_id set) and
+  // its local vacations are stale copies of what was just fetched; drop them.
+  // The outbox (rows without backend_id) stays.
+  await deleteRows<Subscription>('subscriptions', uid, (s) => !!s.backend_id).catch(() => undefined);
+  await dropTable('vacations', uid).catch(() => undefined);
+  return rows;
+}
+
+/** The outbox: local rows the server does not have yet (backend_id null). */
+async function subscriptionOutbox(uid: string): Promise<Subscription[]> {
+  const rows = await getRows<Subscription>('subscriptions', uid).catch(() => [] as Subscription[]);
+  return rows.filter((s) => !s.backend_id);
+}
+
+/**
+ * The member's plans, cancelled ones excluded. Backend mode: the session's
+ * copy of GET /subscriptions (fetched on the first read, or again when the
+ * caller asks for `refresh`) plus any create still in the outbox. A failed
+ * read keeps the last server answer this session; before any, it throws, so
+ * no screen can mistake "unknown" for "no subscription".
+ */
+export async function listSubscriptions(opts?: { refresh?: boolean }): Promise<Subscription[]> {
   const uid = await requireUserId();
-  const rows = await getRows<Subscription>('subscriptions', uid);
+  let rows: Subscription[];
+  if (!isBackendConfigured()) {
+    rows = await getRows<Subscription>('subscriptions', uid);
+  } else {
+    let server: Subscription[];
+    if (subsCache?.uid === uid && !opts?.refresh) {
+      server = subsCache.rows;
+    } else {
+      try {
+        server = await fetchSubscriptions(uid);
+      } catch (e) {
+        if (subsCache?.uid !== uid) throw e;
+        server = subsCache.rows;
+      }
+    }
+    rows = [...server, ...(await subscriptionOutbox(uid))];
+  }
   return rows
     .filter((s) => s.status !== 'cancelled')
     .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
@@ -212,11 +223,7 @@ export async function createSubscription(params: {
   // HARD BACKSTOP: a subscription may never be created without an EXACT delivery
   // point (map pin / GPS / an address with coordinates). Every subscribe path
   // must capture the location first, so the rider always has a real door.
-  if (!(await hasExactLocation())) {
-    const e = new Error(NEEDS_EXACT_LOCATION) as Error & { code?: string };
-    e.code = NEEDS_EXACT_LOCATION;
-    throw e;
-  }
+  if (!(await hasExactLocation())) throw needsExactLocation();
   // LOCAL calendar date (lib/dates), never toISOString(): UTC would be
   // yesterday between local midnight and 05:30 IST and phase-shift the cadence.
   const start = params.startDate ?? todayISO();
@@ -235,20 +242,62 @@ export async function createSubscription(params: {
     next_delivery_date: start,
     created_at: new Date().toISOString(),
   };
-  await insertRow<Subscription>('subscriptions', uid, row);
-  // DURABLE backend mirror: the SERVER worker owns the daily morning order,
-  // so the plan must reach it even across crashes and dead networks. The
-  // queued op replays until the twin exists (see lib/mirrorQueue.ts) — a
-  // fire-and-forget here once meant a customer whose milk only shipped on
-  // days they happened to open the app.
-  await enqueueMirror('sub-create', id);
-  return id;
+  if (!isBackendConfigured()) {
+    await insertRow<Subscription>('subscriptions', uid, row);
+    return id;
+  }
+  // POST /subscriptions FIRST: the SERVER worker owns the daily morning
+  // order, and the server's row is the plan. Only when the request cannot
+  // reach the server does anything land on the device: the row goes to the
+  // outbox, shows as pending, and the 'sub-create' handler replays it until
+  // the twin exists (a fire-and-forget here once meant a customer whose milk
+  // only shipped on days they happened to open the app). A permanent
+  // rejection is surfaced, not queued; the server's ADDRESS_REQUIRED is the
+  // same gate as the backstop above, so it opens the same map.
+  const standing = (await listVacations().catch(() => [] as Vacation[])).filter((v) => v.subscription_id === null);
+  let created: Record<string, unknown>;
+  try {
+    created = await api.post<Record<string, unknown>>('/subscriptions', subscriptionWire(row, standing));
+  } catch (e) {
+    if (e instanceof HttpError && e.code === 'ADDRESS_REQUIRED') throw needsExactLocation();
+    if (mirrorOutcomeFor(e) === 'drop') throw e;
+    await insertRow<Subscription>('subscriptions', uid, row);
+    await enqueueMirror('sub-create', id);
+    return id;
+  }
+  invalidateSubscriptionCache();
+  return (created && typeof created.id === 'string' && created.id) || id;
 }
 
-// ── Backend mirror (server-owned subscriptions, subscriptions.go) ────────────
-// Local rows remain the UI's source of truth; the backend twin exists so the
-// server's 15-minute worker turns due subscriptions into morning orders +
-// store delivery tasks. Every mirror call is error-soft.
+function needsExactLocation(): Error {
+  const e = new Error(NEEDS_EXACT_LOCATION) as Error & { code?: string };
+  e.code = NEEDS_EXACT_LOCATION;
+  return e;
+}
+
+/** The request body POST /subscriptions reads (the field names the backend
+ *  expects). `vacations` are the standing holiday ranges that ride along at
+ *  birth: a twin created mid-vacation must not bill the days the app shows
+ *  skipped. */
+export function subscriptionWire(row: Subscription, vacations: Vacation[]): Record<string, unknown> {
+  const product = getProduct(row.product_id);
+  return {
+    product_id: row.product_id,
+    name: product?.name ?? row.product_id,
+    variant: row.variant ?? product?.variant ?? '',
+    qty: row.qty,
+    unit_price: row.unit_price,
+    frequency: row.frequency,
+    delivery_slot: row.delivery_slot ?? '',
+    start_date: row.start_date,
+    vacations: vacations.map((v) => ({ start: v.start_date, end: v.end_date })),
+  };
+}
+
+// -- Backend calls (server-owned subscriptions, subscriptions.go) -------------
+// The server's 15-minute worker turns due subscriptions into morning orders +
+// store delivery tasks, so every change below reaches it directly and throws
+// when it cannot, for the screen to say so; only the create has an outbox.
 
 const MIRRORED_FREQUENCIES: Frequency[] = ['daily', 'alternate', 'weekly'];
 
@@ -258,9 +307,7 @@ const STATUS_ACTION: Record<Subscription['status'], 'resume' | 'pause' | 'cancel
   cancelled: 'cancel',
 };
 
-// ── Mirror-queue handlers ────────────────────────────────────────────────────
-// Each handler re-reads the CURRENT local row at drain time, so collapsed /
-// replayed ops always push the latest truth, never a stale captured body.
+// -- Mirror-queue handlers ----------------------------------------------------
 
 async function currentRow(id: string): Promise<{ uid: string; row: Subscription | null }> {
   const uid = await requireUserId();
@@ -268,37 +315,37 @@ async function currentRow(id: string): Promise<{ uid: string; row: Subscription 
   return { uid, row: rows.find((s) => s.id === id) ?? null };
 }
 
+// The outbox replay: the queued create reaches POST /subscriptions and the row
+// is deleted (the server has it now); a row with backend_id is an older
+// build's mirror, not an intent.
 registerMirrorHandler('sub-create', async (localId): Promise<MirrorOutcome> => {
   const { uid, row } = await currentRow(localId);
-  // Row gone, twin already minted, or a never-mirrored cadence → nothing to do.
-  if (!row || row.backend_id || !MIRRORED_FREQUENCIES.includes(row.frequency)) return 'done';
-  const product = getProduct(row.product_id);
-  const vacations = await getRows<Vacation>('vacations', uid);
-  const created = await api.post<{ id: string }>('/subscriptions', {
-    product_id: row.product_id,
-    name: product?.name ?? row.product_id,
-    variant: row.variant ?? product?.variant ?? '',
-    qty: row.qty,
-    unit_price: row.unit_price,
-    frequency: row.frequency,
-    delivery_slot: row.delivery_slot ?? '',
-    start_date: row.start_date,
-    // The customer's standing holiday ranges ride along at birth — a twin
-    // created mid-vacation must not bill the very days the app shows skipped.
-    vacations: vacations
-      .filter((v) => v.subscription_id === null || v.subscription_id === row.id)
-      .map((v) => ({ start: v.start_date, end: v.end_date })),
-  });
-  if (created?.id) {
-    await updateRows<Subscription>('subscriptions', uid, (s) => s.id === localId, { backend_id: created.id });
-    // The row may have been paused/edited while the create was pending —
-    // replay its current status + plan onto the fresh twin.
-    await enqueueMirror('sub-status', localId);
-    await enqueueMirror('sub-edit', localId);
+  if (!row || row.backend_id) return 'done';
+  const standing = (await listVacations().catch(() => [] as Vacation[])).filter((v) => v.subscription_id === null);
+  let created: Record<string, unknown>;
+  try {
+    created = await api.post<Record<string, unknown>>('/subscriptions', subscriptionWire(row, standing));
+  } catch (e) {
+    const outcome = mirrorOutcomeFor(e);
+    // A permanent rejection must not leave the plan shown as pending forever.
+    if (outcome === 'drop') await deleteRows<Subscription>('subscriptions', uid, (s) => s.id === localId).catch(() => undefined);
+    return outcome;
   }
+  await deleteRows<Subscription>('subscriptions', uid, (s) => s.id === localId);
+  invalidateSubscriptionCache();
+  // Paused while it waited: the server creates plans active, so the pause is
+  // sent onto the fresh twin. Best-effort; a failure leaves it active, which
+  // the next read shows.
+  const sid = created && typeof created.id === 'string' ? created.id : '';
+  if (sid && row.status === 'paused') await api.post(`/subscriptions/${sid}/pause`).catch(() => undefined);
   return 'done';
 });
 
+// LEGACY: 'sub-status' and 'sub-edit' ops queued by older builds (which kept
+// the plan list locally and mirrored changes through the queue). This build
+// calls the server directly, so nothing new is ever queued under these kinds;
+// a queued pause from before the update still lands here, read from the old
+// build's local row while it exists. Nothing is written to the device.
 registerMirrorHandler('sub-status', async (localId): Promise<MirrorOutcome> => {
   const { row } = await currentRow(localId);
   if (!row || !row.backend_id) return 'done';
@@ -307,6 +354,7 @@ registerMirrorHandler('sub-status', async (localId): Promise<MirrorOutcome> => {
     await api.patch(`/subscriptions/${row.backend_id}`, { start_date: row.start_date });
   }
   await api.post(`/subscriptions/${row.backend_id}/${STATUS_ACTION[row.status]}`);
+  invalidateSubscriptionCache();
   return 'done';
 });
 
@@ -315,11 +363,10 @@ registerMirrorHandler('sub-edit', async (localId): Promise<MirrorOutcome> => {
   if (!row || !row.backend_id) return 'done';
   if (!MIRRORED_FREQUENCIES.includes(row.frequency)) {
     // Edited onto a cadence the server does not run (one-time/custom): the
-    // twin must STOP BILLING — cancel it and detach. Leaving it active was a
-    // silent double-truth that kept shipping daily milk.
+    // twin must STOP BILLING. Leaving it active was a silent double-truth
+    // that kept shipping daily milk.
     await api.post(`/subscriptions/${row.backend_id}/cancel`);
-    const uid = await requireUserId();
-    await updateRows<Subscription>('subscriptions', uid, (s) => s.id === localId, { backend_id: null });
+    invalidateSubscriptionCache();
     return 'done';
   }
   await api.patch(`/subscriptions/${row.backend_id}`, {
@@ -327,39 +374,25 @@ registerMirrorHandler('sub-edit', async (localId): Promise<MirrorOutcome> => {
     delivery_slot: row.delivery_slot ?? '',
     frequency: row.frequency,
   });
+  invalidateSubscriptionCache();
   return 'done';
 });
-
-registerMirrorHandler('vacations', async (): Promise<MirrorOutcome> => {
-  const uid = await requireUserId();
-  const [rows, vacations] = await Promise.all([
-    getRows<Subscription>('subscriptions', uid),
-    getRows<Vacation>('vacations', uid),
-  ]);
-  const targets = rows.filter((s) => s.backend_id && s.status !== 'cancelled');
-  for (const t of targets) {
-    const ranges = vacations
-      .filter((v) => v.subscription_id === null || v.subscription_id === t.id)
-      .map((v) => ({ start: v.start_date, end: v.end_date }));
-    await api.patch(`/subscriptions/${t.backend_id}`, { vacations: ranges });
-  }
-  return 'done';
-});
-
-/** The local row's backend twin id, if it was mirrored. */
-async function backendIdOf(uid: string, id: string): Promise<string | null> {
-  const rows = await getRows<Subscription>('subscriptions', uid);
-  return rows.find((s) => s.id === id)?.backend_id ?? null;
-}
-
-/** Push the CURRENT vacation set onto every mirrored subscription (an
- *  account-wide vacation applies to all; a scoped one only to its own sub). */
-
 
 export async function setSubscriptionStatus(id: string, status: Subscription['status']): Promise<void> {
   const uid = await requireUserId();
-  await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
-  await enqueueMirror('sub-status', id); // durable — a lost pause once kept the backend billing
+  if (!isBackendConfigured()) {
+    await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
+    return;
+  }
+  if ((await subscriptionOutbox(uid)).some((s) => s.id === id)) {
+    // Not on the server yet: a cancel withdraws the create; a pause rides on
+    // the row and is sent once the twin exists (sub-create above).
+    if (status === 'cancelled') await deleteRows<Subscription>('subscriptions', uid, (s) => s.id === id);
+    else await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status });
+    return;
+  }
+  await api.post(`/subscriptions/${id}/${STATUS_ACTION[status]}`);
+  invalidateSubscriptionCache();
 }
 
 /** Edit a live subscription's plan (quantity / frequency / delivery slot). */
@@ -368,8 +401,17 @@ export async function updateSubscription(
   patch: Partial<Pick<Subscription, 'qty' | 'frequency' | 'delivery_slot'>>,
 ): Promise<void> {
   const uid = await requireUserId();
-  await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, patch);
-  await enqueueMirror('sub-edit', id);
+  if (!isBackendConfigured() || (await subscriptionOutbox(uid)).some((s) => s.id === id)) {
+    // Local mode, or a create still in the outbox (it carries the edit).
+    await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, patch);
+    return;
+  }
+  const body: Record<string, unknown> = {};
+  if (patch.qty != null) body.qty = patch.qty;
+  if (patch.frequency != null) body.frequency = patch.frequency;
+  if (patch.delivery_slot !== undefined) body.delivery_slot = patch.delivery_slot ?? '';
+  await api.patch(`/subscriptions/${id}`, body);
+  invalidateSubscriptionCache();
 }
 
 /**
@@ -379,36 +421,113 @@ export async function updateSubscription(
  */
 export async function reactivateSubscription(id: string, startDate: string): Promise<void> {
   const uid = await requireUserId();
-  await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, {
-    status: 'active',
-    start_date: startDate,
-    next_delivery_date: startDate,
-  });
-  await enqueueMirror('sub-status', id); // handler re-anchors start_date, then resumes
+  if (!isBackendConfigured() || (await subscriptionOutbox(uid)).some((s) => s.id === id)) {
+    await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, {
+      status: 'active',
+      start_date: startDate,
+      next_delivery_date: startDate,
+    });
+    return;
+  }
+  // The anchor first, then the resume (the server's resume keeps start_date).
+  await api.patch(`/subscriptions/${id}`, { start_date: startDate });
+  await api.post(`/subscriptions/${id}/resume`);
+  invalidateSubscriptionCache();
+}
+
+// -- Vacations ----------------------------------------------------------------
+
+/**
+ * Backend mode: the holiday ranges on the server's rows, as the screens read
+ * them. A range every live plan carries is one account-wide row
+ * (subscription_id null, the way the vacations screen sets them); a range on
+ * some plans only is one row per plan. Ids derive from the range, so they are
+ * stable across refreshes and deleteVacation can find its row again.
+ */
+export function vacationsFromServer(subs: Subscription[]): Vacation[] {
+  const live = subs.filter((s) => s.backend_id && s.status !== 'cancelled');
+  const byKey = new Map<string, { range: VacationRange; subs: string[] }>();
+  for (const s of live) {
+    for (const r of s.vacations ?? []) {
+      const key = `${r.start}|${r.end}`;
+      const entry = byKey.get(key) ?? { range: r, subs: [] };
+      if (!entry.subs.includes(s.id)) entry.subs.push(s.id);
+      byKey.set(key, entry);
+    }
+  }
+  const out: Vacation[] = [];
+  for (const [key, { range, subs: on }] of byKey) {
+    if (on.length === live.length) {
+      out.push({ id: `vac:${key}`, subscription_id: null, start_date: range.start, end_date: range.end, reason: null });
+    } else {
+      for (const sid of on) {
+        out.push({ id: `vac:${sid}:${key}`, subscription_id: sid, start_date: range.start, end_date: range.end, reason: null });
+      }
+    }
+  }
+  return out;
 }
 
 export async function listVacations(): Promise<Vacation[]> {
   const uid = await requireUserId();
-  const rows = await getRows<Vacation>('vacations', uid);
+  const rows = isBackendConfigured()
+    ? vacationsFromServer(await listSubscriptions())
+    : await getRows<Vacation>('vacations', uid);
   return rows.sort((a, b) => b.start_date.localeCompare(a.start_date));
+}
+
+/** PATCH the plan's vacation ranges (the server worker skips those days). */
+async function putVacations(sub: Subscription, ranges: VacationRange[]): Promise<void> {
+  await api.patch(`/subscriptions/${sub.id}`, { vacations: ranges });
 }
 
 export async function addVacation(params: { startDate: string; endDate: string; subscriptionId?: string; reason?: string }): Promise<void> {
   const uid = await requireUserId();
-  await insertRow<Vacation>('vacations', uid, {
-    id: newId('vac'),
-    subscription_id: params.subscriptionId ?? null,
-    start_date: params.startDate,
-    end_date: params.endDate,
-    reason: params.reason ?? null,
-  });
-  await enqueueMirror('vacations'); // the server worker must skip these days too
+  if (!isBackendConfigured()) {
+    await insertRow<Vacation>('vacations', uid, {
+      id: newId('vac'),
+      subscription_id: params.subscriptionId ?? null,
+      start_date: params.startDate,
+      end_date: params.endDate,
+      reason: params.reason ?? null,
+    });
+    return;
+  }
+  // The range goes onto every live plan (or the one named). Each PATCH is
+  // its own write; a failure part-way shows on the next read as a range on
+  // some plans only, and the screen's retry completes it.
+  const targets = (await listSubscriptions()).filter((s) => s.backend_id && (!params.subscriptionId || s.id === params.subscriptionId));
+  if (targets.length === 0) throw new Error('Start a subscription first. A vacation pauses the plans you have.');
+  const key = `${params.startDate}|${params.endDate}`;
+  try {
+    for (const s of targets) {
+      const ranges = s.vacations ?? [];
+      if (ranges.some((r) => `${r.start}|${r.end}` === key)) continue;
+      await putVacations(s, [...ranges, { start: params.startDate, end: params.endDate }]);
+    }
+  } finally {
+    invalidateSubscriptionCache();
+  }
 }
 
 export async function deleteVacation(id: string): Promise<void> {
   const uid = await requireUserId();
-  await deleteRows<Vacation>('vacations', uid, (v) => v.id === id);
-  await enqueueMirror('vacations');
+  if (!isBackendConfigured()) {
+    await deleteRows<Vacation>('vacations', uid, (v) => v.id === id);
+    return;
+  }
+  const v = (await listVacations()).find((x) => x.id === id);
+  if (!v) return;
+  const targets = (await listSubscriptions()).filter((s) => s.backend_id && (v.subscription_id === null || s.id === v.subscription_id));
+  try {
+    for (const s of targets) {
+      const ranges = s.vacations ?? [];
+      const kept = ranges.filter((r) => !(r.start === v.start_date && r.end === v.end_date));
+      if (kept.length !== ranges.length) await putVacations(s, kept);
+    }
+  } finally {
+    invalidateSubscriptionCache();
+  }
 }
 
 // ── Wallet gating ────────────────────────────────────────────────────────────

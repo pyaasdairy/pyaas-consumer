@@ -6,7 +6,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, radius, rupee, shadow, spacing, tabular } from '../lib/theme';
 import { TextBody, TextMed, TextSemi, Tap } from './ui';
 import { resolveProduct } from '../lib/catalog';
-import { listSubscriptions, syncServerSubscriptions, listVacations, upcomingDeliveries, perDeliveryCost, type Subscription } from '../lib/subscriptions';
+import { listSubscriptions, listVacations, upcomingDeliveries, perDeliveryCost, type Subscription } from '../lib/subscriptions';
 import { useTrial, trialLabel } from '../lib/trial';
 import { todayISO, formatWeekday } from '../lib/dates';
 
@@ -39,8 +39,8 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
       let on = true;
       (async () => {
         try {
-          await syncServerSubscriptions(); // server-created plans (Welcome Litre) become visible
-          const list = await listSubscriptions();
+          // A fresh read: server-created plans (Welcome Litre) become visible.
+          const list = await listSubscriptions({ refresh: true });
           let next: string | null = null;
           const active = list.filter((s) => s.status === 'active' && s.frequency !== 'one_time');
           if (active.length) {
@@ -49,7 +49,10 @@ export function SubscriptionStatusCard({ onClaim, showEmpty = true, style }: { o
           }
           if (on) { setSubs(list); setNextDay(next); setLoaded(true); }
         } catch {
-          if (on) { setSubs([]); setNextDay(null); setLoaded(true); } // signed out — treat as none
+          // Signed out, or the server could not be read before any answer this
+          // session: nothing is known, so nothing renders. The empty state
+          // must never be shown to a subscriber whose list simply did not load.
+          if (on) { setSubs([]); setNextDay(null); setLoaded(false); }
         }
       })();
       return () => { on = false; };
