@@ -144,6 +144,9 @@ function normPhone(phone: string): string {
 export async function offerCompleted(): Promise<boolean> {
   try {
     const t = await getTrial();
+    // The free-safe stand-in (the server did not answer) is not a completed
+    // trial: never close the funnel on a blip.
+    if (t.fallback) return false;
     return t.phase === 'free' || t.phase === 'completed';
   } catch {
     return false; // offline / signed out — never close the funnel on a blip

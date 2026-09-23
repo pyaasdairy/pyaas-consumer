@@ -210,7 +210,9 @@ export default function Cart() {
   // 'paid') or after the trial ends (phase 'completed'/'none'). Requires an ACTIVE
   // gold sub delivering tomorrow (subRows already excludes paused/held subs), so a
   // low-balance-held member never sees free milk they won't receive.
-  const freeMilk = trial.phase === 'free' ? subRows.find((r) => /^gold-/.test(r.productId)) : undefined;
+  // `active` too: the free-safe stand-in getTrial returns when the server has
+  // not answered carries phase 'free' but is not a promise of free milk.
+  const freeMilk = trial.active && trial.phase === 'free' ? subRows.find((r) => /^gold-/.test(r.productId)) : undefined;
 
   function goRecharge() {
     haptics.press();

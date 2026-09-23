@@ -56,6 +56,10 @@ export type Trial = {
   totalDays: number;
   /** ISO date (YYYY-MM-DD) of day 1 = the first delivery, or null. */
   startDate: string | null;
+  /** True when the server did not answer and this is the free-safe stand-in
+   *  (backend mode): nothing is charged, no chip renders, and the funnel
+   *  does not close on it. */
+  fallback?: boolean;
 };
 
 export const NO_TRIAL: Trial = {
@@ -67,6 +71,11 @@ export const NO_TRIAL: Trial = {
   totalDays: TRIAL_TOTAL_DAYS,
   startDate: null,
 };
+
+/** Backend mode, before /trial/me has answered this session (G2): the phase
+ *  fails toward FREE so nothing is charged today, `active` stays false so no
+ *  chip claims a day number, and `fallback` keeps the funnel open. */
+export const TRIAL_UNKNOWN: Trial = { ...NO_TRIAL, phase: 'free', fallback: true };
 
 function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((parseISO(toISO).getTime() - parseISO(fromISO).getTime()) / 86400000);
@@ -189,21 +198,28 @@ function normalizeRemote(r: RawTrial): Trial {
   };
 }
 
+// Backend mode: the last answer /trial/me gave this session, per account.
+let lastServerTrial: { uid: string; trial: Trial } | null = null;
+
 /**
- * The signed-in member's trial. Prefers the backend (GET /consumer/trial/me);
- * falls back to the local anchor for the offline demo. Always resolves to a
- * {@link Trial} (NO_TRIAL when signed out / never subscribed).
+ * The signed-in member's trial. Backend mode reads GET /consumer/trial/me
+ * and never the local anchor; local mode derives the phase from the anchor.
+ * Always resolves to a {@link Trial} (NO_TRIAL when signed out / never
+ * subscribed).
  */
 export async function getTrial(): Promise<Trial> {
   const uid = await getUserId();
   if (!uid) return NO_TRIAL;
   if (isBackendConfigured()) {
     try {
-      const raw = await api.get<RawTrial>('/trial/me');
-      return normalizeRemote(raw);
+      const trial = normalizeRemote(await api.get<RawTrial>('/trial/me'));
+      lastServerTrial = { uid, trial };
+      return trial;
     } catch {
-      // Endpoint not deployed yet / transient — fall through to the local anchor
-      // so the trial chip still works against a locally-started subscription.
+      // G2: a failed read must never turn a free day into a paid one. The
+      // last answer the server gave this session stands; before any, the
+      // free-safe stand-in. The local anchor is never consulted here.
+      return lastServerTrial?.uid === uid ? lastServerTrial.trial : TRIAL_UNKNOWN;
     }
   }
   const row = await getSingle<{ start_date: string }>(TRIAL_TABLE, uid);
@@ -212,12 +228,13 @@ export async function getTrial(): Promise<Trial> {
 }
 
 /**
- * Anchor day 1 of the trial at `startDate` (the first delivery date). Idempotent:
- * the ORIGINAL anchor is kept so a second subscription never re-arms the trial.
- * A no-op when the backend owns the trial is harmless — getTrial reads the server
- * first, so this local row is only ever consulted in the offline demo.
+ * Anchor day 1 of the trial at `startDate` (the first delivery date). Local
+ * mode only: the server anchors its own trial on the first delivery, and
+ * getTrial never reads this row in backend mode. Idempotent: the ORIGINAL
+ * anchor is kept so a second subscription never re-arms the trial.
  */
 export async function beginTrial(startDate: string): Promise<void> {
+  if (isBackendConfigured()) return;
   const uid = await getUserId();
   if (!uid) return;
   const existing = await getSingle<{ start_date: string }>(TRIAL_TABLE, uid);
