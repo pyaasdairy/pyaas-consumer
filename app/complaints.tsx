@@ -40,6 +40,7 @@ export default function Complaints() {
   const params = useLocalSearchParams<{ orderId?: string; category?: string }>();
   const rows = useComplaints((s) => s.rows);
   const loading = useComplaints((s) => s.loading);
+  const registerError = useComplaints((s) => s.error);
   const refresh = useComplaints((s) => s.refresh);
 
   const [category, setCategory] = useState<ComplaintCategory>(
@@ -217,6 +218,7 @@ export default function Complaints() {
             {open.length > 0 ? <Pill small label={`${open.length} OPEN`} bg={colors.flameSoft} color={colors.flameDeep} /> : null}
           </View>
 
+          {registerError ? <TextBody color={colors.dangerDeep} style={{ fontSize: 13 }}>{registerError}</TextBody> : null}
           {loading && rows.length === 0 ? (
             <ActivityIndicator color={colors.flameDeep} style={{ marginTop: 12 }} />
           ) : rows.length === 0 ? (

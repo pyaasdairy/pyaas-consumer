@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { api, isBackendConfigured } from './apiClient';
-import { getRows, insertRow, updateRows, newId } from './localStore';
+import { getRows, insertRow, deleteRows, newId } from './localStore';
 import { getUserId } from './session';
 import { notify } from './notificationCenter';
 import { emailCare } from './support';
@@ -19,8 +19,12 @@ import { uploadPhoto } from './uploads';
  *   - Filing always succeeds from the member's point of view. The row is
  *     written on-device with a human reference (PYS-XXXXX) and shown
  *     immediately in "My complaints".
- *   - With a backend it POSTs to /consumer/complaints and keeps the server id;
- *     the server's status then leads on every refresh.
+ *   - With a backend it POSTs to /consumer/complaints. Once the server has
+ *     the row the local copy is DELETED: the local table is an offline
+ *     OUTBOX (rows with backend_id null), never a mirror of the register.
+ *     The server's rows lead on every refresh; a failed GET keeps the last
+ *     fetched server rows on screen with an error, and only outbox rows are
+ *     ever added from the device.
  *   - Without one (or on a failure) the row is marked `queued` and retried on
  *     the next refresh, and the member is told plainly that it is waiting to
  *     reach the team, with a one-tap email escalation that carries the same
@@ -159,6 +163,7 @@ export async function fileComplaint(input: {
     backend_id: null,
   };
   const uid = await getUserId();
+  // The outbox row goes in first so a dead network cannot lose the complaint.
   if (uid) await insertRow<Complaint>(TABLE, uid, row).catch(() => {});
   // Try the server immediately; a failure leaves it queued for the next refresh.
   try {
@@ -166,7 +171,8 @@ export async function fileComplaint(input: {
     if (backendId) {
       row.backend_id = backendId;
       row.status = 'open';
-      if (uid) await updateRows<Complaint>(TABLE, uid, (r) => r.id === row.id, { backend_id: backendId, status: 'open' }).catch(() => {});
+      // The server has it now: the outbox row is deleted, not kept as a mirror.
+      if (uid) await deleteRows<Complaint>(TABLE, uid, (r) => r.id === row.id).catch(() => {});
     }
   } catch {
     /* stays queued */
@@ -194,39 +200,53 @@ export function escalateByEmail(c: Complaint): Promise<boolean> {
 type State = {
   rows: Complaint[];
   loading: boolean;
+  /** Set when the register could not be read; the rows shown are the last
+   *  fetched server rows plus the outbox. */
+  error: string | null;
+  /** The account the rows belong to, so a failed GET after an account switch
+   *  never keeps the previous member's rows on screen. */
+  forUid: string | null;
   refresh: () => Promise<void>;
 };
 
+const REGISTER_UNREACHABLE = 'Could not reach the complaints register. Showing what is saved on this phone.';
+
 /**
- * The register. Server rows lead (they carry the real status); local rows fill
- * in anything the server has not accepted yet, and queued rows are retried on
- * every refresh so a complaint filed on a dead network still gets there.
+ * The register. Server rows lead (they carry the real status); the local
+ * table is only the OUTBOX (rows with backend_id null), replayed on every
+ * refresh so a complaint filed on a dead network still gets there, and
+ * deleted the moment the server accepts it.
  */
-export const useComplaints = create<State>((set) => ({
+export const useComplaints = create<State>((set, get) => ({
   rows: [],
   loading: false,
+  error: null,
+  forUid: null,
   refresh: async () => {
     const uid = await getUserId();
-    if (!uid) { set({ rows: [], loading: false }); return; }
+    if (!uid) { set({ rows: [], loading: false, error: null, forUid: null }); return; }
     set({ loading: true });
-    const local = await getRows<Complaint>(TABLE, uid).catch(() => [] as Complaint[]);
 
-    // Retry anything that never reached the server.
-    for (const q of local.filter((r) => !r.backend_id)) {
+    // Replay the outbox: a row the server accepts is deleted here (the server
+    // has it now); one it still cannot take stays queued for the next refresh.
+    // Only rows that never synced are ever posted.
+    const outbox = (await getRows<Complaint>(TABLE, uid).catch(() => [] as Complaint[])).filter((r) => !r.backend_id);
+    for (const q of outbox) {
       try {
         const id = await postComplaint(q);
-        if (id) await updateRows<Complaint>(TABLE, uid, (r) => r.id === q.id, { backend_id: id, status: 'open' }).catch(() => {});
+        if (id) await deleteRows<Complaint>(TABLE, uid, (r) => r.id === q.id).catch(() => {});
       } catch {
         /* still offline — next refresh */
       }
     }
 
-    let server: Complaint[] = [];
+    // null = the register could not be read (backend mode only).
+    let server: Complaint[] | null = null;
     if (isBackendConfigured()) {
       try {
         const wire = await api.get<WireComplaint[]>('/complaints');
-        if (Array.isArray(wire)) {
-          server = wire.map((w) => ({
+        server = Array.isArray(wire)
+          ? wire.map((w) => ({
             id: `srv:${w.id ?? w.ref ?? newId('cmp')}`,
             ref: w.ref || 'PYS-?????',
             category: (w.category as ComplaintCategory) ?? 'other',
@@ -237,18 +257,25 @@ export const useComplaints = create<State>((set) => ({
             created_at: w.created_at ?? new Date().toISOString(),
             updated_at: w.updated_at ?? w.created_at ?? new Date().toISOString(),
             backend_id: w.id ?? null,
-          }));
-        }
+          }))
+          : [];
+        // Rows an older build kept as mirrors of server rows (backend_id set)
+        // are stale copies of what was just fetched; drop them.
+        await deleteRows<Complaint>(TABLE, uid, (r) => !!r.backend_id).catch(() => {});
       } catch {
-        /* no complaints endpoint yet — the local register is the whole truth */
+        server = null;
       }
     }
 
-    const fresh = await getRows<Complaint>(TABLE, uid).catch(() => local);
-    const serverRefs = new Set(server.map((s) => s.ref));
-    const rows = [...server, ...fresh.filter((r) => !serverRefs.has(r.ref))].sort((a, b) =>
-      a.created_at < b.created_at ? 1 : -1,
-    );
-    set({ rows, loading: false });
+    const unreachable = server === null && isBackendConfigured();
+    // The server's rows lead. When the register could not be read, the last
+    // fetched server rows for THIS account stay on screen under an error;
+    // the local table is never promoted to the whole truth.
+    const lead = server ?? (get().forUid === uid ? get().rows.filter((r) => r.id.startsWith('srv:')) : []);
+    const leadRefs = new Set(lead.map((s) => s.ref));
+    const pending = (await getRows<Complaint>(TABLE, uid).catch(() => [] as Complaint[]))
+      .filter((r) => r.backend_id == null && !leadRefs.has(r.ref));
+    const rows = [...lead, ...pending].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+    set({ rows, loading: false, error: unreachable ? REGISTER_UNREACHABLE : null, forUid: uid });
   },
 }));
