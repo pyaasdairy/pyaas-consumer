@@ -203,7 +203,9 @@ export async function signInWithPhone(phone: string, fullName?: string | null, s
       email: null,
     });
     // Seed a demo wallet balance so the prepaid order flow works offline.
-    await putSingle<{ balance: number }>('wallet', uid, { balance: DEMO_WALLET_SEED });
+    // Local mode only: with a server id the wallet lives on the server and a
+    // local row would be a second, never-read copy.
+    if (!serverId) await putSingle<{ balance: number }>('wallet', uid, { balance: DEMO_WALLET_SEED });
   } else if (nm && !existing.full_name) {
     // Returning member, fresh install: hydrate the server-known name pre-emit.
     await putSingle<Profile>('profile', uid, { ...existing, full_name: nm });

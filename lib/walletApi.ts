@@ -720,12 +720,14 @@ export async function cancelAutopay(id: string): Promise<void> {
 }
 
 /**
- * Cover a shortfall by executing the AutoPay mandate and crediting the wallet.
- * Used by the delivered-order settlement sweep so a delivery is never left
- * unpaid when the member has AutoPay on. Round up to the next ₹100 (min ₹100)
- * within the mandate cap. Idempotent end to end: the mandate execution is
- * keyed by `ref` on the backend, and the wallet credit is keyed by the
- * execution id, so retries can never double-credit or double-debit.
+ * Cover a shortfall by executing the AutoPay mandate. Used by the
+ * delivered-order settlement sweep so a delivery is never left unpaid when
+ * the member has AutoPay on. Round up to the next Rs100 (min Rs100) within
+ * the mandate cap. Backend mode only: the execution is keyed by `ref` on the
+ * backend and the SERVER credits the wallet exactly once per execution id,
+ * so retries can never double-credit or double-debit. Nothing is written to
+ * the on-device ledger (that copy is never read in backend mode, and a local
+ * credit next to the server wallet was invisible money).
  * Returns true if the wallet now covers the shortfall.
  */
 export async function autoSettleTopUp(shortfall: number, ref: string): Promise<boolean> {
@@ -734,19 +736,6 @@ export async function autoSettleTopUp(shortfall: number, ref: string): Promise<b
   if (!m || m.state !== 'ACTIVE') return false;
   const amount = Math.min(Math.max(Math.ceil(shortfall / 100) * 100, 100), m.max_amount);
   if (amount < shortfall) return false; // cap too low for this shortfall
-  const execution = await executeMandate(m.id, amount, ref, 'wallet_topup');
-  const uid = await requireUserId();
-  const rows = await ensureBootstrapped(uid);
-  const receipt = `autopay:${execution.id}`;
-  if (rows.some((r) => r.ref_id === receipt)) return true; // credit already recorded
-  await append(uid, [{
-    type: 'credit',
-    amount: execution.amount,
-    bucket: 'cash',
-    ref_id: receipt,
-    ref_type: 'recharge',
-    source: 'gateway:paytm-autopay',
-    remark: `AutoPay top-up ₹${execution.amount} (Paytm)`,
-  }]);
+  await executeMandate(m.id, amount, ref, 'wallet_topup');
   return true;
 }
