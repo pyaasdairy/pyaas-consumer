@@ -225,9 +225,15 @@ export default function Cart() {
     router.push(`/recharge?${qs}`);
   }
 
-  // Locked account: route to a top-up that brings the wallet to the ₹500 target.
-  // The unlock (and the 7-day starter plan) fires automatically when it lands.
+  // Locked account: route to a top-up that brings the wallet past the unlock
+  // target. The unlock fires automatically when it lands.
   const unlockShort = Math.max(0, WALLET_UNLOCK_TARGET - balance);
+  // The figure the app will ACTUALLY ask for. The gate is WALLET_UNLOCK_TARGET
+  // (a balance), but the recharge screen clamps every top-up up to
+  // MIN_RECHARGE, so the banner, the CTA and the prefilled amount all quote
+  // this one number; the shortfall alone would promise one figure here and
+  // demand another a tap later.
+  const unlockAsk = Math.max(MIN_RECHARGE, Math.ceil(unlockShort / 50) * 50);
   function goUnlock() {
     haptics.press();
     const qs = new URLSearchParams({
@@ -235,7 +241,7 @@ export default function Cart() {
       // Open the grid on the amount we will actually accept: the recharge
       // screen clamps everything up to MIN_RECHARGE, so pre-filling ₹100 only
       // to overrule it a screen later is the app arguing with itself.
-      amount: String(Math.max(MIN_RECHARGE, Math.ceil(unlockShort / 50) * 50)),
+      amount: String(unlockAsk),
       returnTo: '/cart',
       reason: 'to unlock ordering',
     }).toString();
@@ -602,8 +608,12 @@ export default function Cart() {
         ) : locked && !blocked ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 10 }}>
             <Ionicons name="gift" size={16} color={colors.flameDeep} />
+            {/* Say what the app will actually ask for: ordering unlocks at a
+                WALLET_UNLOCK_TARGET balance, and MIN_RECHARGE is the smallest
+                top-up the recharge screen accepts. Quoting MIN_RECHARGE as
+                the unlock requirement overstated the gate. */}
             <TextMed color={colors.flameDeep} style={{ flex: 1, fontSize: 12.5 }}>
-              Fund your wallet with {rupee(MIN_RECHARGE)} to unlock ordering. Nothing starts on its own; you choose what to order.
+              Add {rupee(unlockAsk)} to unlock ordering. A {rupee(WALLET_UNLOCK_TARGET)} balance unlocks it; {rupee(MIN_RECHARGE)} is our smallest top-up and the rest stays in your wallet. Nothing starts on its own; you choose what to order.
             </TextMed>
           </View>
         ) : !locked && short > 0 && !blocked ? (
@@ -646,7 +656,7 @@ export default function Cart() {
                   : needsAddr
                     ? 'Add delivery address'
                     : locked
-                      ? `Add ${rupee(unlockShort)} to unlock ordering`
+                      ? `Add ${rupee(unlockAsk)} to unlock ordering`
                       : short > 0
                         ? `Recharge ${rupee(short)} to continue`
                         : `Place order · ${rupee(total)}`}
