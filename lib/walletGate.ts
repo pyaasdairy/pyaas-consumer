@@ -23,18 +23,36 @@ export const WALLET_UNLOCK_TARGET = 100;
 export const STARTER_PLAN_DAYS = 7;
 export const STARTER_FREE_DAYS = 2;
 
-const UNLOCK_KEY_PREFIX = 'pyaas_wallet_unlocked:';
+// The flag an older build persisted under this key was a device copy of a
+// server-side ledger fact. It is deleted on the first read this session and
+// never written again.
+const LEGACY_UNLOCK_KEY_PREFIX = 'pyaas_wallet_unlocked:';
+
+// The unlock as THIS SESSION knows it, per account: proven by the balance the
+// wallet store reads or by the ledger (GET /wallet/txns), never written to
+// the device. Only a proven unlock is remembered; a failed read answers
+// locked for that check and asks again next time (fail-closed).
+let unlocked: { uid: string } | null = null;
+let legacyFlagDropped: string | null = null;
+
+function dropLegacyFlag(uid: string): void {
+  if (legacyFlagDropped === uid) return;
+  legacyFlagDropped = uid;
+  AsyncStorage.removeItem(LEGACY_UNLOCK_KEY_PREFIX + uid).catch(() => { legacyFlagDropped = null; });
+}
 
 /** Whether this account has ever crossed the unlock target (purchases unlocked). */
 export async function purchasesUnlocked(currentBalance?: number): Promise<boolean> {
   const uid = await getUserId();
   if (!uid) return false;
-  if ((currentBalance ?? 0) >= WALLET_UNLOCK_TARGET) return true;
-  try {
-    if ((await AsyncStorage.getItem(UNLOCK_KEY_PREFIX + uid)) === '1') return true;
-  } catch { /* flag unreadable — fall through to the ledger */ }
-  // Flag ABSENT → ask the ledger (below). Never reached when the flag is set,
-  // so the unlocked hot path stays a single local read with no network.
+  dropLegacyFlag(uid);
+  if ((currentBalance ?? 0) >= WALLET_UNLOCK_TARGET) {
+    unlocked = { uid };
+    return true;
+  }
+  if (unlocked?.uid === uid) return true;
+  // Not proven this session: ask the ledger (below). Never reached once the
+  // unlock is known, so the unlocked hot path is a memory read with no network.
   if (ledgerProbe?.uid !== uid) {
     const p = unlockProvenByLedger(uid).finally(() => {
       if (ledgerProbe?.p === p) ledgerProbe = null;
@@ -44,23 +62,24 @@ export async function purchasesUnlocked(currentBalance?: number): Promise<boolea
   return ledgerProbe.p;
 }
 
-// SERVER-TRUTH FALLBACK (the freePack.offerQualified pattern): the unlock flag
-// is device-local — a reinstall or a new phone loses it even though the member
-// already funded the wallet past ₹100, and the balance they were left with may
-// have been spent back below the target (the ratchet means that must NOT
-// re-lock them). The wallet LEDGER is authoritative: any SINGLE successful
-// CASH credit of ≥ the unlock target proves the account crossed it. The seeded
+// SERVER TRUTH (the freePack.offerQualified pattern): the member may have
+// funded the wallet past the target and spent it back below (the ratchet
+// means that must NOT re-lock them), and a new phone or reinstall knows
+// nothing. The wallet LEDGER is authoritative: any SINGLE successful CASH
+// credit of >= the unlock target proves the account crossed it. The seeded
 // opening balance, reward/promo credits, and small top-ups that merely SUM to
-// the target never do. On proof the local flag is re-cached so the next check
-// is flag-only again. ANY failure (offline, timeout, 5xx, or a 404 from an
-// older deployed backend) keeps today's answer: locked, fail-closed, zero UX
-// change. Single-flight per uid so the cart CTA and SubscribeSheet double-
-// checking at once share one GET /wallet/txns.
+// the target never do. On proof the session remembers the unlock so the next
+// check is a memory read. ANY failure (offline, timeout, 5xx, or a 404 from
+// an older deployed backend) keeps today's answer: locked, fail-closed, zero
+// UX change. Single-flight per uid so the cart CTA and SubscribeSheet
+// double-checking at once share one GET /wallet/txns.
 let ledgerProbe: { uid: string; p: Promise<boolean> } | null = null;
 
-/** Sign-out: forget this account's in-flight ledger probe. */
+/** Sign-out: forget this account's unlock and its in-flight ledger probe. */
 export function clearWalletGateSession(): void {
+  unlocked = null;
   ledgerProbe = null;
+  legacyFlagDropped = null;
 }
 
 async function unlockProvenByLedger(uid: string): Promise<boolean> {
@@ -76,10 +95,10 @@ async function unlockProvenByLedger(uid: string): Promise<boolean> {
         r.ref_type !== 'reward',
     );
     if (!proven) return false;
-    try { await AsyncStorage.setItem(UNLOCK_KEY_PREFIX + uid, '1'); } catch { /* cache only — the ledger answered */ }
+    unlocked = { uid };
     return true;
   } catch {
-    return false; // ledger unreachable — only the local flag can unlock (fail-closed)
+    return false; // ledger unreachable: locked for this check (fail-closed)
   }
 }
 
@@ -94,9 +113,10 @@ export function onWalletUnlocked(cb: () => void): () => void {
 let syncInFlight: Promise<void> | null = null;
 
 /**
- * Called from the wallet store on every balance refresh. First time the balance
- * reaches the target: persist the unlock flag and notify listeners. Idempotent
- * and serialized. Creates NO subscription and moves NO money (see header).
+ * Called from the wallet store on every balance refresh. First time this
+ * session sees the balance at the target: remember the unlock and notify
+ * listeners. Idempotent and serialized. Creates NO subscription and moves NO
+ * money (see header).
  */
 export function syncWalletUnlock(balance: number): Promise<void> {
   if (balance < WALLET_UNLOCK_TARGET) return Promise.resolve();
@@ -108,10 +128,8 @@ export function syncWalletUnlock(balance: number): Promise<void> {
 async function doSync(_balance: number): Promise<void> {
   const uid = await getUserId();
   if (!uid) return;
-  const key = UNLOCK_KEY_PREFIX + uid;
-  try {
-    if ((await AsyncStorage.getItem(key)) === '1') return; // already unlocked
-    await AsyncStorage.setItem(key, '1');
-  } catch { return; }
+  dropLegacyFlag(uid);
+  if (unlocked?.uid === uid) return; // already unlocked this session
+  unlocked = { uid };
   for (const cb of listeners) { try { cb(); } catch { /* listener errors never break the unlock */ } }
 }

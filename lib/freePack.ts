@@ -173,25 +173,47 @@ export const OFFER_QUALIFY_RECHARGE = 99;
  *  starting balance, well above the ₹99 floor, so most members fund a few days
  *  of milk in one go. Members are free to type any amount ≥ the floor. */
 export const OFFER_SUGGESTED_RECHARGE = 500;
-const QUALIFIED_KEY_PREFIX = 'pyaas_offer_qualified:';
+// The flag an older build persisted under this key was a device copy of a
+// server-side ledger fact. It is deleted on the first read this session and
+// never written again.
+const LEGACY_QUALIFIED_KEY_PREFIX = 'pyaas_offer_qualified:';
 
-/** True once this account has made its one-time qualifying recharge (≥₹500 in
- *  a single top-up). The flag is a one-way ratchet, per account. */
+// The qualifying recharge as THIS SESSION knows it, per account: set by the
+// recharge success path or proven from the wallet ledger, never written to
+// the device. Only a proven yes is remembered; a failed read answers not
+// qualified for that check and asks again next time (fail-closed).
+let qualified: { uid: string } | null = null;
+let legacyQualifiedDropped: string | null = null;
+
+function dropLegacyQualifiedFlag(uid: string): void {
+  if (legacyQualifiedDropped === uid) return;
+  legacyQualifiedDropped = uid;
+  AsyncStorage.removeItem(LEGACY_QUALIFIED_KEY_PREFIX + uid).catch(() => { legacyQualifiedDropped = null; });
+}
+
+/** Sign-out: forget this account's qualification. */
+export function clearFreePackSession(): void {
+  qualified = null;
+  legacyQualifiedDropped = null;
+}
+
+/** True once this account has made its one-time qualifying recharge (a
+ *  single top-up of at least OFFER_QUALIFY_RECHARGE). A one-way ratchet, per
+ *  account, held in memory for the session. */
 export async function offerQualified(): Promise<boolean> {
   const uid = await getUserId();
   if (!uid) return false;
-  try {
-    if ((await AsyncStorage.getItem(QUALIFIED_KEY_PREFIX + uid)) === '1') return true;
-  } catch { /* fall through to the ledger */ }
-  // SERVER-TRUTH FALLBACK: the flag above is device-local — a reinstall, or a
-  // ≥₹500 recharge made before this rule shipped (or through another screen),
-  // loses it and the member gets stuck on "Add funds" despite having paid. The
-  // wallet LEDGER is authoritative: any SINGLE successful CASH credit of
-  // ≥₹500 qualifies. Reward/promo credits, the seeded opening balance, and
-  // several small top-ups that merely SUM to ₹500 never do.
+  dropLegacyQualifiedFlag(uid);
+  if (qualified?.uid === uid) return true;
+  // SERVER TRUTH: the wallet LEDGER is authoritative, so a reinstall or a
+  // recharge made before this rule shipped (or through another screen) never
+  // leaves the member stuck on "Add funds" despite having paid. Any SINGLE
+  // successful CASH credit of at least the floor qualifies. Reward/promo
+  // credits, the seeded opening balance, and several small top-ups that
+  // merely SUM to the floor never do.
   try {
     const rows = await getLedger();
-    const qualified = rows.some(
+    const proven = rows.some(
       (r) =>
         r.type === 'credit' &&
         r.bucket === 'cash' &&
@@ -200,11 +222,11 @@ export async function offerQualified(): Promise<boolean> {
         r.ref_type !== 'seed' &&
         r.ref_type !== 'reward',
     );
-    if (qualified) {
-      try { await AsyncStorage.setItem(QUALIFIED_KEY_PREFIX + uid, '1'); } catch { /* cache only */ }
+    if (proven) {
+      qualified = { uid };
       return true;
     }
-  } catch { /* offline — only the local flag can answer */ }
+  } catch { /* offline: not qualified for this check, asked again next time */ }
   return false;
 }
 
@@ -219,7 +241,7 @@ export async function recordRechargeForOffer(amount: number): Promise<void> {
   if (amount < OFFER_QUALIFY_RECHARGE) return;
   const uid = await getUserId();
   if (!uid) return;
-  try { await AsyncStorage.setItem(QUALIFIED_KEY_PREFIX + uid, '1'); } catch { return; }
+  qualified = { uid };
   notifyFreePackChanged();
 }
 
