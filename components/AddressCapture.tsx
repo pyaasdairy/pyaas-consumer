@@ -10,6 +10,8 @@ import { Serif, TextBody, TextMed, TextSemi, Tap } from './ui';
 import { haptics } from '../lib/haptics';
 import MapPicker from './MapPicker';
 import { addAddress, type Address } from '../lib/api';
+import { isBackendConfigured } from '../lib/apiClient';
+import { uploadPhoto } from '../lib/uploads';
 import { setAddressCoords, type Coords } from '../lib/location';
 import { geoAddress, placeLabelFromCoords, useUserLocation } from '../lib/userLocation';
 import { getServiceability, joinWaitlist } from '../lib/serviceability';
@@ -307,6 +309,11 @@ export function AddressCaptureSheet({
       const parts = societyMode && society && tower && floor != null && unit
         ? { societyId: society.id, societyName: society.name, tower, floor, unit }
         : null;
+      // Contract C4: the door photo is uploaded and its file_url stored; a
+      // file:// path never leaves the device (the rider app cannot open it).
+      // Older backend or offline: no photo. Local (dev) mode keeps the path,
+      // as it always has.
+      const doorPhotoUrl = isBackendConfigured() ? await uploadPhoto('door_photo', doorPhoto) : doorPhoto;
       const created = await addAddress({
         label: 'Home',
         line1: parts ? societyLine1(parts) : flat.trim(),
@@ -327,7 +334,7 @@ export function AddressCaptureSheet({
         ring_bell: ringBell,
         call_before: callBefore,
         instructions: instructions.trim() || null,
-        door_photo_uri: doorPhoto,
+        door_photo_uri: doorPhotoUrl,
       });
       if (coords && created?.id) {
         try { await setAddressCoords(created.id, coords); } catch { /* pin retried on next edit */ }

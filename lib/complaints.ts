@@ -4,6 +4,7 @@ import { getRows, insertRow, updateRows, newId } from './localStore';
 import { getUserId } from './session';
 import { notify } from './notificationCenter';
 import { emailCare } from './support';
+import { uploadPhoto } from './uploads';
 
 /**
  * COMPLAINT REGISTER — the in-app grievance desk.
@@ -119,12 +120,16 @@ function normalizeStatus(s: string | undefined): ComplaintStatus {
 
 async function postComplaint(c: Complaint): Promise<string | null> {
   if (!isBackendConfigured()) return null;
+  // Contract C4: a device file:// path is useless to the operator. Upload the
+  // photo and send its file_url; when that is not possible (older backend
+  // without presign, offline, rejected PUT) send no photo at all.
+  const photo = await uploadPhoto('complaint_photo', c.photo_uri);
   const res = await api.post<WireComplaint>('/complaints', {
     ref: c.ref,
     category: c.category,
     order_id: c.order_id ?? undefined,
     detail: c.detail,
-    photo_uri: c.photo_uri ?? undefined,
+    photo_uri: photo ?? undefined,
   });
   return res?.id ?? null;
 }
