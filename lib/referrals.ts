@@ -1,5 +1,6 @@
 import { requireUserId, getUserId } from './session';
 import { getRows, insertRow, setRows, getSingle, putSingle, newId } from './localStore';
+import { isBackendConfigured } from './apiClient';
 
 /**
  * PYAAS referrals — a shareable per-user code plus a local reward ledger. Runs
@@ -92,14 +93,20 @@ export async function listReferralStats(): Promise<{ count: number; pending: num
 export async function getReferredBy(): Promise<string | null> {
   const uid = await getUserId();
   if (!uid) return null;
+  if (isBackendConfigured()) return null; // no server attribution exists (see setReferredBy)
   const meta = await getSingle<ReferralMeta>('referral_meta', uid);
   return meta?.referred_by ?? null;
 }
 
 /** Record the friend's code the user entered. Their reward is granted on the
- *  referrer's side once signup completes (server-side when the API is live). */
-export async function setReferredBy(code: string): Promise<void> {
+ *  referrer's side once signup completes (server-side when the API is live).
+ *  Returns false when nothing was recorded: in backend mode there is no
+ *  endpoint for this yet (same treatment as `vip`), and a local row nobody on
+ *  the server will ever honour would be a promise the app cannot keep. */
+export async function setReferredBy(code: string): Promise<boolean> {
   const uid = await requireUserId();
   // TODO(api): POST /referrals/apply { code } — validate + credit server-side.
+  if (isBackendConfigured()) return false;
   await putSingle<ReferralMeta>('referral_meta', uid, { referred_by: code.trim().toUpperCase() });
+  return true;
 }

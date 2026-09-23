@@ -19,7 +19,12 @@ export function ReferralModal({ visible, onClose }: { visible: boolean; onClose:
     setBusy(true);
     setMsg('');
     try {
-      await setReferredBy(code);
+      // false = nothing was recorded (backend mode has no referral endpoint
+      // yet). Say so rather than closing as if the code had been applied.
+      if (!(await setReferredBy(code))) {
+        setMsg('Referral codes cannot be applied yet. Nothing was recorded.');
+        return;
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
     } catch {
