@@ -97,6 +97,10 @@ async function unlockProvenByLedger(uid: string): Promise<boolean> {
         r.ref_type !== 'reward',
     );
     if (!proven) return false;
+    // Latched only while `uid` is still the signed-in account: a sign-out
+    // during the read already cleared this, and the proof belongs to an
+    // account that is no longer here (locked for this check, fail-closed).
+    if ((await getUserId()) !== uid) return false;
     unlocked = { uid };
     return true;
   } catch {

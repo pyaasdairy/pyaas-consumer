@@ -218,7 +218,10 @@ export async function getTrial(): Promise<Trial> {
   if (isBackendConfigured()) {
     try {
       const trial = normalizeRemote(await api.get<RawTrial>('/trial/me'));
-      lastServerTrial = { uid, trial };
+      // Kept only while `uid` is still the signed-in account: a sign-out (or
+      // another sign-in) during the read already cleared this, and the
+      // answer must not be written back over that.
+      if ((await getUserId()) === uid) lastServerTrial = { uid, trial };
       return trial;
     } catch {
       // G2: a failed read must never turn a free day into a paid one. The

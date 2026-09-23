@@ -223,6 +223,11 @@ export async function offerQualified(): Promise<boolean> {
         r.ref_type !== 'reward',
     );
     if (proven) {
+      // Remembered only while `uid` is still the signed-in account: a
+      // sign-out during the read already cleared this, and the proof
+      // belongs to an account that is no longer here (not qualified for
+      // this check, fail-closed).
+      if ((await getUserId()) !== uid) return false;
       qualified = { uid };
       return true;
     }
