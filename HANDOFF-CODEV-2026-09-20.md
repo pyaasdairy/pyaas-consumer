@@ -156,3 +156,103 @@ With no push and only two DLT templates registered (W-01 enrolment, W-07 offer
 expiring), **the in-app inbox is the only channel for almost every CRM message**. A
 member finds out when they open the app. Order-confirmed, out-for-delivery and
 delivered messages have no code behind them at all. Full table in the backend handoff §5.
+
+## ui-revamp merge (24 September)
+
+`origin/feature/ui-revamp` (5f92d2e, the founder's 21 Sep list: Founding Family,
+notifications, active orders, P-DAN, legal sync) is merged into this branch at
+359288c, with five seam fixes on top (7a83faa, d0039ae, 8f30fc5, 460732c, 35b663e).
+tsc is clean; `npm install` was run once for the new `expo-store-review` dependency.
+Kushagra's UI, copy, screens and components are exactly as he made them; only
+integration seams changed, listed below. **Kushagra can fast-forward
+`feature/ui-revamp` to this branch** (`git merge --ff-only
+origin/feature/consumer-revamp-phase2` from `feature/ui-revamp`); nothing needs a
+rebase, and his commit is in the history unchanged.
+
+**What was resolved (merge commit 359288c)**
+
+- `components/RateAppSheet.tsx`: deletion accepted; the OS review prompt
+  (`requestNativeReview`) replaces the sheet. The per-account rating keys in
+  `lib/appReview.ts` and the complaints register error line stayed.
+- `lib/notifications.ts`: ONE tap subscription, installed once from `app/_layout.tsx`
+  (`installTapHandler`). It routes, in order: the View Cart action button, then
+  `data.href` (every local notice packs it, and `crm_push.go` sends it on every server
+  push), then the notice identifier (`order:<id>` from `lib/orderTracking`,
+  `cart-reminder`), and reads the cold-start response once per process. His
+  `scheduleAt`, `cancelScheduledWhere`, `ensureCategories`, the identifier/category
+  fields and the tagline-silent foreground rule are in; `onNotificationTap` is gone.
+- `app/_layout.tsx`: imports unioned; both session effects kept (ours: address cache
+  and push registration; his: taglines) and his AppState hooks; `lib/referrals` is
+  imported at boot so its mirror handler exists before the first drain (the same
+  pattern as consentSync).
+- `lib/referrals.ts`: backend mode is server-first. `getReferralCode` reads
+  `GET /referrals/code` into a per-session memory cache keyed by account (no local
+  table; the on-device derivation answers only while the call fails and is never
+  cached). `listReferrals` reads `GET /referrals`; on failure it returns `[]` and
+  `referralListError()` carries the reason a screen can show (never the local table).
+  `setReferredBy` POSTs `/referrals/apply` first: true on success with no local row;
+  a request that reached no verdict (offline, 5xx) is queued as a `referral-apply`
+  mirror op whose target is the code itself, replayed and deleted by the queue; a
+  rejection (404 while the route is not deployed, unknown or own code) is false, which
+  `ReferralModal` already shows as "nothing was recorded". Local mode keeps his local
+  rows. `referralShareMessage` and the optional sign-up field are untouched.
+- `lib/subscriptions.ts`: `needsExactLocation()` and the phase-B backend-mode paths
+  kept. His one-live-plan-per-product guard now reads `listSubscriptions()` (the
+  session's copy of the server rows plus the outbox), with `.catch(() => [])` so a
+  subscribe never throws from an unhydrated list (guard G4); the server's 409
+  `DUPLICATE_SUBSCRIPTION` maps to the same error, so his copy shows either way.
+
+**Seam fixes**
+
+- `lib/taglines.ts` `offersOn` (also the cart reminder's gate): backend mode reads the
+  server's marketing consent (`GET /users/me/consents`); local rows answer only while
+  the route is not deployed or a choice is still pending in the mirror queue. A server
+  that cannot be asked, or an empty local table, is "not granted", never the sign-up
+  default.
+- `lib/taglines.ts` reads the order list with `fetchOrders` (read-only); `listOrders`
+  runs the wallet settle sweep and the planner runs on every backgrounding. No other
+  caller of `listOrders` is new in 5f92d2e; the rest predate the merge base.
+- Sign-out: the push re-announce in `lib/auth.tsx` is gone (`session.signOut` already
+  DELETEs the binding); `cancelTaglines` and `cancelCartReminder` moved into
+  `lib/session.ts` `signOut` next to `clearAutoTopup`, so `deleteMyAccount` (which ends
+  in that signOut) cancels them as well.
+- `app/message-preferences.tsx`: when the record is unknown or empty the switches
+  fall back to all-off (`latest ?? all-false`), not `defaultChoices()`, whose three
+  pre-ticks are the sign-up form's, not a grant the server holds. Only the fallback
+  expression changed.
+- `lib/session.ts`: the sign-out KEEP filter spares only `parag:vip` (the owner-decided
+  evidence row); `referral_meta` is no longer written in backend mode.
+
+**Endpoints the app now calls and the backend still owes** (the app calls them
+relative to its API base, i.e. `/consumer/...` as deployed; none exist on
+`feature/founding-referrals` yet, which sits at the integration/delivery head, so the
+app code is the contract):
+
+```
+Founding Family (lib/foundingFamily.ts; the app never types a price or a status)
+GET  /consumer/founding-family
+     -> { price_month, member: null | { status: waiting|active|stopped, farm_id,
+          line_number, referral_code, joined_at, next_bill_date },
+          farms: [{ id, name, farmer, place, note, photo_url, unlocks_at, claimed,
+                    status: filling|unlocked, unlocked_packs }],
+          savings?: { level1_per_litre, level3_per_litre, delivery_fee } }
+POST /consumer/founding-family/join  { farm_id }   -> { member }
+     error codes the app routes on: WALLET_SHORT (with shortfall), FARM_UNLOCKED,
+     ALREADY_MEMBER
+POST /consumer/founding-family/stop                -> { member }
+
+Referrals (lib/referrals.ts)
+GET  /consumer/referrals/code   -> { code }
+     issue the on-device derivation for existing members (codeFromUid) so codes
+     already shared keep attributing
+GET  /consumer/referrals        -> [{ id, name, status: pending|credited,
+                                     reward_amount, created_at }]
+POST /consumer/referrals/apply  { code }
+     2xx = linked; a 4xx other than 401/403/408/429 is a final rejection the app
+     shows as not recorded; 5xx/network is replayed from the mirror queue, so
+     the call must be idempotent per (consumer, code)
+```
+
+Until these answer, the screens degrade as his handoff describes (Founding Family
+"opening soon"; Refer shows the derived code and an empty ledger plus
+`referralListError()`), and nothing is written locally in backend mode.
