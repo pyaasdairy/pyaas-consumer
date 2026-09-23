@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { listOrders, type Order, type OrderStatus } from './api';
+import { fetchOrders, type Order, type OrderStatus } from './api';
 import { STATUS_LABEL } from './orderStatus';
 import { notify } from './notificationCenter';
 
@@ -181,7 +181,9 @@ export function useLiveOrders(enabled = true): LiveOrders {
 
   const load = useCallback(async () => {
     try {
-      const all = await listOrders();
+      // fetchOrders, not listOrders: a poll four times a minute must not
+      // carry the settle sweep (a wallet debit per delivered row) with it.
+      const all = await fetchOrders();
       if (!alive.current) return;
       const active = all.filter(isActive).sort((a, b) => (a.placed_at < b.placed_at ? 1 : -1));
       setOrders(active);

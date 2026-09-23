@@ -495,6 +495,21 @@ export async function placeOrder(params: {
   return orderId;
 }
 
+/**
+ * The order list, READ ONLY. The live tracker polls this every 15 seconds
+ * while Home is on screen; a poll is a read, so unlike listOrders it never
+ * runs the wallet settle sweep (which POSTs /wallet/debit per delivered row).
+ * Same rows, same local fallback, no side effects.
+ */
+export async function fetchOrders(): Promise<Order[]> {
+  const uid = await requireUserId();
+  if (isBackendConfigured()) {
+    return api.get<Order[]>(`/orders?user_id=${encodeURIComponent(uid)}`);
+  }
+  const rows = await getRows<Order>('orders', uid);
+  return rows.sort((a, b) => b.placed_at.localeCompare(a.placed_at));
+}
+
 export async function listOrders(): Promise<Order[]> {
   const uid = await requireUserId();
   if (isBackendConfigured()) {
