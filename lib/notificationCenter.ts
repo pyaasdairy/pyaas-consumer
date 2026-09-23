@@ -144,12 +144,14 @@ export function eventOfDedupeKey(dedupe: string | null | undefined): { cls: stri
 /**
  * The local notices minus those the server's inbox also announces, so a
  * member never sees the app's own row and the CRM's row for one event. A
- * server row whose text names the order id or complaint ref is that event
- * outright. The rows the deployed backend emits carry no such token (the
- * rendered bodies name the product and the ETA, not the ref), so a local
- * notice is otherwise paired with the nearest unpaired server row of the
- * same event class (by trigger id) within SAME_EVENT_WINDOW_MS, one to one.
- * An unpaired local notice stays: the server said nothing about that event.
+ * server row that carries the order id or complaint ref (order_id /
+ * complaint_ref, sent by the backend since F19) and announces the same event
+ * class is that event outright; a row naming a DIFFERENT order or complaint
+ * is never paired. A server row whose text names the ref is the event too.
+ * Rows the deployed backend wrote carry neither, so a local notice is
+ * otherwise paired with the nearest unpaired server row of the same event
+ * class (by trigger id) within SAME_EVENT_WINDOW_MS, one to one. An unpaired
+ * local notice stays: the server said nothing about that event.
  */
 export function dropNoticesTheServerSent(local: Notice[], inbox: CrmInboxItem[]): Notice[] {
   const server = inbox.map((m) => ({ m, at: Date.parse(m.created_at) || 0, taken: false }));
@@ -157,15 +159,20 @@ export function dropNoticesTheServerSent(local: Notice[], inbox: CrmInboxItem[])
   for (const n of local) {
     const ev = eventOfDedupeKey(n.dedupe);
     if (!ev) { keep.push(n); continue; }
+    const triggers = SERVER_TRIGGERS_FOR[ev.cls];
+    const refOf = (m: CrmInboxItem): string => (ev.cls === 'complaint' ? m.complaint_ref : m.order_id) ?? '';
+    const exact = server.find((s) => !s.taken && refOf(s.m) === ev.ref && !!triggers?.includes(s.m.trigger_id));
+    if (exact) { exact.taken = true; continue; }
     const named = ev.ref.length >= 4
       ? server.find((s) => !s.taken && ((s.m.body_en ?? '').includes(ev.ref) || (s.m.body_hi ?? '').includes(ev.ref)))
       : undefined;
     if (named) { named.taken = true; continue; }
-    const triggers = SERVER_TRIGGERS_FOR[ev.cls];
     const at = Date.parse(n.created_at) || 0;
     let nearest: (typeof server)[number] | null = null;
     for (const s of server) {
       if (s.taken || !triggers?.includes(s.m.trigger_id)) continue;
+      const ref = refOf(s.m);
+      if (ref && ref !== ev.ref) continue; // that row is about another order or complaint
       const gap = Math.abs(s.at - at);
       if (gap <= SAME_EVENT_WINDOW_MS && (!nearest || gap < Math.abs(nearest.at - at))) nearest = s;
     }

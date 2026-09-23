@@ -27,6 +27,10 @@ export type CrmInboxItem = {
   cta: string | null;
   created_at: string;
   read_at?: string | null;
+  /** The order / complaint reference the message is about (backend F19).
+   *  Absent on rows the deployed backend wrote and on scheduled messages. */
+  order_id?: string;
+  complaint_ref?: string;
 };
 
 export type CrmOfferView = {
