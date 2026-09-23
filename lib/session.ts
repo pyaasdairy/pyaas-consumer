@@ -271,6 +271,14 @@ export async function removeAccountEntry(uid: string): Promise<void> {
 
 export async function signOut(): Promise<void> {
   const uid = currentUid ?? (await AsyncStorage.getItem(UID_KEY));
+  // The low-balance reminder is per account: forget this account's copy and
+  // reset the in-memory preference and its hydration latch BEFORE the uid
+  // goes, or the next member on this phone inherits an armed threshold that
+  // never re-hydrates. Dynamic import: autoTopup itself imports session.
+  try {
+    const { clearAutoTopup } = await import('./autoTopup');
+    await clearAutoTopup();
+  } catch { /* best-effort */ }
   await AsyncStorage.removeItem(UID_KEY);
   await AsyncStorage.removeItem(LOGIN_PHONE_KEY);
   currentUid = null;
