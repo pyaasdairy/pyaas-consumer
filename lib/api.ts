@@ -6,7 +6,7 @@ import { debitWallet, autoSettleTopUp, refundToWallet } from './walletApi';
 import { isPlusActive, memberLinePrice } from './vip';
 import { getProduct } from '../constants/products';
 import { api, isBackendConfigured, HttpError } from './apiClient';
-import { registerMirrorHandler, enqueueMirror, type MirrorOutcome } from './mirrorQueue';
+import { registerMirrorHandler, enqueueMirror, drainMirrorQueue, type MirrorOutcome } from './mirrorQueue';
 import { instantEtaHHMM, INSTANT_ETA_MINUTES, MORNING_WINDOW } from './deliveryMode';
 import { getServiceabilitySnapshot } from './serviceability';
 
@@ -465,6 +465,11 @@ export async function placeOrder(params: {
   // wallet on delivery), so it reaches the Saathi rider queue. We must NOT debit
   // locally here, or the order is charged twice (once now, once on delivery).
   if (isBackendConfigured()) {
+    // Land any queued twin first (a delivery preference saved offline, an
+    // address pin, a default-address flip): the backend copies the account's
+    // STANDING delivery prefs and the address's own onto the task when the
+    // order is created, so what is still in the outbox here would miss it.
+    await drainMirrorQueue().catch(() => undefined);
     const prof = await getProfile().catch(() => null);
     const geo = (address as unknown as { lat?: number; lng?: number });
     const created = await api.post<Order>('/orders', {

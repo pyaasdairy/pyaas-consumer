@@ -14,7 +14,9 @@ export default function DeliveryPreferences() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
-  useFocusEffect(useCallback(() => { getDeliveryPrefs().then(setP); }, []));
+  // refresh: this is the screen that edits them, so it re-reads the server
+  // on every focus instead of the session's in-memory copy.
+  useFocusEffect(useCallback(() => { getDeliveryPrefs({ refresh: true }).then(setP); }, []));
 
   function set<K extends keyof DeliveryPrefs>(k: K, v: DeliveryPrefs[K]) {
     setP((s) => ({ ...s, [k]: v }));
