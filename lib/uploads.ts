@@ -6,14 +6,17 @@ import { logDiag } from './diag';
  *
  * A device file:// path must never travel in a complaint or an address: the
  * operator and the rider app cannot open it. The bytes go to object storage
- * through a presigned PUT and only the resulting file_url is sent.
+ * through a presigned upload and only the resulting file_url is sent.
  *
  *   POST /uploads/presign { kind, content_type }
- *     -> { upload_url, method: "PUT", headers: {...}, file_url }
- *   PUT <upload_url> <bytes>, with the returned headers
+ *     -> { upload_url, method, headers: {...}, file_url }
+ *   <method> <upload_url> <bytes>, with the returned headers. The method and
+ *   headers are the response's, never assumed: Backblaze's native upload
+ *   endpoint takes POST (uploads_presign.go). file_url is the relative
+ *   "/api/v1/uploads/view/..." path the record stores.
  *
  * Degrades to null on an older backend (presign 404), offline, or a failed
- * PUT. The caller then sends NO photo rather than a path nobody can read.
+ * upload. The caller then sends NO photo rather than a path nobody can read.
  */
 
 export type UploadKind = 'complaint_photo' | 'door_photo';
@@ -25,13 +28,20 @@ type PresignResponse = {
   file_url?: string;
 };
 
-/** A presigned PUT of a phone photo over a slow uplink; the API client's
+/** A presigned upload of a phone photo over a slow uplink; the API client's
  *  15 s budget is too tight for it. */
 const UPLOAD_TIMEOUT_MS = 45000;
 
-/** True for a URL that already lives on a server (nothing to upload). */
+/** The relative file_url the backend returns from a presign and stores on
+ *  the record (uploads/presign.go ViewPathPrefix). */
+const UPLOADS_VIEW_PREFIX = '/api/v1/uploads/view/';
+
+/** True for a URL that already lives on a server (nothing to upload): an
+ *  absolute http(s) URL, or the backend's relative view path, so a stored
+ *  file_url fed back in passes through instead of being read as a local
+ *  path. */
 export function isRemoteUrl(uri: string | null | undefined): boolean {
-  return !!uri && /^https?:\/\//i.test(uri);
+  return !!uri && (/^https?:\/\//i.test(uri) || uri.startsWith(UPLOADS_VIEW_PREFIX));
 }
 
 /** MIME type from the local uri's extension; the pickers hand back JPEG by
@@ -47,7 +57,7 @@ export function contentTypeFor(uri: string): string {
 
 /**
  * Upload a local photo and return its file_url, or null when it could not be
- * uploaded (older backend without presign, offline, PUT rejected). An
+ * uploaded (older backend without presign, offline, upload rejected). An
  * already-remote URL passes through untouched. Never throws.
  */
 export async function uploadPhoto(kind: UploadKind, localUri: string | null | undefined): Promise<string | null> {
