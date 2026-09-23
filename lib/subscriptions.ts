@@ -10,8 +10,11 @@ import { getProduct } from '../constants/products';
 /** Thrown by createSubscription when no exact delivery point is on file. */
 export const NEEDS_EXACT_LOCATION = 'NEEDS_EXACT_LOCATION';
 
-// Per-user so one account's auto-paused set never leaks into another account on
-// the same device (and it is removed by deleteMyAccount, which prunes parag:*:<uid>).
+// LOCAL MODE ONLY: the set of plans this phone auto-paused for low balance.
+// Per-user so one account's set never leaks into another account on the same
+// device (and it is removed by deleteMyAccount, which prunes parag:*:<uid>).
+// In backend mode the server owns low balance (see reconcileWithBalance) and
+// the key is deleted.
 function lowbalKey(uid: string): string {
   return `parag:lowbal:${uid}`;
 }
@@ -564,14 +567,30 @@ export function canAfford(balance: number, amount: number): boolean {
 }
 
 /**
- * Keep subscriptions in sync with the wallet balance: pause an active one the
- * wallet can no longer fund, and resume one WE auto-paused once it can be funded
- * again. User-paused subscriptions are never touched.
+ * Keep subscriptions in sync with the wallet balance.
+ *
+ * LOCAL MODE: pause an active one the wallet can no longer fund, and resume
+ * one WE auto-paused once it can be funded again. User-paused subscriptions
+ * are never touched.
+ *
+ * BACKEND MODE: the server owns low balance. Its worker places a day's order
+ * only when the wallet covers it (subscriptions.go sweepOneSubscription), the
+ * delivery debit refuses at the door, and the CRM's B-01 / B-02 triggers tell
+ * the member. A pause from this phone would fight that: a pause the server
+ * never asked for, resumed by whichever device reads a higher balance first.
+ * Only the reminder remains here: whether a live plan costs more than the
+ * wallet holds. Nothing is written; the auto-pause set an older build kept
+ * for the account is deleted.
  */
 export async function reconcileWithBalance(balance: number): Promise<{ lowBalance: boolean; changed: boolean }> {
   const uid = await requireUserId();
   const key = lowbalKey(uid);
   const subs = await listSubscriptions();
+  if (isBackendConfigured()) {
+    await AsyncStorage.removeItem(key).catch(() => undefined);
+    const lowBalance = subs.some((s) => s.status === 'active' && balance < perDeliveryCost(s));
+    return { lowBalance, changed: false };
+  }
   let autoPaused: string[] = [];
   try { autoPaused = JSON.parse((await AsyncStorage.getItem(key)) || '[]'); } catch { /* ignore */ }
   const set = new Set<string>(autoPaused);

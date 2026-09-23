@@ -53,8 +53,10 @@ export default function Subscriptions() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Sync subscriptions with the wallet: pause any the balance can no longer
-      // fund, resume any we auto-paused once it is topped up again.
+      // Sync subscriptions with the wallet. Local mode: pause any the balance
+      // can no longer fund, resume any we auto-paused once it is topped up
+      // again. Backend mode: the server skips a day it cannot bill and tells
+      // the member; this only decides whether the reminder shows.
       await refreshWallet();
       const r = await reconcileWithBalance(useWallet.getState().balance);
       setLowBalance(r.lowBalance);
@@ -110,7 +112,7 @@ export default function Subscriptions() {
         {lowBalance ? (
           <Tap onPress={() => router.push('/(tabs)/wallet')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.flameSoft, borderRadius: radius.md, padding: 12, borderWidth: 1, borderColor: colors.flameDeep }}>
             <Ionicons name="alert-circle" size={18} color={colors.flameDeep} />
-            <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.flameDeep}>Wallet balance is low, so deliveries are paused. Add money to resume them.</TextMed>
+            <TextMed style={{ flex: 1, fontSize: 12.5 }} color={colors.flameDeep}>{isBackendConfigured() ? 'Wallet balance is low, so a delivery may be skipped. Add money to keep them coming.' : 'Wallet balance is low, so deliveries are paused. Add money to resume them.'}</TextMed>
             <Ionicons name="chevron-forward" size={18} color={colors.flameDeep} />
           </Tap>
         ) : null}
