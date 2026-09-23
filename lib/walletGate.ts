@@ -58,6 +58,11 @@ export async function purchasesUnlocked(currentBalance?: number): Promise<boolea
 // checking at once share one GET /wallet/txns.
 let ledgerProbe: { uid: string; p: Promise<boolean> } | null = null;
 
+/** Sign-out: forget this account's in-flight ledger probe. */
+export function clearWalletGateSession(): void {
+  ledgerProbe = null;
+}
+
 async function unlockProvenByLedger(uid: string): Promise<boolean> {
   try {
     const rows = await getLedger();

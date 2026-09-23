@@ -330,6 +330,21 @@ export async function signOut(): Promise<void> {
   await AsyncStorage.removeItem(LOGIN_PHONE_KEY);
   currentUid = null;
   hydratedProfile = null; // the next member on this phone never sees this one's profile
+  // Every other in-memory copy of this account's server state goes with it
+  // (address book, plan list, trial answer, delivery prefs, wallet-gate
+  // probe), so the same account signing back in refetches instead of
+  // reading the previous session. Dynamic imports: these modules import
+  // session.
+  try {
+    const [addr, subs, trial, prefs, gate] = await Promise.all([
+      import('./api'), import('./subscriptions'), import('./trial'), import('./deliveryPrefs'), import('./walletGate'),
+    ]);
+    addr.invalidateAddressCache();
+    subs.invalidateSubscriptionCache();
+    trial.clearTrialCache();
+    prefs.clearDeliveryPrefsCache();
+    gate.clearWalletGateSession();
+  } catch { /* best-effort */ }
   // Shared/resold devices must not retain the previous member's phone, exact
   // home coordinates and spend history after sign-out. In backend mode the
   // server is the source of truth, so the local rows are just cache — purge

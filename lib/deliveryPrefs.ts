@@ -39,6 +39,12 @@ function setCached(uid: string, prefs: DeliveryPrefs): void {
   prefsGen += 1;
 }
 
+/** Sign-out: drop the session's copy; a read still in flight is discarded. */
+export function clearDeliveryPrefsCache(): void {
+  cached = null;
+  prefsGen += 1;
+}
+
 /** The request shape PATCH /me carries (field names the backend reads). */
 export function toWire(p: DeliveryPrefs): { call_before: boolean; ring_bell: boolean; notes: string } {
   return { call_before: p.call_before, ring_bell: p.ring_bell, notes: p.notes ?? '' };

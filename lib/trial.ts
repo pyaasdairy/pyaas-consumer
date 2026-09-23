@@ -201,6 +201,11 @@ function normalizeRemote(r: RawTrial): Trial {
 // Backend mode: the last answer /trial/me gave this session, per account.
 let lastServerTrial: { uid: string; trial: Trial } | null = null;
 
+/** Sign-out: the next session on this phone never reads this one's answer. */
+export function clearTrialCache(): void {
+  lastServerTrial = null;
+}
+
 /**
  * The signed-in member's trial. Backend mode reads GET /consumer/trial/me
  * and never the local anchor; local mode derives the phase from the anchor.
