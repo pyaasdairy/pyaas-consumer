@@ -9,14 +9,12 @@ import { colors, radius, spacing, shadow, rupee } from '../../lib/theme';
 import { Serif, TextBody, TextMed, TextSemi, Tap, Pill } from '../../components/ui';
 import { ProductCard } from '../../components/ProductCard';
 import { SubscriptionStatusCard } from '../../components/SubscriptionStatusCard';
-import { WelcomeProgressCard } from '../../components/WelcomeProgressCard';
 import { WelcomeLitrePopup } from '../../components/WelcomeLitrePopup';
 import { ShopSkeleton } from '../../components/Skeleton';
 import { HomeHeader, useHomeHeaderHeight } from '../../components/HomeHeader';
 import { BottomBar, useBottomBarClearance } from '../../components/BottomBar';
 import { HeroSlideshow } from '../../components/HeroSlideshow';
-import { LiveOrderCard } from '../../components/LiveOrderCard';
-import { RateAppSheet } from '../../components/RateAppSheet';
+import { ActiveOrdersCard } from '../../components/ActiveOrdersCard';
 import { CATEGORIES, type Category } from '../../constants/products';
 import { useCatalog, getMergedProducts, refreshCatalog, groupProducts, type GroupedProduct } from '../../lib/catalog';
 import { PromoGate } from '../../components/PromoGate';
@@ -29,7 +27,7 @@ import { useCart } from '../../store/cart';
 import { listOrders } from '../../lib/api';
 import { useLiveOrders, isInstantOrder as isInstantLaneOrder } from '../../lib/orderTracking';
 import { instantWindow } from '../../lib/instantHours';
-import { recordDeliveredCount, shouldAskForRating } from '../../lib/appReview';
+import { recordDeliveredCount, shouldAskForRating, requestNativeReview } from '../../lib/appReview';
 import { useDeliveryMode, setDeliveryMode, instantEtaHHMM, hhmmTo12 } from '../../lib/deliveryMode';
 import { getWelcomeFunnelState, type WelcomeFunnelState } from '../../lib/crm';
 import { PREPAID_TARGET } from '../../lib/prepaid';
@@ -97,8 +95,6 @@ export default function Shop() {
   const [cat, setCat] = useState<Category | 'all'>('all');
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  // Rating prompt: offered only once the member has actually been served.
-  const [rateOpen, setRateOpen] = useState(false);
   // MORNING | INSTANT mode the whole home screen carries (shared store — the
   // product page honours it too). 'scheduled' (set elsewhere) renders as Morning.
   const mode = useDeliveryMode();
@@ -162,7 +158,7 @@ export default function Shop() {
   // the 'by HH:MM' window shape (legacy rows carried a lane default and must
   // stay in the Morning world).
   const trackedOrders = useMemo(
-    () => live.orders.filter((o) => (instant ? isInstantLaneOrder(o) : !isInstantLaneOrder(o))).slice(0, 2),
+    () => live.orders.filter((o) => (instant ? isInstantLaneOrder(o) : !isInstantLaneOrder(o))),
     [live.orders, instant],
   );
   // INSTANT HOURS: the published window is the floor under the store manager's
@@ -229,8 +225,9 @@ export default function Shop() {
             // How many mornings have actually landed — the rating ask waits for
             // three, so we never beg for stars from someone we haven't served.
             void recordDeliveredCount(os.filter((o) => o.status === 'delivered').length);
+            // The OS's own rating prompt (Blinkit-style), never over a popup.
             void shouldAskForRating().then((ask) => {
-              if (on && ask && !anyPopupOpen()) setRateOpen(true);
+              if (on && ask && !anyPopupOpen()) void requestNativeReview();
             });
           })
           .catch(() => { /* signed out / offline — show nothing */ });
@@ -438,10 +435,9 @@ export default function Shop() {
                 reports each state (lib/orderTracking, which also raises the
                 notification for the same transition). */}
             {trackedOrders.length > 0 ? (
-              <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm }}>
-                {trackedOrders.map((o) => (
-                  <LiveOrderCard key={o.id} order={o} now={live.now} />
-                ))}
+              <Animated.View entering={FadeInDown.duration(440)} style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+                {/* ONE box, every active order tracked inside it. */}
+                <ActiveOrdersCard orders={trackedOrders} now={live.now} />
               </Animated.View>
             ) : null}
 
@@ -501,11 +497,10 @@ export default function Shop() {
                   <Ionicons name="chevron-forward" size={18} color={colors.flameDeep} />
                 </Tap>
               </Animated.View>
-            ) : wlState === 'already_enrolled' ? (
-              <Animated.View entering={FadeInDown.duration(440).delay(40)} style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-                <WelcomeProgressCard />
-              </Animated.View>
             ) : null}
+            {/* The Welcome Litre progress box (Pack 1 / Pack 2) is gone from
+                Home (founder call, 21 Sep): those updates already reach the
+                member in Notifications. */}
 
             {/* Subscription live-status. Its EMPTY state cedes to the Welcome
                 Litre funnel card above — one acquisition pitch, ever. */}
@@ -626,9 +621,6 @@ export default function Shop() {
           acquisition surface (§15.6), once per launch, on the server's say-so. */}
       <WelcomeLitrePopup state={wlState} />
 
-      {/* "Rate the app" — stars in-app first; four or five hop to the store,
-          one to three open the complaint register instead of a public review. */}
-      <RateAppSheet visible={rateOpen} onClose={() => setRateOpen(false)} />
     </View>
   );
 }
@@ -639,8 +631,8 @@ export default function Shop() {
  * carries a ⚡ 20-minute mini-badge. Writes the shared delivery-mode store so
  * the product page and checkout honour the same mode.
  */
-const TOGGLE_PAD = 4;
-const TOGGLE_GAP = 4;
+const TOGGLE_PAD = 5;
+const TOGGLE_GAP = 8; // a visible gap between the two tabs
 
 function DeliveryModeToggle({ instant, instantOpen, note, opensAtLabel }: { instant: boolean; instantOpen: boolean; note: string | null; opensAtLabel: string | null }) {
   // Sliding thumb: ONE pink pill that springs between the two segments on the
@@ -672,13 +664,26 @@ function DeliveryModeToggle({ instant, instantOpen, note, opensAtLabel }: { inst
     <View style={{ gap: 6 }}>
       <View
         onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
-        style={{ flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, padding: TOGGLE_PAD, gap: TOGGLE_GAP, ...shadow.soft }}
+        // TWO REAL TABS (founder call, 21 Sep, raised several times): each
+        // side sits on its OWN raised white tab with a border and a shadow, a
+        // clear gap between them, and the active tab (pink) slides over its
+        // plate. It can never read as one flat pill again, on either platform.
+        style={{ flexDirection: 'row', backgroundColor: colors.wash, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, padding: TOGGLE_PAD, gap: TOGGLE_GAP }}
       >
         {thumbW > 0 ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[{ position: 'absolute', left: TOGGLE_PAD, top: TOGGLE_PAD, bottom: TOGGLE_PAD, width: thumbW, borderRadius: radius.pill, backgroundColor: colors.action, ...shadow.soft }, thumbStyle]}
-          />
+          <>
+            {[0, 1].map((i) => (
+              <View
+                key={i}
+                pointerEvents="none"
+                style={{ position: 'absolute', top: TOGGLE_PAD, bottom: TOGGLE_PAD, left: TOGGLE_PAD + i * (thumbW + TOGGLE_GAP), width: thumbW, borderRadius: radius.pill, backgroundColor: colors.white, borderWidth: 1, borderColor: 'rgba(94,80,87,0.16)', shadowColor: '#6B4B36', shadowOpacity: 0.12, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}
+              />
+            ))}
+            <Animated.View
+              pointerEvents="none"
+              style={[{ position: 'absolute', left: TOGGLE_PAD, top: TOGGLE_PAD, bottom: TOGGLE_PAD, width: thumbW, borderRadius: radius.pill, backgroundColor: colors.action, shadowColor: '#6B4B36', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6 }, thumbStyle]}
+            />
+          </>
         ) : null}
         <ModeSegment
           active={!instant || !instantOpen}

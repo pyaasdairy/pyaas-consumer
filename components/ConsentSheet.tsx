@@ -14,7 +14,7 @@ import { queueConsentMirror, readServerConsents, consentMirrorPending, flushCons
  * Reusable consent capture for signup / onboarding.
  *
  * Records the user's explicit choices (Privacy Policy + Terms are required;
- * marketing / WhatsApp / SMS / email are optional) into the local 'consents'
+ * marketing / WhatsApp / SMS are optional) into the local 'consents'
  * table with a timestamp + app version, so we keep an auditable consent trail
  * (DPDP-style). The lead wires <ConsentSheet> into the signup screen and calls
  * recordConsents() on submit.
@@ -55,11 +55,20 @@ export const CONSENT_META: { key: ConsentKey; label: string; sub: string; requir
   { key: 'marketing', label: 'Offers and updates', sub: 'Occasional news about products and prices', required: false },
   { key: 'whatsapp', label: 'WhatsApp updates', sub: 'Order and delivery alerts on WhatsApp', required: false },
   { key: 'sms', label: 'SMS updates', sub: 'Delivery and payment reminders by SMS', required: false },
-  { key: 'email', label: 'Email updates', sub: 'Invoices and account emails', required: false },
+  // EMAIL REMOVED (founder call, 21 Sep): PYAAS does not collect a customer's
+  // email anywhere, so an "Email updates" switch offered a channel that does
+  // not exist. The `email` key stays in ConsentChoices (always false) so the
+  // saved record shape and the backend sync are unchanged.
 ];
 
+/**
+ * Defaults. Offers, WhatsApp and SMS start ON (founder call, 21 Sep); the
+ * member can switch any of them off in Message preferences. Email stays false
+ * because no email is collected. Privacy and Terms are never defaulted — they
+ * need the member's own tick.
+ */
 export function defaultChoices(): ConsentChoices {
-  return { privacy: false, terms: false, marketing: false, whatsapp: false, sms: false, email: false };
+  return { privacy: false, terms: false, marketing: true, whatsapp: true, sms: true, email: false };
 }
 
 /** Persist a set of consent choices with timestamp + versions. */

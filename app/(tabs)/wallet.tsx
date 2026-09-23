@@ -2,11 +2,11 @@ import React, { useCallback, useState } from 'react';
 import { KeyboardSafe } from '../../components/KeyboardSafe';
 import { View, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors, radius, spacing, shadow, rupee, fonts, tabular } from '../../lib/theme';
-import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill } from '../../components/ui';
+import { Serif, TextBody, TextMed, TextSemi, Button, Tap, Pill, BackButton } from '../../components/ui';
 import { FloatingParticles, ShineSweep, useCountUp } from '../../components/Fx';
 import { useTabBarClearance } from '../../components/PyaasTabBar';
 import { useHideTabBarOnScroll } from '../../lib/navVisibility';
@@ -28,6 +28,10 @@ export default function Wallet() {
   const insets = useSafeAreaInsets();
   const tabClearance = useTabBarClearance();
   const router = useRouter();
+  const navigation = useNavigation();
+  // Re-read on focus: whether there is somewhere to go back to depends on
+  // how the member arrived.
+  const [canGoBack, setCanGoBack] = useState(false);
   const balance = useWallet((s) => s.balance);
   const cash = useWallet((s) => s.cash);
   const promo = useWallet((s) => s.promo);
@@ -66,9 +70,10 @@ export default function Wallet() {
   // Loops only run while the tab is focused (nothing ticks in the background).
   useFocusEffect(useCallback(() => {
     setFocused(true);
+    setCanGoBack(navigation.canGoBack());
     load();
     return () => setFocused(false);
-  }, [load]));
+  }, [load, navigation]));
 
   const shownBalance = useCountUp(balance, 1000, focused); // count-up on load
   const tier = balanceTier(balance);
@@ -113,7 +118,10 @@ export default function Wallet() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.milk }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Serif style={{ fontSize: 30, flexShrink: 1 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>PYAAS Wallet</Serif>
+        {/* A way back to wherever the member came from (founder call, 21 Sep):
+            the wallet chip, Profile or a subscription nudge all land here. */}
+        {canGoBack ? <BackButton style={{ marginRight: 12 }} /> : null}
+        <Serif style={{ fontSize: 30, flexShrink: 1, flex: 1 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>PYAAS Wallet</Serif>
         <Tap onPress={() => router.push('/wallet-statement')} accessibilityLabel="Wallet statement" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 12 }}>
           <Ionicons name="receipt-outline" size={16} color={colors.flameDeep} />
           <TextMed color={colors.flameDeep} style={{ fontSize: 13 }}>Statement</TextMed>

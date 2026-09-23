@@ -40,11 +40,11 @@ const SUB_TYPES: { key: Frequency; label: string; sub: string }[] = [
   { key: 'one_time', label: 'One Time', sub: 'Just once' },
 ];
 
-// ── Top banner: "Order by 11:59 PM · Delivery by 7 AM" ────────────────────────────
+// ── Top banner: "Order by 12 noon · Delivery by 7 AM" (One Voice cut-off, 21 Sep) ────────────────────────────
 function DeliveryBanner({ topInset }: { topInset: number }) {
   return (
     <View style={{ overflow: 'hidden', backgroundColor: colors.flameDeep, paddingTop: topInset + 7, paddingBottom: 9, paddingHorizontal: spacing.lg, alignItems: 'center' }}>
-      <TextSemi color={colors.white} style={{ fontSize: 12.5, letterSpacing: 0.5 }}>Order by 11:59 PM · Delivery by 7 AM</TextSemi>
+      <TextSemi color={colors.white} style={{ fontSize: 12.5, letterSpacing: 0.5 }}>Order by 12 noon · Delivery by 7 AM</TextSemi>
       <ShineSweep dur={3200} travel={520} bandWidth={90} delay={700} />
     </View>
   );

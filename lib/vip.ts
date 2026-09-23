@@ -56,10 +56,12 @@ export function vipPriceFor(regular: number): number {
  * ("Plus members pay member price on milk"). Everything else bills at the
  * regular price, so the discount can never silently widen to the whole catalog.
  */
-export function memberLinePrice(category: string | undefined, regular: number, isPlus: boolean): number {
-  if (!isPlus) return regular;
-  const milkish = category === 'milk' || category === 'super_tea';
-  return milkish ? vipPriceFor(regular) : regular;
+export function memberLinePrice(_category: string | undefined, regular: number, _isPlus: boolean): number {
+  // NO CLIENT-SIDE MEMBER DISCOUNT (Founding Family spec, 21 Sep): Parag is
+  // ALWAYS at printed MRP ("never strike through a Parag price"), and the
+  // member price on PYAAS milk is the ERP's level 3, applied by the server.
+  // The old 10% off milk showed a price the server never charged.
+  return regular;
 }
 
 export type VipStatus = 'trial' | 'active' | 'expired' | 'cancelled';

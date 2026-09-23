@@ -37,6 +37,8 @@ type NotificationsModule = {
   getPermissionsAsync: () => Promise<PermissionResponse>;
   requestPermissionsAsync: () => Promise<PermissionResponse>;
   scheduleNotificationAsync: (input: unknown) => Promise<string>;
+  cancelScheduledNotificationAsync?: (id: string) => Promise<void>;
+  getAllScheduledNotificationsAsync?: () => Promise<Array<{ identifier: string; content?: { data?: Record<string, unknown> } }>>;
   setNotificationHandler: (handler: unknown) => void;
   setNotificationChannelAsync?: (id: string, channel: unknown) => Promise<unknown>;
   getExpoPushTokenAsync?: (opts?: unknown) => Promise<{ data: string }>;
@@ -46,11 +48,15 @@ type NotificationsModule = {
     listener: (response: NotificationResponse) => void,
   ) => { remove: () => void };
   AndroidImportance?: Record<string, number>;
+  setNotificationCategoryAsync?: (id: string, actions: unknown[]) => Promise<unknown>;
+  getLastNotificationResponseAsync?: () => Promise<NotificationResponse | null>;
 };
 
 /** The slice of expo-notifications' NotificationResponse a tap handler reads. */
 export type NotificationResponse = {
-  notification?: { request?: { content?: { data?: Record<string, unknown> | null } } };
+  /** The action button tapped ('view-cart'), or the OS default action. */
+  actionIdentifier?: string;
+  notification?: { request?: { identifier?: string; content?: { data?: Record<string, unknown> | null } } };
 };
 
 let cached: NotificationsModule | null | undefined;
@@ -126,13 +132,18 @@ export function installForegroundHandler(): void {
   if (!m) return;
   try {
     m.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: false,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async (n: { request?: { content?: { data?: Record<string, unknown> } } }) => {
+        // A tagline is for a member who is NOT in the app; one that comes due
+        // while they are using it stays silent rather than banner over them.
+        const tagline = n?.request?.content?.data?.tagline === true;
+        return {
+          shouldShowAlert: !tagline,
+          shouldPlaySound: false,
+          shouldSetBadge: !tagline,
+          shouldShowBanner: !tagline,
+          shouldShowList: !tagline,
+        };
+      },
     });
   } catch {
     /* older module shape — harmless */
@@ -191,6 +202,10 @@ export type LocalNotice = {
   href?: string;
   /** Extra payload for the tap handler. */
   data?: Record<string, unknown>;
+  /** Stable id: posting again with the same id replaces the shown one. */
+  identifier?: string;
+  /** Action-button category registered at boot (e.g. 'cart' → View Cart). */
+  category?: string;
 };
 
 /**
@@ -206,10 +221,12 @@ export async function notifyNow(n: LocalNotice): Promise<boolean> {
     if ((await permissionState()) !== 'granted') return false;
     await ensureChannels();
     await m.scheduleNotificationAsync({
+      ...(n.identifier ? { identifier: n.identifier } : {}),
       content: {
         title: n.title,
         body: n.body,
         data: { href: n.href ?? null, ...(n.data ?? {}) },
+        ...(n.category ? { categoryIdentifier: n.category } : {}),
         ...(Platform.OS === 'android' ? { channelId: n.channel ?? CHANNELS.orders } : {}),
       },
       trigger: null, // immediately
@@ -237,22 +254,57 @@ export function hrefFromResponse(r: NotificationResponse | null | undefined): st
   return typeof href === 'string' && href.startsWith('/') ? href : null;
 }
 
+/** The screen a tap opens, or null. In order: the "View Cart" button opens
+ *  the cart; then the href the notice packed (every local notice, and every
+ *  server CRM push, carries data.href); then the notice's own identifier
+ *  names the screen: order:<id> (lib/orderTracking) and cart-reminder
+ *  (lib/cartReminder). */
+export function routeFromResponse(r: NotificationResponse | null | undefined): string | null {
+  if (r?.actionIdentifier === 'view-cart') return '/cart';
+  const href = hrefFromResponse(r);
+  if (href) return href;
+  const id = r?.notification?.request?.identifier;
+  if (typeof id !== 'string') return null;
+  if (id.startsWith('order:') && id.length > 'order:'.length) return `/order/${id.slice('order:'.length)}`;
+  if (id === 'cart-reminder') return '/cart';
+  return null;
+}
+
 let tapHandlerInstalled = false;
+/** The tap that cold-started the process is read back once, by the first
+ *  install, never again by a re-mount. */
+let coldStartRouted = false;
 
 /**
- * Route notification taps. Installed ONCE at boot by the root layout; the
- * returned function removes the listener (and re-arms the latch) on unmount.
- * No-op on a binary without the module.
+ * Route notification taps: the ONE tap subscription in the app, installed at
+ * boot by the root layout; the returned function removes the listener (and
+ * re-arms the latch) on unmount. Covers the live tap, an action button, and
+ * the tap that cold-started the app (which fired before any listener
+ * existed). No-op on a binary without the module.
  */
 export function installTapHandler(onHref: (href: string) => void): () => void {
   const m = mod();
   if (!m?.addNotificationResponseReceivedListener || tapHandlerInstalled) return () => {};
   tapHandlerInstalled = true;
   try {
-    const sub = m.addNotificationResponseReceivedListener((r) => {
-      const href = hrefFromResponse(r);
+    // The cold-start response can also reach the live listener: each
+    // (notification, action) pair routes once.
+    const seen = new Set<string>();
+    const once = (r: NotificationResponse | null | undefined) => {
+      const id = r?.notification?.request?.identifier;
+      if (id) {
+        const key = `${id}:${r?.actionIdentifier ?? ''}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+      }
+      const href = routeFromResponse(r);
       if (href) onHref(href);
-    });
+    };
+    const sub = m.addNotificationResponseReceivedListener(once);
+    if (!coldStartRouted) {
+      coldStartRouted = true;
+      void m.getLastNotificationResponseAsync?.().then(once, () => undefined);
+    }
     return () => {
       tapHandlerInstalled = false;
       try { sub.remove(); } catch { /* already gone */ }
@@ -405,5 +457,65 @@ export async function announcePushForCurrentSession(): Promise<void> {
     await registerForPush();
   } catch {
     /* never block a session change on a push bookkeeping call */
+  }
+}
+
+// ── Scheduled (future) local notifications ───────────────────────────────────
+// Used by lib/taglines. Scheduled by the OS on the device, so they fire with
+// the app closed and cost nothing: no server, no push provider, no per-message
+// fee.
+
+/** Schedule one notification for a future moment. False when unavailable. */
+export async function scheduleAt(when: Date, n: LocalNotice): Promise<boolean> {
+  const m = mod();
+  if (!m) return false;
+  try {
+    if ((await permissionState()) !== 'granted') return false;
+    await ensureChannels();
+    await m.scheduleNotificationAsync({
+      ...(n.identifier ? { identifier: n.identifier } : {}),
+      content: {
+        title: n.title,
+        body: n.body,
+        data: { href: n.href ?? null, ...(n.data ?? {}) },
+        ...(n.category ? { categoryIdentifier: n.category } : {}),
+        ...(Platform.OS === 'android' ? { channelId: n.channel ?? CHANNELS.offers } : {}),
+      },
+      trigger: { type: 'date', date: when, ...(Platform.OS === 'android' ? { channelId: n.channel ?? CHANNELS.offers } : {}) },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Cancel every pending scheduled notification whose data matches. */
+export async function cancelScheduledWhere(match: (data: Record<string, unknown>) => boolean): Promise<void> {
+  const m = mod();
+  if (!m?.getAllScheduledNotificationsAsync || !m.cancelScheduledNotificationAsync) return;
+  try {
+    const pending = await m.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      pending
+        .filter((p) => match(p.content?.data ?? {}))
+        .map((p) => m.cancelScheduledNotificationAsync!(p.identifier)),
+    );
+  } catch {
+    /* best-effort */
+  }
+}
+
+// ── Action buttons + taps ────────────────────────────────────────────────────
+
+/** Action-button categories. 'cart' carries the "View Cart" button. */
+export async function ensureCategories(): Promise<void> {
+  const m = mod();
+  if (!m?.setNotificationCategoryAsync) return;
+  try {
+    await m.setNotificationCategoryAsync('cart', [
+      { identifier: 'view-cart', buttonTitle: 'View Cart', options: { opensAppToForeground: true } },
+    ]);
+  } catch {
+    /* buttons are a nicety */
   }
 }

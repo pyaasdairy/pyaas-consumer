@@ -66,6 +66,18 @@ export default function Support() {
           <Ionicons name="chevron-forward" size={18} color={colors.white} />
         </Tap>
 
+        {/* FAQs live here with the rest of support (founder call, 21 Sep). */}
+        <Tap onPress={() => router.push('/faq')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.line, ...shadow.soft }}>
+          <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="help-circle-outline" size={20} color={colors.flameDeep} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <TextSemi style={{ fontSize: 15 }}>FAQs</TextSemi>
+            <TextBody color={colors.inkSoft} style={{ fontSize: 12 }}>Answers to common questions</TextBody>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.inkMute} />
+        </Tap>
+
         <Tap onPress={() => Linking.openURL(SUPPORT_SITE)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.line, ...shadow.soft }}>
           <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="globe-outline" size={20} color={colors.flameDeep} />

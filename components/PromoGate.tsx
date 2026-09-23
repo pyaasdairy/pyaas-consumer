@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View } from 'react-native';
 import { SafeModal } from './SafeModal';
+import { getFoundingFamily } from '../lib/foundingFamily';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
@@ -54,6 +55,8 @@ export function PromoGate() {
   // Whether the become-VIP soft upsell is snoozed (dismissed within the last few
   // days) — so it never nags a happy subscriber on every single Home visit.
   const [vipUpsellOff, setVipUpsellOff] = useState(true);
+  const [ffOpen, setFfOpen] = useState(false);
+  const [ffMember, setFfMember] = useState(false);
   // ONE money sheet per Home visit (the reference funnel's discipline): dismissing
   // whichever modal is showing stands the rest DOWN for this visit — no chained
   // nags where closing one instantly pops the next. Reset on every focus so the
@@ -90,6 +93,14 @@ export function PromoGate() {
         vipUpsellSnoozed()
           .then((v) => { if (active) setVipUpsellOff(v); })
           .catch(() => { if (active) setVipUpsellOff(true); }),
+        // Is Founding Family open on the backend, and is this member already in?
+        getFoundingFamily()
+          .then((v) => {
+            if (!active) return;
+            setFfOpen(!!v);
+            setFfMember(!!v?.member && v.member.status !== 'stopped');
+          })
+          .catch(() => { if (active) setFfOpen(false); }),
       ]).finally(() => { if (active) setReady(true); });
       return () => { active = false; };
     }, [refreshWallet, phone])
@@ -111,25 +122,17 @@ export function PromoGate() {
   const wantPrepaid = ready && !dismissedMoney && shouldShowPrepaidFunnel({ balance, hasActiveSub, everFunded });
   const tier = prepaidTier();
   const critical = lowEligible; // balance so low tomorrow's delivery could pause
-  const daysLeft = vipDaysLeft(vip);
-  // PLUS EXPIRING — an ACTIVE Plus member whose period ends within the warning
-  // window. Push a recharge so it renews (keeps free delivery + member prices)
-  // instead of silently lapsing.
-  const wantVipExpiring =
-    ready && !dismissedMoney && !wantPrepaid && vipActive(vip) && daysLeft <= VIP_EXPIRY_WARN_DAYS;
-  // Become-VIP is a soft UPSELL for a WELL-FUNDED active subscriber who isn't a
-  // member — NOT a low-balance case (that gets the prepaid recharge modal, which
-  // would always out-prioritise it and left this permanently unreachable before).
+  // FOUNDING FAMILY UPSELL (replaces "Become a PYAAS VIP", founder call 21 Sep):
+  // a soft invitation for a WELL-FUNDED active subscriber, shown only when the
+  // backend actually offers Founding Family (ffOpen) and they are not already
+  // in it. The old "Plus is ending / Renew Plus" sheets are gone with the old
+  // one-month local membership; Founding Family billing is server-side.
   const wantVip =
-    ready && !dismissedMoney && !wantPrepaid && !wantVipExpiring && !vipUpsellOff &&
-    !vipActive(vip) && hasActiveSub && balance >= PREPAID_TARGET;
-  // A LAPSED member (Plus record exists but expired/cancelled) is asked to RENEW,
-  // not re-sold membership copy meant for a never-joined user.
-  const lapsedVip = !!vip && !vipActive(vip);
+    ready && !dismissedMoney && !wantPrepaid && !vipUpsellOff &&
+    ffOpen && !ffMember && hasActiveSub && balance >= PREPAID_TARGET;
 
-  const showAny = useAutoPopup(wantPrepaid || wantVipExpiring || wantVip);
+  const showAny = useAutoPopup(wantPrepaid || wantVip);
   const showPrepaid = showAny && wantPrepaid;
-  const showVipExpiring = showAny && wantVipExpiring;
   const showVip = showAny && wantVip;
 
   return (
@@ -152,29 +155,14 @@ export function PromoGate() {
         onAccept={() => { setDismissedMoney(true); router.push(`/recharge?amount=${PREPAID_TARGET}&reason=${hasPausedSub ? 'resume your paused delivery' : 'go prepaid for one-tap mornings'}`); }}
       />
       <PromoModal
-        visible={showVipExpiring}
-        onClose={() => setDismissedMoney(true)}
-        accent={colors.blue}
-        icon="star"
-        badge={`${daysLeft} DAY${daysLeft === 1 ? '' : 'S'} LEFT`}
-        title={vipOnTrial(vip) ? 'Your free Plus trial is ending' : 'Your PYAAS Plus is ending'}
-        body={`Your PYAAS Plus ${vipOnTrial(vip) ? 'trial ' : ''}ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. Renew it to keep free delivery and member prices, it won't renew on its own.`}
-        cta="Renew Plus"
-        onAccept={() => { setDismissedMoney(true); router.push('/(tabs)/vip'); }}
-      />
-      <PromoModal
         visible={showVip}
         onClose={() => { setDismissedMoney(true); void snoozeVipUpsell(); }}
         accent={colors.blue}
         icon="star"
-        badge={lapsedVip ? 'MEMBER PERKS' : 'PYAAS PLUS'}
-        title={lapsedVip ? 'Renew PYAAS Plus' : 'Become a PYAAS VIP'}
-        body={
-          lapsedVip
-            ? 'Priority morning slots, free delivery and member price on milk. Renew your PYAAS Plus and keep the perks.'
-            : `Priority morning slots, free delivery and member price on milk. ${rupee(PLUS_PRICE_MONTH)}/month from your wallet.`
-        }
-        cta={lapsedVip ? 'Renew Plus' : 'Become VIP'}
+        badge="FOUNDING FAMILY"
+        title="Join the Founding Family"
+        body={`Whole milk from one farm you choose. Free delivery every morning and ₹2 off every litre of PYAAS milk. ${rupee(PLUS_PRICE_MONTH)} a month, starts when your farm opens · stop any month.`}
+        cta="Pick your farm"
         onAccept={() => { setDismissedMoney(true); void snoozeVipUpsell(); router.push('/(tabs)/vip'); }}
       />
     </>

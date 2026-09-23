@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, shadow } from '../lib/theme';
 import { Serif, TextBody, TextMed, Tap, BackButton } from '../components/ui';
 import { CONSENT_META, defaultChoices, useConsents, type ConsentChoices, type ConsentKey } from '../components/ConsentSheet';
+import { rescheduleTaglines } from '../lib/taglines';
 
 /**
  * Message preferences — the member's standing opt-in/opt-out surface for
@@ -38,6 +39,8 @@ export default function MessagePreferences() {
     setBusyKey(key);
     try {
       await save({ ...current, [key]: !current[key] });
+      // Offers governs the 2-hourly taglines: off cancels them, on plans them.
+      if (key === 'marketing') void rescheduleTaglines();
     } finally {
       setBusyKey(null);
     }

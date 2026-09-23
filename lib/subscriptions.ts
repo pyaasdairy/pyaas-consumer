@@ -233,6 +233,19 @@ export async function createSubscription(params: {
   // point (map pin / GPS / an address with coordinates). Every subscribe path
   // must capture the location first, so the rider always has a real door.
   if (!(await hasExactLocation())) throw needsExactLocation();
+  // ONE LIVE SUBSCRIPTION PER PRODUCT (21 Sep): the server creates a daily
+  // order for EVERY active subscription and never checks for an existing one,
+  // so a second "Subscribe" on the same milk silently doubled the member's
+  // daily order and charge while the app still looked like one plan. Change
+  // the existing plan instead (qty, days, pause) in My subscriptions.
+  // The plans checked are the ones listSubscriptions shows: in backend mode
+  // the session's copy of the server's rows plus the outbox, never a local
+  // table on its own. A list that cannot be read yet does not block the
+  // subscribe; the server's own DUPLICATE_SUBSCRIPTION answer below does.
+  const existing = await listSubscriptions().catch(() => [] as Subscription[]);
+  if (existing.some((s) => s.product_id === params.productId && (s.status === 'active' || s.status === 'paused'))) {
+    throw duplicateSubscription();
+  }
   // LOCAL calendar date (lib/dates), never toISOString(): UTC would be
   // yesterday between local midnight and 05:30 IST and phase-shift the cadence.
   const start = params.startDate ?? todayISO();
@@ -269,6 +282,9 @@ export async function createSubscription(params: {
     created = await api.post<Record<string, unknown>>('/subscriptions', subscriptionWire(row, standing));
   } catch (e) {
     if (e instanceof HttpError && e.code === 'ADDRESS_REQUIRED') throw needsExactLocation();
+    // The server's one-live-plan-per-product answer (409) is the same error
+    // as the check above, so the screen shows the same line.
+    if (e instanceof HttpError && e.code === DUPLICATE_SUBSCRIPTION) throw duplicateSubscription();
     if (mirrorOutcomeFor(e) === 'drop') throw e;
     await insertRow<Subscription>('subscriptions', uid, row);
     await enqueueMirror('sub-create', id);
@@ -281,6 +297,16 @@ export async function createSubscription(params: {
 function needsExactLocation(): Error {
   const e = new Error(NEEDS_EXACT_LOCATION) as Error & { code?: string };
   e.code = NEEDS_EXACT_LOCATION;
+  return e;
+}
+
+/** Thrown by createSubscription for a product that already has a live plan
+ *  (the app's check and the server's 409 alike). The message is the screen's
+ *  copy. */
+export const DUPLICATE_SUBSCRIPTION = 'DUPLICATE_SUBSCRIPTION';
+function duplicateSubscription(): Error {
+  const e = new Error('You already have a subscription for this milk. Change its quantity or days in My subscriptions.') as Error & { code?: string };
+  e.code = DUPLICATE_SUBSCRIPTION;
   return e;
 }
 
