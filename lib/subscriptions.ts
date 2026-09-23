@@ -308,8 +308,6 @@ export function subscriptionWire(row: Subscription, vacations: Vacation[]): Reco
 // store delivery tasks, so every change below reaches it directly and throws
 // when it cannot, for the screen to say so; only the create has an outbox.
 
-const MIRRORED_FREQUENCIES: Frequency[] = ['daily', 'alternate', 'weekly'];
-
 const STATUS_ACTION: Record<Subscription['status'], 'resume' | 'pause' | 'cancel'> = {
   active: 'resume',
   paused: 'pause',
@@ -352,40 +350,15 @@ registerMirrorHandler('sub-create', async (localId): Promise<MirrorOutcome> => {
 
 // LEGACY: 'sub-status' and 'sub-edit' ops queued by older builds (which kept
 // the plan list locally and mirrored changes through the queue). This build
-// calls the server directly, so nothing new is ever queued under these kinds;
-// a queued pause from before the update still lands here, read from the old
-// build's local row while it exists. Nothing is written to the device.
-registerMirrorHandler('sub-status', async (localId): Promise<MirrorOutcome> => {
-  const { row } = await currentRow(localId);
-  if (!row || !row.backend_id) return 'done';
-  if (row.status === 'active') {
-    // Resume re-anchors the schedule first (harmless when unchanged).
-    await api.patch(`/subscriptions/${row.backend_id}`, { start_date: row.start_date });
-  }
-  await api.post(`/subscriptions/${row.backend_id}/${STATUS_ACTION[row.status]}`);
-  invalidateSubscriptionCache();
-  return 'done';
-});
+// calls the server directly, so nothing new is ever queued under these kinds.
+// The queue drains in backend mode only, where the server is the source of
+// truth: an op an old build queued (an auto-resume for a wallet that came
+// back, an edit of a row that build held) would be pushed onto a plan the
+// server has since paused or cancelled. Both are no-ops that drop the queued
+// op. Nothing is written to the device.
+registerMirrorHandler('sub-status', async (): Promise<MirrorOutcome> => 'drop');
 
-registerMirrorHandler('sub-edit', async (localId): Promise<MirrorOutcome> => {
-  const { row } = await currentRow(localId);
-  if (!row || !row.backend_id) return 'done';
-  if (!MIRRORED_FREQUENCIES.includes(row.frequency)) {
-    // Edited onto a cadence the server does not run (one-time/custom): the
-    // twin must STOP BILLING. Leaving it active was a silent double-truth
-    // that kept shipping daily milk.
-    await api.post(`/subscriptions/${row.backend_id}/cancel`);
-    invalidateSubscriptionCache();
-    return 'done';
-  }
-  await api.patch(`/subscriptions/${row.backend_id}`, {
-    qty: row.qty,
-    delivery_slot: row.delivery_slot ?? '',
-    frequency: row.frequency,
-  });
-  invalidateSubscriptionCache();
-  return 'done';
-});
+registerMirrorHandler('sub-edit', async (): Promise<MirrorOutcome> => 'drop');
 
 export async function setSubscriptionStatus(id: string, status: Subscription['status']): Promise<void> {
   const uid = await requireUserId();
