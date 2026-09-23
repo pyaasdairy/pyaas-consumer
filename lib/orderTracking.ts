@@ -171,7 +171,7 @@ async function announce(uid: string, o: Order): Promise<void> {
     // member just placed it and is looking at the confirmation screen; a
     // notification for 'placed' would be noise.
     if (first && (o.status === 'placed' || o.status === 'confirmed')) return;
-    // ...and a finished order we never watched is history, not a delivery.
+    // ...and a finished order this handset never tracked is history, not a delivery.
     if (first && isStaleOnFirstSight(o)) return;
     const n = noticeFor(o);
     if (!n) return;

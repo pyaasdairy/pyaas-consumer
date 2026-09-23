@@ -110,6 +110,10 @@ export async function getLoginPhone(): Promise<string | null> {
 }
 
 let currentUid: string | null = null;
+// Bumped at the start of every sign-in. The detached goodbyes signOut fires
+// (push unbind, token revoke, token wipe) compare against it so a sign-in that
+// lands while they are in flight is never revoked or wiped by the previous one.
+let sessionEpoch = 0;
 const listeners = new Set<() => void>();
 
 export function onSessionChange(cb: () => void): () => void {
@@ -165,6 +169,7 @@ export async function getUserId(): Promise<string | null> {
  *  written BEFORE the emit — the router gate then never even flashes the
  *  complete-profile step on a fresh device. */
 export async function signInWithPhone(phone: string, fullName?: string | null, serverId?: string | null): Promise<void> {
+  sessionEpoch += 1;
   const digits = phone.replace(/\D/g, '').slice(-10);
   // Device-scoped record of the OTP-verified login phone (reviewer gate reads
   // this; it is not reachable from profile-edit).
@@ -302,25 +307,34 @@ export async function signOut(): Promise<void> {
       if (doomed.length) await AsyncStorage.multiRemove(doomed);
     }
   } catch { /* best-effort — the uid pointer is already cleared above */ }
-  // Unbind this device's push token from the account (contract C2) while the
-  // access token is still valid, or a shared phone keeps notifying the
-  // previous member. Best-effort; also re-arms registration for the next
-  // sign-in. Dynamic import: session must not statically pull the OS layer.
-  try {
-    const { unregisterPush } = await import('./notifications');
-    await unregisterPush();
-  } catch { /* best-effort */ }
-  // Also wipe the JWT access/refresh tokens from SecureStore — otherwise they
-  // linger after sign-out and the next account on a shared device inherits the
-  // previous session. Dynamic import avoids a session↔apiClient require cycle.
-  try {
-    const { revokeSession, clearTokens } = await import('./apiClient');
-    // Revoke the refresh token on the server first (POST /auth/logout,
-    // best-effort), then drop both tokens locally.
-    await revokeSession();
-    await clearTokens();
-  } catch { /* best-effort — local session is already cleared above */ }
+  // The local session is gone: tell the UI now. The two network goodbyes
+  // below must not hold the sign-out button (up to two request timeouts on a
+  // bad link), so they run detached after the emit.
   emit();
+  const epoch = sessionEpoch;
+  void (async () => {
+    // Unbind this device's push token from the account (contract C2) while
+    // the access token is still valid, or a shared phone keeps notifying the
+    // previous member. Best-effort; also re-arms registration for the next
+    // sign-in. Dynamic import: session must not statically pull the OS layer.
+    try {
+      const { unregisterPush } = await import('./notifications');
+      if (sessionEpoch === epoch) await unregisterPush();
+    } catch { /* best-effort */ }
+    // Then revoke the refresh token on the server (POST /auth/logout,
+    // best-effort) and drop both tokens from SecureStore, or the next account
+    // on a shared device inherits the previous session. Every step re-checks
+    // the epoch: a sign-in that landed meanwhile owns the stored tokens and
+    // this chain must not revoke or wipe them. Dynamic import avoids a
+    // session<->apiClient require cycle.
+    try {
+      const { revokeSession, clearTokens } = await import('./apiClient');
+      if (sessionEpoch !== epoch) return;
+      await revokeSession();
+      if (sessionEpoch !== epoch) return;
+      await clearTokens();
+    } catch { /* best-effort — local session is already cleared above */ }
+  })();
 }
 
 export async function getProfile(): Promise<Profile | null> {
