@@ -8,7 +8,7 @@
  * is live, swap the local reads/writes for the apiClient seam noted below.
  */
 import { getUserId, requireUserId } from './session';
-import { getSingle, putSingle, dropTable } from './localStore';
+import { getSingle, putSingle } from './localStore';
 import { isBackendConfigured } from './apiClient';
 import { getBalances, debitWallet } from './walletApi';
 
@@ -82,10 +82,13 @@ export async function getVip(): Promise<VipMembership | null> {
   if (!uid) return null;
   if (isBackendConfigured()) {
     // Backend mode: membership is not the phone's to hold (isPlusActive is
-    // false here until the server owns it, and joining is closed). A local
-    // row an older build left is a stale domain fact: dropped, never read.
+    // false here until the server owns it, and joining is closed), so the
+    // local row is not read. It is also not deleted: no GET /membership
+    // exists, so a row an older build wrote is the only evidence anywhere
+    // of a Plus month that build debited from the server wallet, and
+    // sign-out spares it for the same reason (lib/session.ts). Owner
+    // decision: device-local evidence, kept until the server owns it.
     // TODO(api): GET /membership/me when the backend owns the membership.
-    await dropTable('vip', uid).catch(() => undefined);
     return null;
   }
   return getSingle<VipMembership>('vip', uid);
