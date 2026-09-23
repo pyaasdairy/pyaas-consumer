@@ -69,6 +69,7 @@ export default function Autopay() {
     if (!mandate) return;
     setBusy(true);
     try { await cancelAutopay(mandate.id); await load(); }
+    catch (e: any) { setErr(e?.message ?? 'Could not cancel autopay.'); }
     finally { setBusy(false); }
   }
 

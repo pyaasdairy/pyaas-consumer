@@ -724,9 +724,15 @@ export async function approveAutopay(id: string): Promise<AutopayMandate | null>
   return getAutopay();
 }
 
+/**
+ * Cancel the mandate. Backend mode: a failure is thrown, never swallowed.
+ * The server's cancel is idempotent (a cancelled mandate answers 200), so an
+ * error here means the mandate is still live: deleteMyAccount stops before
+ * /me/erasure on it (G3), and the screens show the mandate as it still is.
+ */
 export async function cancelAutopay(id: string): Promise<void> {
   if (isBackendConfigured()) {
-    await cancelMandateOnPsp(id).catch(() => { /* already revoked / offline */ });
+    await cancelMandateOnPsp(id);
     return;
   }
   const uid = await requireUserId();

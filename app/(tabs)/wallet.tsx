@@ -103,6 +103,7 @@ export default function Wallet() {
     if (!autopay) return;
     setBusy(true);
     try { await cancelAutopay(autopay.id); await load(); }
+    catch { /* the mandate is still live; the next read shows it as it is */ }
     finally { setBusy(false); }
   }
 

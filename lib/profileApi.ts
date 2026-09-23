@@ -64,9 +64,7 @@ export async function deleteMyAccount(): Promise<void> {
   // the access token is still valid — a live UPI mandate or a sweeping
   // subscription must never outlive the account. These run BEFORE /me/erasure
   // (the erasure cascade does not itself revoke gateway mandates), so the
-  // ordering here is load-bearing, not best-effort decoration. A cancel that
-  // throws still lets deletion proceed, but it is attempted against a live
-  // session rather than a half-erased one.
+  // ordering here is load-bearing, not best-effort decoration.
   // The mandate READ is not best-effort. In backend mode getAutopay reads
   // GET /mandate/me; if that read fails, deletion STOPS here, before
   // /me/erasure, because the alternative is erasing the account under a
@@ -77,9 +75,17 @@ export async function deleteMyAccount(): Promise<void> {
   } catch {
     throw new Error('Could not check your AutoPay mandate, so nothing was deleted. Check your connection and try again.');
   }
-  try {
-    if (autopay?.id && autopay.status !== 'cancelled') await cancelAutopay(autopay.id);
-  } catch { /* nothing to cancel, or offline */ }
+  // G3: a mandate the server shows as live (pending, active or paused) is
+  // cancelled here, and a cancel that fails STOPS deletion before
+  // /me/erasure with the reason: erasing the account would leave the mandate
+  // charging with nobody to see it. No live mandate, nothing to cancel.
+  if (autopay?.id && autopay.status !== 'cancelled') {
+    try {
+      await cancelAutopay(autopay.id);
+    } catch {
+      throw new Error('Could not cancel your AutoPay mandate, so nothing was deleted. Check your connection and try again, or cancel AutoPay from the wallet first.');
+    }
+  }
   try {
     const subs = await listSubscriptions();
     for (const s of subs) {

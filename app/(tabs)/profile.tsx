@@ -228,7 +228,7 @@ export default function Profile() {
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete', style: 'destructive', onPress: async () => {
                   try { await deleteMyAccount(); }
-                  catch { Alert.alert('Could not delete', `Please try again, or email ${SUPPORT_EMAIL}.`); }
+                  catch (e: any) { Alert.alert('Could not delete', e?.message || `Please try again, or email ${SUPPORT_EMAIL}.`); }
                 } },
               ],
             )}
