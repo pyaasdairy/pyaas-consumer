@@ -124,7 +124,7 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
-// ── Backend mode: the hydrated profile ──────────────────────────────────────
+// -- Backend mode: the hydrated profile ---------------------------------------
 // The server owns the profile; what the app shows in backend mode is this
 // in-memory copy. It is seeded synchronously from the OTP sign-in response
 // (before the emit, so the router gate sees a returning member's name at
