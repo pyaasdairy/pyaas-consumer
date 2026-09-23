@@ -16,6 +16,7 @@ import { minSubscriptionQty } from '../lib/subscriptionFloor';
 import { listSubscriptions, setSubscriptionStatus, updateSubscription, reconcileWithBalance, listVacations, upcomingDeliveries, minWalletToStart, perDeliveryCost, type Subscription, type Frequency } from '../lib/subscriptions';
 import { todayISO, formatWeekday } from '../lib/dates';
 import { useWallet } from '../store/wallet';
+import { isBackendConfigured } from '../lib/apiClient';
 
 const FREQS: { key: Frequency; label: string }[] = [
   { key: 'daily', label: 'Daily' },
@@ -23,6 +24,14 @@ const FREQS: { key: Frequency; label: string }[] = [
   { key: 'weekly', label: 'Weekly' },
   { key: 'one_time', label: 'One time' },
 ];
+
+// The cadences PATCH /subscriptions accepts (subscriptions.go). In backend
+// mode the plan editor offers only these; the others are local mode's.
+const SERVER_FREQS: Frequency[] = ['daily', 'alternate', 'weekly'];
+
+function freqLabel(f: Frequency): string {
+  return FREQS.find((x) => x.key === f)?.label ?? f;
+}
 
 export default function Subscriptions() {
   const insets = useSafeAreaInsets();
@@ -180,7 +189,7 @@ export default function Subscriptions() {
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
                       <TextSemi style={{ fontSize: 14.5 }}>{s.qty} × {p?.name ?? s.product_id}</TextSemi>
-                      <TextBody style={{ fontSize: 12.5, ...tabular }}>{FREQS.find((f) => f.key === s.frequency)?.label} · {rupee(s.unit_price * s.qty)}</TextBody>
+                      <TextBody style={{ fontSize: 12.5, ...tabular }}>{freqLabel(s.frequency)} · {rupee(s.unit_price * s.qty)}</TextBody>
                       <Pill label={s.status === 'active' ? 'ACTIVE' : 'PAUSED'} bg={s.status === 'active' ? colors.blueSoft : colors.cream} color={s.status === 'active' ? colors.blue : colors.inkMute} />
                     </View>
                   </Tap>
@@ -287,8 +296,14 @@ export default function Subscriptions() {
           catch (e: any) { setErr(e?.message ?? 'Could not update the plan.'); }
           finally { setBusy(false); }
         };
+        // Backend mode: only the server's cadences can be chosen, and a
+        // server plan somehow on another cadence is shown, not edited.
+        const backend = isBackendConfigured();
+        const freqChoices = backend ? FREQS.filter((f) => SERVER_FREQS.includes(f.key)) : FREQS;
+        const freqReadOnly = backend && !SERVER_FREQS.includes(d.frequency);
         const editFreq = async (f: Frequency) => {
           if (f === d.frequency) return;
+          if (backend && !SERVER_FREQS.includes(f)) return;
           setBusy(true); setErr('');
           try { await updateSubscription(d.id, { frequency: f }); await load(); setDetailSub({ ...d, frequency: f }); }
           catch (e: any) { setErr(e?.message ?? 'Could not update the plan.'); }
@@ -336,8 +351,13 @@ export default function Subscriptions() {
                   </View>
                   <View style={{ gap: 8 }}>
                     <TextSemi style={{ fontSize: 14 }}>Frequency</TextSemi>
+                    {freqReadOnly ? (
+                      <View style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.cream }}>
+                        <TextMed style={{ fontSize: 12.5 }} color={colors.inkSoft}>{freqLabel(d.frequency)}</TextMed>
+                      </View>
+                    ) : (
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      {FREQS.map((f) => {
+                      {freqChoices.map((f) => {
                         const on = d.frequency === f.key;
                         return (
                           <Tap key={f.key} onPress={() => editFreq(f.key)} style={{ flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: radius.md, borderWidth: 1.5, borderColor: on ? colors.flameDeep : colors.line, backgroundColor: on ? colors.flameSoft : colors.white }}>
@@ -346,6 +366,7 @@ export default function Subscriptions() {
                         );
                       })}
                     </View>
+                    )}
                   </View>
                 </View>
 
