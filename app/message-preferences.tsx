@@ -30,7 +30,9 @@ export default function MessagePreferences() {
   const [busyKey, setBusyKey] = useState<ConsentKey | null>(null);
 
   const current: ConsentChoices = useMemo(
-    () => ({ ...defaultChoices(), privacy: true, terms: true, ...(latest ?? {}) }),
+    // No record (server unknown, or none yet) shows every channel off: the
+    // sign-up default is the form's pre-tick, not a grant the server holds.
+    () => ({ privacy: true, terms: true, marketing: false, whatsapp: false, sms: false, email: false, ...(latest ?? {}) }),
     [latest],
   );
 
