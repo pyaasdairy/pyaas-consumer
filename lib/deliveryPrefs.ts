@@ -27,7 +27,8 @@ const TABLE = 'delivery_prefs';
 // for the session and never written to the device. Keyed by uid so an
 // account switch never shows the previous member's doorstep instructions.
 // The local row exists in backend mode ONLY as the offline outbox: written
-// when PATCH /me fails, replayed by the mirror handler, then deleted.
+// when PATCH /me fails, holding just the keys the member changed, replayed
+// by the mirror handler, then deleted.
 let cached: { uid: string; prefs: DeliveryPrefs } | null = null;
 // Bumped by every write to the copy. A GET that began before the bump
 // returns its answer to its caller but does not keep it: a save landed while
@@ -45,9 +46,24 @@ export function clearDeliveryPrefsCache(): void {
   prefsGen += 1;
 }
 
-/** The request shape PATCH /me carries (field names the backend reads). */
+/** The request shape PATCH /me carries (field names the backend reads).
+ *  Always the whole object: the server replaces its delivery_prefs document
+ *  with what it is sent (service.go updateMe), so a key left out is a key
+ *  reset, not a key kept. */
 export function toWire(p: DeliveryPrefs): { call_before: boolean; ring_bell: boolean; notes: string } {
   return { call_before: p.call_before, ring_bell: p.ring_bell, notes: p.notes ?? '' };
+}
+
+const PREF_KEYS = ['call_before', 'ring_bell', 'notes'] as const;
+
+/** The keys of `prefs` whose value differs from `base`: what the member
+ *  actually changed, and all the outbox carries. */
+function changedKeys(base: DeliveryPrefs, prefs: Partial<DeliveryPrefs>): Partial<DeliveryPrefs> {
+  const out: Record<string, unknown> = {};
+  for (const k of PREF_KEYS) {
+    if (prefs[k] !== undefined && prefs[k] !== base[k]) out[k] = prefs[k];
+  }
+  return out as Partial<DeliveryPrefs>;
 }
 
 /** The standing prefs as GET /me returns them (delivery_prefs.note is the
@@ -73,8 +89,8 @@ async function fetchFromServer(uid: string): Promise<DeliveryPrefs> {
  * The member's standing doorstep preferences. Backend mode reads the
  * session's in-memory copy, fetching GET /me the first time (or when the
  * caller asks for a refresh, as the editing screen does on focus); offline,
- * an outbox row not yet replayed is the member's latest word, then the copy
- * fetched earlier this session, then the defaults.
+ * the copy fetched earlier this session (else the defaults) with the keys of
+ * an outbox row not yet replayed laid over it, the member's latest word.
  */
 export async function getDeliveryPrefs(opts?: { refresh?: boolean }): Promise<DeliveryPrefs> {
   const uid = await getUserId();
@@ -87,10 +103,9 @@ export async function getDeliveryPrefs(opts?: { refresh?: boolean }): Promise<De
   try {
     return await fetchFromServer(uid);
   } catch {
-    const pending = await getSingle<DeliveryPrefs>(TABLE, uid).catch(() => null);
-    if (pending) return pending;
-    if (cached?.uid === uid) return cached.prefs;
-    return { ...DEFAULT_PREFS };
+    const base = cached?.uid === uid ? cached.prefs : { ...DEFAULT_PREFS };
+    const pending = await getSingle<Partial<DeliveryPrefs>>(TABLE, uid).catch(() => null);
+    return pending ? { ...base, ...pending } : base;
   }
 }
 
@@ -102,7 +117,14 @@ export async function saveDeliveryPrefs(prefs: Partial<DeliveryPrefs>): Promise<
     return;
   }
   const current = cached?.uid === uid ? cached.prefs : await getDeliveryPrefs();
-  const next: DeliveryPrefs = { ...current, ...prefs };
+  // Only the keys the member changed travel; an earlier offline edit still
+  // in the outbox rides along. Offline before any read this session the
+  // base is the defaults, so a key the member did not touch is never sent
+  // as an edit and the server's value for it stands.
+  const queued = (await getSingle<Partial<DeliveryPrefs>>(TABLE, uid).catch(() => null)) ?? {};
+  const edit: Partial<DeliveryPrefs> = { ...queued, ...changedKeys(current, prefs) };
+  if (Object.keys(edit).length === 0) return;
+  const next: DeliveryPrefs = { ...current, ...edit };
   // PATCH /me FIRST: the RIDER reads these off the delivery task, so a
   // preference that only lives in this phone is a promise the doorstep never
   // receives (call-before, ring-bell, drop notes). On success nothing is
@@ -113,9 +135,10 @@ export async function saveDeliveryPrefs(prefs: Partial<DeliveryPrefs>): Promise<
     setCached(uid, me && typeof me === 'object' && 'delivery_prefs' in me ? fromServer(me) : next);
     await dropTable(TABLE, uid).catch(() => undefined);
   } catch {
-    // Offline: the outbox row holds the edit until the mirror replays it.
+    // Offline: the outbox row holds the changed keys until the mirror
+    // replays them.
     setCached(uid, next);
-    await putSingle<DeliveryPrefs>(TABLE, uid, next);
+    await putSingle<Partial<DeliveryPrefs>>(TABLE, uid, edit);
     await enqueueMirror('delivery-prefs');
   }
 }
@@ -125,10 +148,15 @@ registerMirrorHandler('delivery-prefs', async (): Promise<MirrorOutcome> => {
   if (!uid) return 'done';
   // Outbox only: no row means the edit already reached the server (a later
   // online save, or an earlier replay), so there is nothing to send.
-  const p = await getSingle<DeliveryPrefs>(TABLE, uid);
+  const p = await getSingle<Partial<DeliveryPrefs>>(TABLE, uid);
   if (!p) return 'done';
-  await api.patch('/me', { delivery_prefs: toWire(p) });
-  setCached(uid, p);
+  // The queued keys go over a fresh read of the server's copy, never over
+  // the defaults: PATCH /me replaces the whole delivery_prefs document, so
+  // a key the member never touched must arrive as the server already holds
+  // it. A failed read is a failed replay; the next drain retries.
+  const next: DeliveryPrefs = { ...fromServer(await api.get<Record<string, unknown>>('/me')), ...p };
+  await api.patch('/me', { delivery_prefs: toWire(next) });
+  setCached(uid, next);
   await dropTable(TABLE, uid);
   return 'done';
 });
