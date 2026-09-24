@@ -40,9 +40,10 @@ export function isInstantOrder(o: Order): boolean {
 }
 
 /**
- * The morning (YYYY-MM-DD, local) an order is FOR. A picked date wins; an
- * instant order is for the day it was placed; an undated morning order rides
- * the next 5-7:30 AM run (the same day if placed before 5 AM).
+ * The morning (YYYY-MM-DD, local) an order is FOR. The server's delivery_date
+ * wins (the real day, after any move past the noon cut-off); an instant order
+ * is for the day it was placed; an undated morning order (an older backend)
+ * rides the next 5-7:30 AM run (the same day if placed before 5 AM).
  */
 export function deliveryDayOf(o: Order): string | null {
   if (o.delivery_date) return o.delivery_date.slice(0, 10);
@@ -50,6 +51,19 @@ export function deliveryDayOf(o: Order): string | null {
   if (Number.isNaN(placed.getTime())) return null;
   if (isInstantOrder(o)) return isoOf(placed);
   return placed.getHours() < 5 ? isoOf(placed) : addDaysISO(isoOf(placed), 1);
+}
+
+/**
+ * The move the server made to a morning order placed after its morning had
+ * closed (12 noon the day before): the day it asked for and the day it is
+ * delivered on, for a screen to say "moved to Fri 26 Sep". Null for an order
+ * that kept its day, an instant order, and an older backend that never moves.
+ */
+export function deliveryMoveOf(o: Order): { requested: string; delivery: string } | null {
+  if (!o.date_moved || !o.requested_date || !o.delivery_date) return null;
+  const requested = o.requested_date.slice(0, 10);
+  const delivery = o.delivery_date.slice(0, 10);
+  return requested === delivery ? null : { requested, delivery };
 }
 
 /**

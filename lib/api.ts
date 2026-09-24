@@ -110,8 +110,14 @@ export type Order = {
   // Server-minted instant ETA (ISO). Snake_case tolerated on the wire.
   etaAt?: string | null;
   eta_at?: string | null;
-  // Picked delivery date (ISO YYYY-MM-DD) for a scheduled morning order.
+  // The morning (ISO YYYY-MM-DD) a morning order is delivered on. On a server
+  // order it is always the real day: a morning already closed at 12 noon the
+  // day before is moved to the first open one (orders.go morningDeliveryDate).
   delivery_date?: string | null;
+  // Server, morning one-off orders only: the morning the order asked for, and
+  // whether it was moved from it (lib/orderTracking deliveryMoveOf).
+  requested_date?: string | null;
+  date_moved?: boolean;
   proof_photo_url?: string | null;
   order_items?: OrderItem[];
   riders?: Rider | null;
