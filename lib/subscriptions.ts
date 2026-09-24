@@ -64,6 +64,13 @@ export function subscriptionDeliversOn(sub: Subscription, iso: string): boolean 
   if (sub.status !== 'active') return false;
   const d = daysBetween(sub.start_date, iso);
   if (d < 0) return false; // before it starts
+  // A server plan's first real morning is the server's next_delivery_date,
+  // which honours the 12-noon cut-off: a plan created, changed or resumed
+  // after noon skips tomorrow, and a day the member cancelled is skipped
+  // although no vacation names it. No day between today and it delivers.
+  // Today is left to the cadence (once the morning route has run, the
+  // server already names a later day).
+  if (sub.backend_id && sub.next_delivery_date && iso > todayISO() && iso < sub.next_delivery_date) return false;
   switch (sub.frequency) {
     case 'daily': return true;
     case 'alternate': return d % 2 === 0;
@@ -156,7 +163,10 @@ export function subscriptionFromRemote(w: Record<string, unknown>): Subscription
     pay_from_wallet: true,
     status: ((w.status as string) || 'active') as Subscription['status'],
     start_date: (w.start_date as string) || todayISO(),
-    next_delivery_date: (w.start_date as string) || null,
+    // The server's own answer when it sends one (the merged backend derives
+    // it on every read); an older backend sends none, and start_date stands.
+    next_delivery_date:
+      (typeof w.next_delivery_date === 'string' && w.next_delivery_date) || (w.start_date as string) || null,
     created_at: (w.created_at as string) || new Date().toISOString(),
     backend_id: sid,
     vacations: ranges
