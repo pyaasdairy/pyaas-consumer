@@ -150,6 +150,32 @@ export function setHydratedProfile(uid: string, profile: Profile): void {
   emit();
 }
 
+// -- Backend mode: the profile photo kept on this phone -----------------------
+// There is no server home for a profile photo yet (see profileApi), so a
+// picked photo stays on the phone that picked it, per account, under this
+// key. The uid in the key lets sign-out and deleteMyAccount erase it with the
+// account's other rows. An avatar_url that is a device path is shown only as
+// this phone's own photo: the same path from GET /me is one only the phone
+// that wrote it can load, never another phone or a reinstall.
+export const LOCAL_AVATAR_KEY = (uid: string): string => `pyaas_avatar_local:${uid}`;
+
+/** A non-empty avatar_url that is not an http(s) URL: a path on one device. */
+export function isDeviceAvatar(v: unknown): v is string {
+  return typeof v === 'string' && v.trim() !== '' && !/^https?:\/\//i.test(v.trim());
+}
+
+/** An older build kept the profile, avatar included, in a local 'profile'
+ *  row, and PATCHed a picked photo's device path to the server as it was.
+ *  Before that row is dropped, a device-path avatar in it becomes this
+ *  phone's own photo, unless the phone already has one, so a phone upgraded
+ *  from that build keeps showing the photo it showed. */
+export async function adoptLegacyAvatar(uid: string, legacy: Partial<Profile> | null): Promise<void> {
+  if (!legacy || !isDeviceAvatar(legacy.avatar_url)) return;
+  try {
+    if (!(await AsyncStorage.getItem(LOCAL_AVATAR_KEY(uid)))) await AsyncStorage.setItem(LOCAL_AVATAR_KEY(uid), legacy.avatar_url);
+  } catch { /* the in-memory copy still shows it this session */ }
+}
+
 /** Load the persisted session on cold start. */
 export async function loadSession(): Promise<Session> {
   currentUid = await AsyncStorage.getItem(UID_KEY);
@@ -427,6 +453,7 @@ export async function getProfile(): Promise<Profile | null> {
     if (legacy.full_name?.trim()) {
       try { await AsyncStorage.setItem(`pyaas_setup_done:${uid}`, '1'); } catch { /* set again from GET /me */ }
     }
+    await adoptLegacyAvatar(uid, legacy);
     await dropTable('profile', uid).catch(() => undefined);
     hydratedProfile = { uid, profile: { ...legacy, ...outbox, id: uid } };
     return hydratedProfile.profile;

@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   requireUserId, getUserId, getProfile, saveProfile, signOut, removeAccountEntry,
   getHydratedProfile, setHydratedProfile, PROFILE_OUTBOX_TABLE, type Profile,
+  LOCAL_AVATAR_KEY, isDeviceAvatar, adoptLegacyAvatar,
 } from './session';
 import { getSingle, putSingle, dropTable } from './localStore';
 import { api, isBackendConfigured } from './apiClient';
@@ -26,15 +27,13 @@ import { removeFreePackClaimsForUser } from './freePack';
  * here per account and laid over the server's profile, and PATCH /me only
  * ever carries an avatar_url that already lives on a server (http/https).
  * A file:// path on the server is one no other phone, and no reinstall, can
- * load. The key carries the uid, so sign-out (session.signOut, backend mode)
- * and deleteMyAccount erase it with the account's other rows.
+ * load, so such a path read from GET /me is dropped (profileFromMe) and only
+ * this phone's own photo is laid back over it. The key carries the uid, so
+ * sign-out (session.signOut, backend mode) and deleteMyAccount erase it with
+ * the account's other rows. LOCAL_AVATAR_KEY, isDeviceAvatar and
+ * adoptLegacyAvatar live in session, which also reads an older build's local
+ * profile row.
  */
-const LOCAL_AVATAR_KEY = (uid: string): string => `pyaas_avatar_local:${uid}`;
-
-/** A non-empty avatar_url that is not an http(s) URL: a path on one device. */
-function isDeviceAvatar(v: unknown): v is string {
-  return typeof v === 'string' && v.trim() !== '' && !/^https?:\/\//i.test(v.trim());
-}
 
 async function getLocalAvatar(uid: string): Promise<string | null> {
   try { return (await AsyncStorage.getItem(LOCAL_AVATAR_KEY(uid))) || null; } catch { return null; }
@@ -179,7 +178,10 @@ export async function getFullProfile(): Promise<FullProfile | null> {
 }
 
 /** The profile as GET /me and PATCH /me return it (the server's field names;
- *  an absent or empty field is null, the server having no value for it). */
+ *  an absent or empty field is null, the server having no value for it). An
+ *  avatar_url that is a device path (an older build PATCHed the picked
+ *  photo's file:// URI) is null too: only the phone that wrote it can load
+ *  it, and adoptServerProfile lays this phone's own photo back over it. */
 export function profileFromMe(me: Record<string, unknown>, uid: string): Profile {
   const str = (k: string): string | null => {
     const v = me[k];
@@ -194,7 +196,7 @@ export function profileFromMe(me: Record<string, unknown>, uid: string): Profile
     alternate_phone: str('alternate_phone'),
     family_member_count: typeof n === 'number' && n > 0 ? n : null,
     milk_preference: str('milk_preference'),
-    avatar_url: str('avatar_url'),
+    avatar_url: isDeviceAvatar(me.avatar_url) ? null : str('avatar_url'),
     referral_code: str('referral_code'),
     delivery_slot: str('delivery_slot'),
   };
@@ -205,9 +207,11 @@ export function profileFromMe(me: Record<string, unknown>, uid: string): Profile
  *  server-known name marks setup done for this account (the cold-start gate,
  *  see session.signInWithPhone), this phone's own photo stays the avatar
  *  (LOCAL_AVATAR_KEY), and an older build's local profile row, now a stale
- *  copy of what was just fetched, is dropped. */
+ *  copy of what was just fetched, is dropped, its device-path photo first
+ *  kept as this phone's own (session.adoptLegacyAvatar). */
 async function adoptServerProfile(uid: string, me: Record<string, unknown>): Promise<void> {
   const outbox = await getSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid).catch(() => null);
+  await adoptLegacyAvatar(uid, await getSingle<Profile>('profile', uid).catch(() => null));
   const profile = await withLocalAvatar(uid, { ...profileFromMe(me, uid), ...(outbox ?? {}), id: uid });
   if (profile.full_name?.trim()) {
     try { await AsyncStorage.setItem(`pyaas_setup_done:${uid}`, '1'); } catch { /* the gate also accepts the name itself */ }
