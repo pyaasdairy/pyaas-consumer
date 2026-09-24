@@ -10,13 +10,96 @@ import { getProduct } from '../constants/products';
 /** Thrown by createSubscription when no exact delivery point is on file. */
 export const NEEDS_EXACT_LOCATION = 'NEEDS_EXACT_LOCATION';
 
-// LOCAL MODE ONLY: the set of plans this phone auto-paused for low balance.
-// Per-user so one account's set never leaks into another account on the same
-// device (and it is removed by deleteMyAccount, which prunes parag:*:<uid>).
-// In backend mode the server owns low balance (see reconcileWithBalance) and
-// the key is deleted.
+// LOCAL MODE: the set of plans this phone auto-paused for low balance (local
+// ids). Per-user so one account's set never leaks into another account on the
+// same device (and it is removed by deleteMyAccount, which prunes
+// parag:*:<uid>). In backend mode the server owns low balance and this app
+// never pauses for it; the key there is what the SHIPPED build (26.07.03)
+// left behind, and carryShippedAutoPauses moves it to the key below.
 function lowbalKey(uid: string): string {
   return `parag:lowbal:${uid}`;
+}
+
+// BACKEND MODE: the server ids of the plans the shipped build paused for low
+// balance, still waiting for the wallet to cover one delivery
+// (resumeCarriedPlans). Empty once every one is resumed or taken over.
+function carriedLowbalKey(uid: string): string {
+  return `parag:lowbal_carried:${uid}`;
+}
+
+/** A stored JSON list of ids; [] when absent or unreadable. A storage
+ *  failure throws, so a caller never mistakes it for an empty set. */
+async function readIdList(key: string): Promise<string[]> {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeIdList(key: string, ids: string[]): Promise<void> {
+  if (ids.length) await AsyncStorage.setItem(key, JSON.stringify(ids));
+  else await AsyncStorage.removeItem(key);
+}
+
+/**
+ * THE UPGRADE FROM THE SHIPPED BUILD (founder rule R3, option A). The build
+ * in members' hands (release/26.07.03) paused a plan through the same POST
+ * /subscriptions/{id}/pause a member's pause sends, whenever the wallet could
+ * not fund one delivery, and resumed it itself once the wallet could. It kept
+ * the LOCAL ids of those plans in parag:lowbal:<uid>, and its local
+ * 'subscriptions' rows map each local id to the server's (backend_id). The
+ * server cannot tell such a pause from the member's own, and this build drops
+ * those rows on its first read (fetchSubscriptions), so without this the
+ * plans stayed paused for good. Before the rows go, the set is carried over
+ * as server ids; resumeCarriedPlans resumes each one once the wallet covers
+ * it. A plan the member paused is not in the set and is never touched.
+ *
+ * A create the shipped build paused while it was still in the outbox (never
+ * on the server) has no server pause to undo: it loses the pause here and
+ * goes up active, and the server's noon lock skips a day the wallet cannot
+ * cover. Throws on a storage failure, so the caller keeps the old rows and
+ * the next read tries again.
+ */
+async function carryShippedAutoPauses(uid: string): Promise<void> {
+  const legacy = lowbalKey(uid);
+  if ((await AsyncStorage.getItem(legacy)) == null) return;
+  const ids = await readIdList(legacy);
+  const rows = await getRows<Subscription>('subscriptions', uid);
+  const carried = await readIdList(carriedLowbalKey(uid));
+  for (const id of ids) {
+    const row = rows.find((s) => s.id === id);
+    if (!row) continue;
+    if (row.backend_id) {
+      if (!carried.includes(row.backend_id)) carried.push(row.backend_id);
+    } else if (row.status === 'paused') {
+      await updateRows<Subscription>('subscriptions', uid, (s) => s.id === id, { status: 'active' });
+    }
+  }
+  await writeIdList(carriedLowbalKey(uid), carried);
+  await AsyncStorage.removeItem(legacy);
+}
+
+/** Whether the shipped build paused this outbox row for low balance (its set
+ *  not carried yet): its create must not carry that pause to the server. */
+async function shippedAutoPaused(uid: string, localId: string): Promise<boolean> {
+  try {
+    return (await readIdList(lowbalKey(uid))).includes(localId);
+  } catch {
+    return false;
+  }
+}
+
+/** The member changed this plan's status themselves: whatever the shipped
+ *  build did to it before, it is theirs now and is never auto-resumed. */
+async function forgetCarried(uid: string, id: string): Promise<void> {
+  try {
+    const carried = await readIdList(carriedLowbalKey(uid));
+    if (carried.includes(id)) await writeIdList(carriedLowbalKey(uid), carried.filter((x) => x !== id));
+  } catch { /* the next reconcile reads the plan's status anyway */ }
 }
 
 export type Frequency = 'daily' | 'alternate' | 'weekly' | 'custom' | 'one_time';
@@ -184,8 +267,11 @@ async function fetchSubscriptions(uid: string): Promise<Subscription[]> {
   if (gen === subsGen) subsCache = { uid, rows };
   // Rows an older build kept as mirrors of server rows (backend_id set) and
   // its local vacations are stale copies of what was just fetched; drop them.
-  // The outbox (rows without backend_id) stays.
-  await deleteRows<Subscription>('subscriptions', uid, (s) => !!s.backend_id).catch(() => undefined);
+  // The outbox (rows without backend_id) stays. The shipped build's
+  // low-balance set is read through those rows, so it is carried first, and
+  // the rows stay until it has been.
+  const carried = await carryShippedAutoPauses(uid).then(() => true, () => false);
+  if (carried) await deleteRows<Subscription>('subscriptions', uid, (s) => !!s.backend_id).catch(() => undefined);
   await dropTable('vacations', uid).catch(() => undefined);
   return rows;
 }
@@ -364,6 +450,9 @@ async function currentRow(id: string): Promise<{ uid: string; row: Subscription 
 registerMirrorHandler('sub-create', async (localId): Promise<MirrorOutcome> => {
   const { uid, row } = await currentRow(localId);
   if (!row || row.backend_id) return 'done';
+  // Read before listVacations: its read carries the shipped build's set over
+  // (carryShippedAutoPauses) and removes the key this looks in.
+  const autoPaused = row.status === 'paused' && (await shippedAutoPaused(uid, localId));
   const standing = (await listVacations().catch(() => [] as Vacation[])).filter((v) => v.subscription_id === null);
   let created: Record<string, unknown>;
   try {
@@ -378,9 +467,10 @@ registerMirrorHandler('sub-create', async (localId): Promise<MirrorOutcome> => {
   invalidateSubscriptionCache();
   // Paused while it waited: the server creates plans active, so the pause is
   // sent onto the fresh twin. Best-effort; a failure leaves it active, which
-  // the next read shows.
+  // the next read shows. A pause the shipped build made for low balance is
+  // not the member's and is not sent: the server owns low balance.
   const sid = created && typeof created.id === 'string' ? created.id : '';
-  if (sid && row.status === 'paused') await api.post(`/subscriptions/${sid}/pause`).catch(() => undefined);
+  if (sid && row.status === 'paused' && !autoPaused) await api.post(`/subscriptions/${sid}/pause`).catch(() => undefined);
   return 'done';
 });
 
@@ -417,6 +507,7 @@ export async function setSubscriptionStatus(id: string, status: Subscription['st
     await api.post(`/subscriptions/${id}/${STATUS_ACTION[status]}`);
   } finally {
     invalidateSubscriptionCache();
+    await forgetCarried(uid, id);
   }
 }
 
@@ -455,6 +546,7 @@ export async function reactivateSubscription(id: string, startDate: string): Pro
     return;
   }
   // The anchor first, then the resume (the server's resume keeps start_date).
+  await forgetCarried(uid, id);
   await api.patch(`/subscriptions/${id}`, { start_date: startDate });
   await api.post(`/subscriptions/${id}/resume`);
   invalidateSubscriptionCache();
@@ -589,23 +681,24 @@ export function canAfford(balance: number, amount: number): boolean {
  * one WE auto-paused once it can be funded again. User-paused subscriptions
  * are never touched.
  *
- * BACKEND MODE: the server owns low balance. Its worker places a day's order
- * only when the wallet covers it (subscriptions.go sweepOneSubscription), the
- * delivery debit refuses at the door, and the CRM's B-01 / B-02 triggers tell
- * the member. A pause from this phone would fight that: a pause the server
- * never asked for, resumed by whichever device reads a higher balance first.
- * Only the reminder remains here: whether a live plan costs more than the
- * wallet holds. Nothing is written; the auto-pause set an older build kept
- * for the account is deleted.
+ * BACKEND MODE: the server owns low balance. Its noon lock locks a day only
+ * when the wallet covered it at 12:00 and skips it otherwise
+ * (subscriptions.go lockConsumerDay), the delivery debit refuses at the door,
+ * and the CRM's B-01 / B-02 triggers tell the member. A pause from this phone
+ * would fight that: a pause the server never asked for, resumed by whichever
+ * device reads a higher balance first. So this never pauses. What remains:
+ * the reminder (a live plan costs more than the wallet holds, or a plan the
+ * shipped build paused still waits for it), and resuming those plans once
+ * the wallet covers them (resumeCarriedPlans).
  */
 export async function reconcileWithBalance(balance: number): Promise<{ lowBalance: boolean; changed: boolean }> {
   const uid = await requireUserId();
   const key = lowbalKey(uid);
   const subs = await listSubscriptions();
   if (isBackendConfigured()) {
-    await AsyncStorage.removeItem(key).catch(() => undefined);
-    const lowBalance = subs.some((s) => s.status === 'active' && balance < perDeliveryCost(s));
-    return { lowBalance, changed: false };
+    const { resumed, waiting } = await resumeCarriedPlans(uid, balance);
+    const lowBalance = waiting > 0 || subs.some((s) => s.status === 'active' && balance < perDeliveryCost(s));
+    return { lowBalance, changed: resumed > 0 };
   }
   let autoPaused: string[] = [];
   try { autoPaused = JSON.parse((await AsyncStorage.getItem(key)) || '[]'); } catch { /* ignore */ }
@@ -623,4 +716,50 @@ export async function reconcileWithBalance(balance: number): Promise<{ lowBalanc
   }
   await AsyncStorage.setItem(key, JSON.stringify([...set]));
   return { lowBalance: set.size > 0, changed };
+}
+
+/**
+ * Backend mode: resume each plan the shipped build paused for low balance
+ * (carryShippedAutoPauses) that is still paused on the server, once `balance`
+ * covers one delivery of it. The server applies the noon rule to a resume:
+ * before 12:00 it delivers from tomorrow, after it from the day after. A plan
+ * the server shows active, cancelled or gone is dropped from the set; one
+ * the wallet cannot cover yet waits for the next reconcile (the Subscriptions
+ * screen, a recharge). Reads the server fresh while anything waits, so a plan
+ * changed on another phone is judged as it is now. Error-soft: a refused
+ * resume (the plan is no longer paused) drops it, a failed one waits.
+ */
+async function resumeCarriedPlans(uid: string, balance: number): Promise<{ resumed: number; waiting: number }> {
+  let carried: string[];
+  try {
+    carried = await readIdList(carriedLowbalKey(uid));
+  } catch {
+    return { resumed: 0, waiting: 0 };
+  }
+  if (carried.length === 0) return { resumed: 0, waiting: 0 };
+  let subs: Subscription[];
+  try {
+    subs = await listSubscriptions({ refresh: true });
+  } catch {
+    return { resumed: 0, waiting: carried.length };
+  }
+  const keep: string[] = [];
+  let resumed = 0;
+  for (const sid of carried) {
+    const s = subs.find((x) => x.backend_id === sid);
+    if (!s || s.status !== 'paused') continue;
+    if (balance < perDeliveryCost(s)) {
+      keep.push(sid);
+      continue;
+    }
+    try {
+      await api.post(`/subscriptions/${sid}/resume`);
+      resumed += 1;
+    } catch (e) {
+      if (mirrorOutcomeFor(e) !== 'drop') keep.push(sid);
+    }
+  }
+  if (resumed > 0) invalidateSubscriptionCache();
+  await writeIdList(carriedLowbalKey(uid), keep).catch(() => undefined);
+  return { resumed, waiting: keep.length };
 }
