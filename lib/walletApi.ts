@@ -242,7 +242,9 @@ function mapServerTxn(t: ServerTxn): WalletLedgerRow {
     closing_balance: availableAfter,
     ref_id: t.ref_id ?? null,
     ref_type: refType,
-    status: 'success',
+    // A rider's undo marks the delivery DEBIT REVERSED and books a REFUND
+    // beside it; the reversed row is history, not spend.
+    status: t.status === 'REVERSED' ? 'reversed' : 'success',
     source: 'server',
     remark: t.remark ?? null,
     created_at: t.created_at,
