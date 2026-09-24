@@ -7,7 +7,6 @@ import {
   createMandate,
   approveMandate as approveMandateOnPsp,
   cancelMandate as cancelMandateOnPsp,
-  executeMandate,
   type UpiMandate,
 } from './autopay';
 import { getAutoTopup, hydrateAutoTopup, setAutoTopup } from './autoTopup';
@@ -741,22 +740,19 @@ export async function cancelAutopay(id: string): Promise<void> {
 }
 
 /**
- * Cover a shortfall by executing the AutoPay mandate. Used by the
- * delivered-order settlement sweep so a delivery is never left unpaid when
- * the member has AutoPay on. Round up to the next Rs100 (min Rs100) within
- * the mandate cap. Backend mode only: the execution is keyed by `ref` on the
- * backend and the SERVER credits the wallet exactly once per execution id,
- * so retries can never double-credit or double-debit. Nothing is written to
- * the on-device ledger (that copy is never read in backend mode, and a local
- * credit next to the server wallet was invisible money).
- * Returns true if the wallet now covers the shortfall.
+ * Cover a wallet shortfall through AutoPay. NOTHING CAN DO THAT YET, so this
+ * always answers false (the wallet does not cover it).
+ *
+ * POST /mandate/{id}/execute is not a top-up. The backend ignores the body
+ * (amount, ref, purpose) and DEBITS the mandate's own amount from the wallet,
+ * once per mandate and IST day under ref mandate:<id>:<day> ("subscription
+ * auto-renewal"); on a short wallet it announces a failed payment (CRM B-03).
+ * It is also dev-only (403 in production). Calling it to "cover" a short
+ * wallet therefore took more money out, or told the member a payment failed,
+ * and the delivery stayed unpaid. AutoPay as a gateway-funded top-up is the
+ * founder's call (mandate_worker.go); until the server has one, this seam
+ * sends nothing. Local mode never had a mandate to execute.
  */
-export async function autoSettleTopUp(shortfall: number, ref: string): Promise<boolean> {
-  if (!isBackendConfigured() || shortfall <= 0) return false;
-  const m = await currentMandate().catch(() => null);
-  if (!m || m.state !== 'ACTIVE') return false;
-  const amount = Math.min(Math.max(Math.ceil(shortfall / 100) * 100, 100), m.max_amount);
-  if (amount < shortfall) return false; // cap too low for this shortfall
-  await executeMandate(m.id, amount, ref, 'wallet_topup');
-  return true;
+export async function autoSettleTopUp(_shortfall: number, _ref: string): Promise<boolean> {
+  return false;
 }

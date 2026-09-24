@@ -166,10 +166,13 @@ export async function cancelMandate(id: string): Promise<UpiMandate> {
 }
 
 /**
- * Execute one day's debit under the mandate (dev-gated on the backend; the daily
- * charge is normally driven by the backend scheduler). Idempotent by `ref` — the
- * same ref never debits twice. The backend returns the wallet view; we synthesise
- * a minimal execution record for the UI's optimistic history.
+ * Run one day's mandate charge (dev-gated on the backend: 403 in production,
+ * where the backend scheduler drives the daily charge). It is a DEBIT, never a
+ * top-up: the backend ignores the body (amount, ref, purpose) and takes the
+ * mandate's own amount from the wallet, once per mandate and IST day (ref
+ * mandate:<id>:<day>); a short wallet is refused and announced as a failed
+ * payment (CRM B-03). The backend returns the wallet view; we synthesise a
+ * minimal execution record for the UI's optimistic history.
  */
 export async function executeMandate(id: string, amount: number, ref: string, purpose = 'wallet_topup'): Promise<MandateExecution> {
   await api.post(`/mandate/${id}/execute`, { amount, ref, purpose });
