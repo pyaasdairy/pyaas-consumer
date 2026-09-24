@@ -2,7 +2,7 @@ import type { CartLine } from '../store/cart';
 import { cartTotals } from './pricing';
 import { requireUserId, getUserId, getProfile } from './session';
 import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore';
-import { debitWallet, autoSettleTopUp, refundToWallet } from './walletApi';
+import { debitWallet, refundToWallet } from './walletApi';
 import { isPlusActive, memberLinePrice } from './vip';
 import { getProduct } from '../constants/products';
 import { api, isBackendConfigured, HttpError } from './apiClient';
@@ -621,9 +621,8 @@ export async function placeOrder(params: {
 
 /**
  * The order list, READ ONLY. The live tracker polls this every 15 seconds
- * while Home is on screen; a poll is a read, so unlike listOrders it never
- * runs the wallet settle sweep (which POSTs /wallet/debit per delivered row).
- * Same rows, same local fallback, no side effects.
+ * while Home is on screen. Same rows and local fallback as listOrders, no
+ * side effects.
  */
 export async function fetchOrders(): Promise<Order[]> {
   const uid = await requireUserId();
@@ -637,77 +636,28 @@ export async function fetchOrders(): Promise<Order[]> {
 export async function listOrders(): Promise<Order[]> {
   const uid = await requireUserId();
   if (isBackendConfigured()) {
-    const orders = await api.get<Order[]>(`/orders?user_id=${encodeURIComponent(uid)}`);
-    // Reconcile prepaid wallet against delivered orders here too — not only on the
-    // tracking screen — so an order the customer never re-opens is still charged.
-    // debitWallet is idempotent by 'delivery:<orderId>', so this never double-charges.
-    await settleDeliveredOrders(orders);
-    return orders;
+    // A read: the server settles each delivery itself (settleDeliveredOrders).
+    return api.get<Order[]>(`/orders?user_id=${encodeURIComponent(uid)}`);
   }
   const rows = await getRows<Order>('orders', uid);
   return rows.sort((a, b) => b.placed_at.localeCompare(a.placed_at));
 }
 
 /**
- * Charge the prepaid wallet for any backend order that has been delivered and is
- * not COD. Idempotent (debitWallet keys on 'delivery:<orderId>'). If the wallet
- * is short and the member has an ACTIVE Paytm AutoPay mandate, the shortfall is
- * covered by executing the mandate (idempotent by order id end to end) and the
- * debit retried — so with AutoPay on, delivered milk is always paid for.
- * Returns the ids that still could not be settled (for callers that want to nudge).
+ * RETIRED: the app no longer settles delivered orders. Money moves only at
+ * delivery, on the server: deliverDelivery debits delivery:<order_id> before
+ * it marks the task delivered (a zero row on a free day) and refuses the
+ * delivery when the wallet cannot pay, so a delivered prepaid order is never
+ * left unpaid. This sweep POSTed /wallet/debit on the same ref with the app's
+ * sticker total, one call per delivered row, before the order list returned.
+ * At best that was a no-op. After a rider's undo had freed the ref, it
+ * charged the member for milk that went back. When the wallet was short, it
+ * ran the AutoPay mandate, which debits rather than tops up
+ * (autoSettleTopUp). Kept as a no-op so an older caller still compiles;
+ * nothing is left unsettled on the app's side.
  */
-/** How long the rider may undo a completed delivery (rider_ops_tasks.go). */
-const RIDER_UNDO_WINDOW_MS = 15 * 60 * 1000;
-/** Plus a margin, so a stale list or a slow clock cannot land inside it. */
-const SETTLE_AFTER_MS = RIDER_UNDO_WINDOW_MS + 5 * 60 * 1000;
-
-export async function settleDeliveredOrders(orders: Order[]): Promise<string[]> {
-  if (!isBackendConfigured()) return [];
-  const unsettled: string[] = [];
-  const now = Date.now();
-  for (const o of orders) {
-    if (o.status !== 'delivered' || o.payment_method === 'cod') continue;
-    // NEVER settle inside the rider's undo window.
-    //
-    // An undo deliberately FREES the wallet charge so a genuine re-delivery can
-    // bill again. This sweep — working from a list up to 15 seconds stale —
-    // could take that freed slot and charge the member for milk that went back
-    // to the store, at the app's own sticker total; on a free Welcome Litre
-    // pack the row is not marked trial_free, so the guard below missed it too.
-    // Live tracking polls four times a minute now, so what once needed an open
-    // screen at exactly the wrong moment became routine.
-    //
-    // The server already settles at delivery (deliverDelivery debits before it
-    // flips the status), which leaves this sweep as a safety net for orders the
-    // server somehow left unpaid — and a net has no business firing while the
-    // rider can still undo.
-    // No delivered_at means we cannot tell whether the undo window has closed,
-    // so we WAIT rather than charge. (`if (at && …)` skipped the guard exactly
-    // when the timestamp was missing — the dev advance route sets none, and
-    // rows delivered before this field shipped have none either.) The server
-    // settles at delivery anyway; this sweep only ever catches what it missed.
-    const at = Date.parse(String((o as { delivered_at?: string }).delivered_at ?? '')) || 0;
-    if (!at || now - at < SETTLE_AFTER_MS) continue;
-    // Trial FREE days are FREE: the order shipped with trial_free (total 0 on
-    // rows this app placed), and the server settles its own ledger with a ₹0
-    // gate row. Debiting here would back-charge the exact days the home banner
-    // gives away — the defect that got the app removed once. Skip, always.
-    if (o.trial_free) continue;
-    if (!(o.total > 0)) continue; // nothing owed — never issue a ₹0/negative debit
-    try {
-      await debitWallet(o.total, 'delivery', o.id);
-    } catch {
-      // Insufficient balance → AutoPay: execute the mandate for the shortfall
-      // (keyed on the order id so a retried sweep can never double-charge),
-      // then settle the delivery.
-      const covered = await autoSettleTopUp(o.total, `order:${o.id}`).catch(() => false);
-      if (covered) {
-        try { await debitWallet(o.total, 'delivery', o.id); continue; } catch { /* still short */ }
-      }
-      unsettled.push(o.id); // retried on next load / manual top-up
-    }
-  }
-  return unsettled;
+export async function settleDeliveredOrders(_orders: Order[]): Promise<string[]> {
+  return [];
 }
 
 export async function getOrder(id: string): Promise<Order | null> {

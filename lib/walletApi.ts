@@ -445,6 +445,14 @@ export async function debitWallet(amount: number, ref?: string, remark?: string)
   // Backend mode: the server debits promo-first, idempotent by ref, and fails
   // closed on insufficient funds (throws so callers can nudge a top-up).
   if (isBackendConfigured()) {
+    // A DELIVERY is settled by the server alone, at the door: deliverDelivery
+    // debits delivery:<order_id> before it marks the task delivered (a zero
+    // row on a free day) and refuses the delivery when the wallet cannot pay.
+    // The app posting the same ref again was a no-op at best. At worst, a
+    // rider's 15-minute undo had freed the ref, and the app then charged the
+    // sticker total for milk that went back (on a free day too). So nothing
+    // is sent; the caller gets the balance.
+    if (ref === 'delivery') return (await getBalances()).available;
     if (amt <= 0) return (await getBalances()).available;
     const w = await api.post<ServerWallet>('/wallet/debit', { amount: amt, ref: refId, remark: remark ?? refType });
     return money(w.available);
