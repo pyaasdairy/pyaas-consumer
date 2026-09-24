@@ -13,14 +13,53 @@ import { listSubscriptions, setSubscriptionStatus } from './subscriptions';
 import { removeFreePackClaimsForUser } from './freePack';
 
 /**
- * Extended profile + avatar. Runs against the on-device store; when parag-api is
- * live these map to GET/PATCH /users/me and an S3-backed avatar upload (the
- * bucket below matches infra/aws/terraform, prefix avatars/<uid>). In offline
- * mode the picked photo's local URI is stored directly as the avatar.
+ * Extended profile + avatar. In backend mode the profile is GET/PATCH /me; in
+ * offline mode it is the on-device store and the picked photo's local URI is
+ * stored directly as the avatar.
  */
 
-// Public S3 prefix for avatars once the backend is live (see parag-api S3 config).
-const AVATAR_PREFIX = 'avatars';
+/**
+ * The avatar in backend mode. The consumer presign (POST /uploads/presign)
+ * mints only complaint_photo and door_photo uploads, and GET /me hands
+ * avatar_url back as stored, so there is no server home for a profile photo
+ * yet. A picked photo therefore stays on this phone: its local URI is kept
+ * here per account and laid over the server's profile, and PATCH /me only
+ * ever carries an avatar_url that already lives on a server (http/https).
+ * A file:// path on the server is one no other phone, and no reinstall, can
+ * load. The key carries the uid, so sign-out (session.signOut, backend mode)
+ * and deleteMyAccount erase it with the account's other rows.
+ */
+const LOCAL_AVATAR_KEY = (uid: string): string => `pyaas_avatar_local:${uid}`;
+
+/** A non-empty avatar_url that is not an http(s) URL: a path on one device. */
+function isDeviceAvatar(v: unknown): v is string {
+  return typeof v === 'string' && v.trim() !== '' && !/^https?:\/\//i.test(v.trim());
+}
+
+async function getLocalAvatar(uid: string): Promise<string | null> {
+  try { return (await AsyncStorage.getItem(LOCAL_AVATAR_KEY(uid))) || null; } catch { return null; }
+}
+
+async function setLocalAvatar(uid: string, uri: string | null): Promise<void> {
+  try {
+    if (uri) await AsyncStorage.setItem(LOCAL_AVATAR_KEY(uid), uri);
+    else await AsyncStorage.removeItem(LOCAL_AVATAR_KEY(uid));
+  } catch { /* the in-memory profile still shows it this session */ }
+}
+
+/** What of a profile edit may reach PATCH /me: a device-path avatar_url is
+ *  dropped (an older build's outbox row can still carry one). */
+function forServer(body: Partial<Profile>): Partial<Profile> {
+  if (!isDeviceAvatar(body.avatar_url)) return body;
+  const { avatar_url: _onDevice, ...rest } = body;
+  return rest;
+}
+
+/** The profile with this phone's own photo, when it has one, as the avatar. */
+async function withLocalAvatar(uid: string, profile: Profile): Promise<Profile> {
+  const local = await getLocalAvatar(uid);
+  return local ? { ...profile, avatar_url: local } : profile;
+}
 
 export type FullProfile = {
   id: string;
@@ -164,11 +203,12 @@ export function profileFromMe(me: Record<string, unknown>, uid: string): Profile
 /** The server's answer becomes the in-memory profile. An edit still waiting in
  *  the outbox is laid over it (newer than what the server holds), a
  *  server-known name marks setup done for this account (the cold-start gate,
- *  see session.signInWithPhone), and an older build's local profile row, now
- *  a stale copy of what was just fetched, is dropped. */
+ *  see session.signInWithPhone), this phone's own photo stays the avatar
+ *  (LOCAL_AVATAR_KEY), and an older build's local profile row, now a stale
+ *  copy of what was just fetched, is dropped. */
 async function adoptServerProfile(uid: string, me: Record<string, unknown>): Promise<void> {
   const outbox = await getSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid).catch(() => null);
-  const profile: Profile = { ...profileFromMe(me, uid), ...(outbox ?? {}), id: uid };
+  const profile = await withLocalAvatar(uid, { ...profileFromMe(me, uid), ...(outbox ?? {}), id: uid });
   if (profile.full_name?.trim()) {
     try { await AsyncStorage.setItem(`pyaas_setup_done:${uid}`, '1'); } catch { /* the gate also accepts the name itself */ }
   }
@@ -208,10 +248,23 @@ export async function updateProfile(patch: Partial<Omit<FullProfile, 'id' | 'ref
   // anything written to the device: the merged edit goes to the outbox,
   // shows at once from memory, and the 'profile' mirror handler below
   // replays it. A permanent rejection is surfaced, not queued.
+  // An avatar named in this edit is the member's photo from now on: a device
+  // path stays on this phone and is never sent (LOCAL_AVATAR_KEY); any other
+  // value is sent and replaces the phone's own photo.
   const uid = await requireUserId();
+  const edit = patch as Partial<Profile>;
+  if (edit.avatar_url !== undefined) await setLocalAvatar(uid, isDeviceAvatar(edit.avatar_url) ? edit.avatar_url : null);
   const queued = await getSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid).catch(() => null);
-  const body: Partial<Profile> = { ...(queued ?? {}), ...(patch as Partial<Profile>) };
-  const shown = (): Profile => ({ ...(getHydratedProfile(uid) ?? { id: uid, full_name: null, phone: null }), ...body });
+  const body = forServer({ ...(queued ?? {}), ...edit });
+  const localAvatar = await getLocalAvatar(uid);
+  const overlay = (p: Profile): Profile => ({ ...p, ...body, ...(localAvatar ? { avatar_url: localAvatar } : {}) });
+  const shown = (): Profile => overlay(getHydratedProfile(uid) ?? { id: uid, full_name: null, phone: null });
+  // Nothing left for the server (the edit was only a photo kept on this
+  // phone): the profile shown so far, with the new photo, and no request.
+  if (Object.keys(body).length === 0 && isDeviceAvatar(edit.avatar_url)) {
+    setHydratedProfile(uid, overlay((await getProfile()) ?? { id: uid, full_name: null, phone: null }));
+    return;
+  }
   try {
     const me = await api.patch<Record<string, unknown>>('/me', body);
     await dropTable(PROFILE_OUTBOX_TABLE, uid).catch(() => undefined);
@@ -226,15 +279,21 @@ export async function updateProfile(patch: Partial<Omit<FullProfile, 'id' | 'ref
 }
 
 // The outbox replay: the queued edit reaches PATCH /me and the row is deleted;
-// no row means it already landed (a later online save carried it).
+// no row means it already landed (a later online save carried it). A
+// device-path avatar an older build queued is never sent (LOCAL_AVATAR_KEY).
 registerMirrorHandler('profile', async (): Promise<MirrorOutcome> => {
   const uid = await getUserId();
   if (!uid) return 'done';
   const queued = await getSingle<Partial<Profile>>(PROFILE_OUTBOX_TABLE, uid);
   if (!queued) return 'done';
+  const body = forServer(queued);
+  if (Object.keys(body).length === 0) {
+    await dropTable(PROFILE_OUTBOX_TABLE, uid);
+    return 'done';
+  }
   let me: Record<string, unknown>;
   try {
-    me = await api.patch<Record<string, unknown>>('/me', queued);
+    me = await api.patch<Record<string, unknown>>('/me', body);
   } catch (e) {
     const outcome = mirrorOutcomeFor(e);
     // A permanent rejection must not leave the edit shown as pending forever.
@@ -247,10 +306,12 @@ registerMirrorHandler('profile', async (): Promise<MirrorOutcome> => {
 });
 
 /**
- * Let the user pick a photo and set it as their avatar. Returns the new avatar
- * URL, or null if they cancelled. In offline mode the photo's local URI is used
- * directly; with the backend live, upload the bytes to S3 under
- * `${AVATAR_PREFIX}/<uid>` and store the returned public URL.
+ * Let the user pick a photo and set it as their avatar. Returns the picked
+ * photo's URI for the screen to preview, or null if they cancelled. In offline
+ * mode the local URI is stored as the avatar. In backend mode there is no
+ * avatar upload kind on the server yet (see LOCAL_AVATAR_KEY), so the photo is
+ * kept on this phone for this account and nothing is sent: updateProfile never
+ * lets a device path reach PATCH /me.
  */
 export async function pickAndUploadAvatar(): Promise<string | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
