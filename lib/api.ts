@@ -436,6 +436,15 @@ export async function deleteAddress(id: string): Promise<void> {
   await deleteRows<Address>('addresses', uid, (r) => r.id === id);
 }
 // ── Orders ───────────────────────────────────────────────────────────────────
+
+/** The first morning (YYYY-MM-DD) a refused morning order can still reach:
+ *  the server sends it with 422 CUTOFF_PASSED once tomorrow's route has
+ *  locked at 12 noon IST. Null for any other error. */
+export function nextDeliveryDateOf(e: unknown): string | null {
+  const d = e instanceof HttpError ? e.details?.next_delivery_date : undefined;
+  return typeof d === 'string' && d ? d : null;
+}
+
 export async function placeOrder(params: {
   lines: CartLine[];
   address: Address;

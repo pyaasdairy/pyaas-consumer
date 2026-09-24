@@ -54,12 +54,18 @@ export class HttpError extends Error {
   /** The backend's machine code (e.g. ADDRESS_REQUIRED, NOT_ELIGIBLE) — the
    *  screens route on this, never on parsing the human message. */
   code?: string;
-  constructor(status: number, message: string, path?: string, code?: string) {
+  /** The whole error body the backend sent. Some codes carry a field beside
+   *  the message for the app to act on: next_delivery_date (YYYY-MM-DD) on
+   *  CUTOFF_PASSED, the first morning still open to a one-off order, and
+   *  shortfall (rupees) on WALLET_SHORT. Absent when the body was not JSON. */
+  details?: Record<string, unknown>;
+  constructor(status: number, message: string, path?: string, code?: string, details?: Record<string, unknown>) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
     this.path = path;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -233,10 +239,12 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
     let code: string | undefined;
+    let details: Record<string, unknown> | undefined;
     try {
       const err = await res.json();
       message = err?.message ?? err?.error?.message ?? message;
       code = err?.code ?? err?.error?.code;
+      if (err && typeof err === 'object' && !Array.isArray(err)) details = err as Record<string, unknown>;
     } catch {
       /* keep default */
     }
@@ -252,7 +260,7 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
         ? 'Session expired, please sign in again.'
         : 'Could not verify your session. Check your connection and try again.';
     }
-    throw new HttpError(res.status, message, path, code);
+    throw new HttpError(res.status, message, path, code, details);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

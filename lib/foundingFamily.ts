@@ -109,12 +109,16 @@ export class FoundingFamilyError extends Error {
 
 function toFfError(e: unknown): FoundingFamilyError {
   if (e instanceof HttpError) {
-    // HttpError carries the backend's machine code; the shortfall, when the
-    // server sends one, is read from the message ("…short by 42") as a
-    // fallback until the error body exposes it as a field.
+    // HttpError carries the backend's machine code; the shortfall is the
+    // body's own `shortfall` field (rupees, sent with WALLET_SHORT). The
+    // message ("…short by 42") is read only when a backend sends no field.
     const code = e.code ?? (e.status === 404 ? 'NOT_AVAILABLE' : 'FAILED');
+    const sent = e.details?.shortfall;
     const m = /short(?:fall)?\D*(\d+)/i.exec(e.message);
-    const body = { message: e.message, shortfall: m ? Number(m[1]) : undefined };
+    const body = {
+      message: e.message,
+      shortfall: typeof sent === 'number' && sent > 0 ? sent : m ? Number(m[1]) : undefined,
+    };
     const msg =
       code === 'WALLET_SHORT' ? 'Your wallet needs a little more to pay ₹99.'
       : code === 'FARM_UNLOCKED' ? 'This farm has already unlocked, so claims are closed. Pick another farm.'
