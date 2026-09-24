@@ -116,6 +116,11 @@ export type Subscription = {
   status: 'active' | 'paused' | 'cancelled';
   start_date: string;
   next_delivery_date: string | null;
+  /** True when next_delivery_date is the server's own answer (GET
+   *  /subscriptions derives it on every read, noon lock included); false or
+   *  absent when it is the start_date stand-in (an older backend, or a row
+   *  that is not on the server yet). */
+  next_delivery_from_server?: boolean;
   created_at?: string;
   /** Server-side twin id ("sub_…") once mirrored to the backend. A mirrored
    *  subscription's daily order is created by the BACKEND worker (store manager
@@ -140,10 +145,20 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((parseISO(toIso).getTime() - parseISO(fromIso).getTime()) / 86400000);
 }
 
+/** Whether the server named `iso` as this plan's next delivery. The server
+ *  names a morning already locked at 12 noon the day before even for a plan
+ *  paused, or put on holiday, after the lock: that morning is still delivered
+ *  and billed. */
+function serverNamesDay(sub: Subscription, iso: string): boolean {
+  return !!sub.backend_id && sub.next_delivery_from_server === true && sub.next_delivery_date === iso;
+}
+
 /** Whether an active subscription actually delivers on a given ISO date, honouring
  *  its frequency. This is what powers the real per-day delivery counts (so the
- *  home strip never shows a fabricated lump sum of every subscription at once). */
+ *  home strip never shows a fabricated lump sum of every subscription at once).
+ *  A paused plan delivers only the locked morning the server names for it. */
 export function subscriptionDeliversOn(sub: Subscription, iso: string): boolean {
+  if (serverNamesDay(sub, iso)) return true;
   if (sub.status !== 'active') return false;
   const d = daysBetween(sub.start_date, iso);
   if (d < 0) return false; // before it starts
@@ -176,8 +191,11 @@ export function deliveriesForDay(subs: Subscription[], iso: string): { count: nu
  * AND the date is within [start, end] AND is not inside any pause range AND is
  * not skipped. Pauses and skips both come from the vacations list (a skip is a
  * one-day vacation, start == end). Dates are YYYY-MM-DD so string compare works.
+ * The morning the server names is due whatever a holiday set after its noon
+ * lock says: the server delivers it.
  */
 export function subscriptionDueOn(sub: Subscription, iso: string, vacations: Vacation[] = []): boolean {
+  if (serverNamesDay(sub, iso)) return true;
   if (!subscriptionDeliversOn(sub, iso)) return false;
   return !vacations.some(
     (v) => (v.subscription_id === null || v.subscription_id === sub.id) && iso >= v.start_date && iso <= v.end_date,
@@ -235,6 +253,7 @@ export function subscriptionFromRemote(w: Record<string, unknown>): Subscription
   const sid = typeof w.id === 'string' ? w.id : '';
   if (!sid) return null;
   const ranges = Array.isArray(w.vacations) ? (w.vacations as { start?: unknown; end?: unknown }[]) : [];
+  const named = typeof w.next_delivery_date === 'string' ? w.next_delivery_date : '';
   return {
     id: sid,
     product_id: (w.product_id as string) || '',
@@ -248,8 +267,10 @@ export function subscriptionFromRemote(w: Record<string, unknown>): Subscription
     start_date: (w.start_date as string) || todayISO(),
     // The server's own answer when it sends one (the merged backend derives
     // it on every read); an older backend sends none, and start_date stands.
-    next_delivery_date:
-      (typeof w.next_delivery_date === 'string' && w.next_delivery_date) || (w.start_date as string) || null,
+    // A plan with no day in the next three weeks (paused before the lock, a
+    // long holiday) gets none either.
+    next_delivery_date: named || (w.start_date as string) || null,
+    next_delivery_from_server: named !== '',
     created_at: (w.created_at as string) || new Date().toISOString(),
     backend_id: sid,
     vacations: ranges
