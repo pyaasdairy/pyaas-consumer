@@ -4,6 +4,7 @@ import { getUserId } from './session';
 import { DEFAULT_REGION } from './location';
 import { currentUserLoc, CITIES } from './userLocation';
 import { isPlayTesterSession } from './testAccess';
+import { recordInstantAnswer } from './instantHours';
 import type { Address } from './api';
 
 /**
@@ -35,6 +36,12 @@ export type Serviceability = {
   instantClosed: boolean;
   /** Human "resumes …" note (IST, backend-computed), e.g. "tomorrow at 7:00 AM". */
   instantResumesLabel: string | null;
+  /** RFC3339 moment instant resumes (backend-computed); absent for a pause. */
+  instantResumesAt?: string | null;
+  /** True only when the backend itself answered. A local verdict (no backend,
+   *  the Play reviewer, a city pick) leaves it unset, so lib/instantHours falls
+   *  back to its floor. */
+  fromServer?: boolean;
   /** Natural "why we don't serve here yet" line for the Coming-Soon screen. */
   reason: string | null;
   /** Distance (km) to the nearest store — shown on the Coming-Soon screen. */
@@ -50,7 +57,7 @@ type RawServiceability = {
   instant?: boolean; instant_available?: boolean;
   storeName?: string | null; store_name?: string | null;
   monsoonEnabled?: boolean; monsoonRupees?: number;
-  instantClosed?: boolean; instantResumesLabel?: string | null;
+  instantClosed?: boolean; instantResumesLabel?: string | null; instantResumesAt?: string | null;
   reason?: string | null; distanceKm?: number | null;
 };
 
@@ -70,6 +77,8 @@ function normalize(raw: RawServiceability | null | undefined): Serviceability {
     monsoonRupees: r.monsoonEnabled ? (r.monsoonRupees ?? 0) : 0,
     instantClosed: r.instantClosed ?? false,
     instantResumesLabel: r.instantResumesLabel ?? null,
+    instantResumesAt: r.instantResumesAt ?? null,
+    fromServer: true,
     reason: r.reason ?? null,
     distanceKm: r.distanceKm ?? null,
   };
@@ -299,6 +308,7 @@ export function resetServiceability(): void {
   inFlight = null;
   runSeq += 1; // orphan any in-flight run so it can't write post-reset
   snapshot = { serviceable: null, instant: true, monsoonRupees: 0, instantClosed: false };
+  recordInstantAnswer(null);
   useServiceability.setState({
     loading: false,
     serviceable: null,
@@ -354,6 +364,12 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
         if (!fresh()) return;
         lastSignature = point.signature;
         snapshot = { serviceable: s.serviceable, instant: s.instant, monsoonRupees: s.monsoonRupees, instantClosed: s.instantClosed };
+        // The store manager's instant hours, as the backend answered them: the
+        // Home toggle follows these, not the client floor. A local verdict is
+        // no answer. Recorded BEFORE set() so the re-render it causes sees it.
+        recordInstantAnswer(s.fromServer
+          ? { instant: s.instant, instantClosed: s.instantClosed, resumesLabel: s.instantResumesLabel, resumesAt: s.instantResumesAt ?? null }
+          : null);
         set({
           loading: false,
           serviceable: s.serviceable,
@@ -373,6 +389,8 @@ export const useServiceability = create<ServiceabilityState>((set, get) => ({
         // serviceable, and DON'T cache the signature so the next check retries.
         lastSignature = null;
         snapshot = { serviceable: true, instant: true, monsoonRupees: 0, instantClosed: false };
+        // No answer (offline): the instant floor applies again.
+        recordInstantAnswer(null);
         set({
           loading: false,
           serviceable: true,

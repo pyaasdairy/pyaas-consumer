@@ -42,9 +42,11 @@ export async function scheduleCartReminder(): Promise<void> {
     const items = lines.reduce((n, l) => n + l.qty, 0);
     const total = lines.reduce((n, l) => n + l.price * l.qty, 0);
     const instant = lines.some((l) => l.lane === 'instant');
+    // The store's instant hours at fireAt (the floor when the app has no
+    // answer). A pause names no reopening time, so it says closed.
     const win = instantWindow(fireAt);
     const when = instant
-      ? win.open ? '~20 mins' : `Instant from ${win.opensAtLabel}`
+      ? win.open ? '~20 mins' : win.opensAtLabel ? `Instant from ${win.opensAtLabel}` : 'Instant closed'
       : 'Tomorrow, 5-7:30 AM';
 
     await scheduleAt(fireAt, {
