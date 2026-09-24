@@ -737,10 +737,12 @@ export async function cancelOrder(id: string): Promise<void> {
 }
 
 /** Submit a review for a DELIVERED order (backend) — the review-after-delivery
- *  write. Falls back to a local write when no backend is configured. */
+ *  write. Falls back to a local write when no backend is configured. A
+ *  rejected or unsent review throws (the screen shows the message), so the
+ *  member is never told a rating was saved when it was not. */
 export async function reviewOrder(id: string, rating: number, comment: string): Promise<Order | null> {
   if (isBackendConfigured()) {
-    try { return await api.post<Order>(`/orders/${id}/review`, { rating, comment }); } catch { return null; }
+    return api.post<Order>(`/orders/${id}/review`, { rating, comment });
   }
   // Local fallback: mark the local order reviewed so the UI dedupes.
   const uid = await requireUserId();
