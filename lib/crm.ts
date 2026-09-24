@@ -49,21 +49,42 @@ export type CrmOfferView = {
   };
 };
 
-/** Route a template CTA onto an app screen; unknown/none → no button. */
-export function crmCtaRoute(cta: string | null | undefined): { label: string; href: string } | null {
+/** Route a template CTA (crm_triggers.json `cta`) onto an app screen;
+ *  unknown/none, and the reply-only CTAs (reply_yes, approve_yes_no…), → no
+ *  route. `about` is the row's own order / complaint (backend F19): a track or
+ *  rate CTA opens that order when the row names one. */
+export function crmCtaRoute(
+  cta: string | null | undefined,
+  about?: Pick<CrmInboxItem, 'order_id' | 'complaint_ref'>,
+): { label: string; href: string } | null {
+  const orderHref = about?.order_id ? `/order/${about.order_id}` : null;
   switch (cta) {
     case 'recharge':
     case 'recharge_one_tap':
     case 'recharge_or_resume':
+    case 'retry_payment': // B-03: the recharge did not go through
       return { label: 'Recharge', href: '/recharge' };
     case 'order':
     case 'complete_order':
     case 'open_app_or_order':
     case 'reorder':
+    case 'open_shop': // FF-01: the farm unlocked
       return { label: 'Shop milk', href: '/(tabs)' };
     case 'track':
     case 'track_live':
-      return { label: 'Track order', href: '/(tabs)/orders' };
+      return { label: 'Track order', href: orderHref ?? '/(tabs)/orders' };
+    case 'rate': // D-06 "Tap to rate", W-05; E-06 closes a complaint
+      if (orderHref) return { label: 'Rate', href: orderHref };
+      if (about?.complaint_ref) return { label: 'Complaints', href: '/complaints' };
+      return { label: 'Orders', href: '/(tabs)/orders' };
+    case 'tell_us': // E-01: after a low rating
+    case 'choose_fix': // E-04: redeliver or refund
+      return { label: 'Complaints', href: '/complaints' };
+    case 'get_help_or_order': // A-06: help placing the first order
+      return { label: 'Help', href: '/support' };
+    case 'open_founding_family': // FF-02: you are in
+    case 'share_founding_link': // FF-03: your seat is held, share your link
+      return { label: 'Founding Family', href: '/(tabs)/vip' };
     case 'refer':
       return { label: 'Refer a friend', href: '/refer' };
     default:

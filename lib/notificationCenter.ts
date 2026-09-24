@@ -75,11 +75,18 @@ export function noticeIcon(kind: NoticeKind): string {
   return ICON_FOR[kind] ?? 'notifications';
 }
 
-function crmKind(category: string | null | undefined): NoticeKind {
-  const c = (category ?? '').toLowerCase();
-  if (c.includes('order') || c.includes('deliver')) return 'delivery';
-  if (c.includes('wallet') || c.includes('recharge') || c.includes('payment')) return 'wallet';
-  if (c.includes('offer') || c.includes('campaign') || c.includes('welcome')) return 'offer';
+/** The row's kind from its trigger (crm_triggers.json). The inbox `category`
+ *  is the consent class (service_implicit, service_explicit, transactional,
+ *  promotional), never a topic, so the trigger id's family decides: D- the
+ *  delivery lifecycle, B- the wallet and billing, E- complaints and ratings
+ *  (as the app's own complaint notice). A promotional row, the Welcome Litre
+ *  (W-), Founding Family (FF-) and the rest are offers. */
+function crmKind(m: Pick<CrmInboxItem, 'trigger_id' | 'category'>): NoticeKind {
+  if ((m.category ?? '').toLowerCase() === 'promotional') return 'offer';
+  const id = (m.trigger_id ?? '').toUpperCase();
+  if (id.startsWith('D-')) return 'delivery';
+  if (id.startsWith('B-')) return 'wallet';
+  if (id.startsWith('E-')) return 'account';
   return 'offer';
 }
 
@@ -87,14 +94,14 @@ function fromCrm(m: CrmInboxItem): Notice {
   const body = m.body_en || m.body_hi || '';
   return {
     id: `crm:${m.id}`,
-    kind: crmKind(m.category),
+    kind: crmKind(m),
     // CRM messages are a single body string; the first sentence makes an
     // honest title and the whole body still shows underneath.
     title: body.split(/(?<=[.!?])\s/)[0]?.slice(0, 72) || 'PYAAS',
     body,
     // Messages was folded into Notifications (founder call, 21 Sep): a campaign
     // row opens its own call to action (Recharge, Track order…), or nothing.
-    href: crmCtaRoute(m.cta)?.href ?? null,
+    href: crmCtaRoute(m.cta, m)?.href ?? null,
     created_at: m.created_at,
     read_at: m.read_at ?? null,
     dedupe: `crm:${m.id}`,
@@ -123,6 +130,9 @@ const SERVER_TRIGGERS_FOR: Record<string, string[]> = {
   'order:assigned': ['D-02'],
   'order:out_for_delivery': ['D-02'],
   'order:delivered': ['D-06'],
+  // A task that failed or a store cancel turns the order 'cancelled' and
+  // sends D-09 (not delivered) for the same order.
+  'order:cancelled': ['D-09'],
   complaint: ['E-02', 'E-04', 'E-05'],
 };
 
@@ -163,8 +173,13 @@ export function dropNoticesTheServerSent(local: Notice[], inbox: CrmInboxItem[])
     const refOf = (m: CrmInboxItem): string => (ev.cls === 'complaint' ? m.complaint_ref : m.order_id) ?? '';
     const exact = server.find((s) => !s.taken && refOf(s.m) === ev.ref && !!triggers?.includes(s.m.trigger_id));
     if (exact) { exact.taken = true; continue; }
+    // The text names the ref: only for a row of this event class that carries
+    // no ref of its own (a row that does was judged by `exact` above). Other
+    // rows name orders too, e.g. the B-06 refund after a rider's undo
+    // ("delivery <order> reversed"), and are not this event.
     const named = ev.ref.length >= 4
-      ? server.find((s) => !s.taken && ((s.m.body_en ?? '').includes(ev.ref) || (s.m.body_hi ?? '').includes(ev.ref)))
+      ? server.find((s) => !s.taken && !s.m.order_id && !s.m.complaint_ref && !!triggers?.includes(s.m.trigger_id)
+        && ((s.m.body_en ?? '').includes(ev.ref) || (s.m.body_hi ?? '').includes(ev.ref)))
       : undefined;
     if (named) { named.taken = true; continue; }
     const at = Date.parse(n.created_at) || 0;
