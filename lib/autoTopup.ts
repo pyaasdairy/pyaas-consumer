@@ -3,6 +3,8 @@ import { useSyncExternalStore } from 'react';
 import { MIN_RECHARGE } from './pricing';
 import { notify } from './notificationCenter';
 import { getUserId } from './session';
+import { isBackendConfigured } from './apiClient';
+import { currentMandate } from './autopay';
 
 /**
  * AUTO TOP-UP — the "never run dry" setting a member can switch on BEFORE they
@@ -25,6 +27,18 @@ import { getUserId } from './session';
  * FOR THE CO-DEV: when recurring collection is live, keep this preference as
  * the source of truth for threshold + amount and swap `armed` for the real
  * mandate state; the reminder becomes the pre-debit notice NPCI requires.
+ *
+ * DONE (25 Sep, AutoPay funds the wallet): the server now runs Smart Recharge
+ * off an ACTIVE UPI AutoPay mandate. This reminder preference stays the
+ * member's REMINDER only: nothing chosen here (the card says "Nothing is
+ * charged until you pay") ever reaches the mandate's server policy, which
+ * only the AutoPay card / screen changes (walletApi.setupAutopay ->
+ * updateMandatePolicy). The reminder stands down only while the server says
+ * Smart Recharge is really topping this wallet up (the mandate's
+ * smart_recharge_on: automatic top-ups switched on, the bank token
+ * confirmed, not waiting for the member after refused debits); then the
+ * member hears "money added" instead. The bank sends its own pre-debit
+ * notice for each AutoPay debit.
  */
 
 // PER ACCOUNT, not per device.
@@ -60,6 +74,30 @@ const DEFAULTS: AutoTopupPrefs = { on: true, threshold: 200, amount: MIN_RECHARG
 
 let prefs: AutoTopupPrefs = DEFAULTS;
 let hydrated = false;
+// Whether the server is really topping the signed-in member's wallet up
+// (the mandate's smart_recharge_on). An ACTIVE mandate alone is not enough:
+// with automatic top-ups switched off on the server, a bank token not yet
+// confirmed, or Smart Recharge waiting for the member after refused debits,
+// nothing tops the wallet up and the reminder must still speak.
+// null = not known yet this session.
+let serverArmed: boolean | null = null;
+
+/** walletApi.getAutopay reports the mandate it read (null forgets it). */
+export function setServerAutopayArmed(armed: boolean | null): void {
+  serverArmed = armed;
+}
+
+async function serverAutopayArmed(): Promise<boolean> {
+  if (serverArmed !== null) return serverArmed;
+  if (!isBackendConfigured()) return false;
+  try {
+    const m = await currentMandate();
+    serverArmed = m?.smart_recharge_on === true;
+    return serverArmed;
+  } catch {
+    return false; // unknown: the reminder still speaks
+  }
+}
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
@@ -105,6 +143,8 @@ export async function setAutoTopup(next: Partial<AutoTopupPrefs>): Promise<void>
   };
   emit();
   try { await AsyncStorage.setItem(await scopedKey(KEY_BASE), JSON.stringify(prefs)); } catch { /* best-effort */ }
+  // The reminder only: the AutoPay policy (what the bank is charged) changes
+  // from the AutoPay card / screen alone (walletApi.setupAutopay).
 }
 
 /** Forget this device's copy of the signed-in member's setting (sign-out,
@@ -114,6 +154,7 @@ export async function clearAutoTopup(): Promise<void> {
   try { await AsyncStorage.removeItem(await scopedKey(LAST_NUDGE_BASE)); } catch { /* best-effort */ }
   prefs = { ...DEFAULTS };
   hydrated = false;
+  serverArmed = null;
   emit();
 }
 
@@ -127,6 +168,8 @@ export async function checkAutoTopup(balance: number): Promise<void> {
     await hydrateAutoTopup();
     if (!prefs.on) return;
     if (balance >= prefs.threshold) return;
+    // Smart Recharge is topping this wallet up: no "time to top up" nag.
+    if (await serverAutopayArmed()) return;
     const today = new Date().toISOString().slice(0, 10);
     const nudgeKey = await scopedKey(LAST_NUDGE_BASE);
     const last = await AsyncStorage.getItem(nudgeKey);
