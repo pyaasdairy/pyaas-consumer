@@ -30,6 +30,10 @@ import type { ConsentChoices, ConsentKey, ConsentRecord } from '../components/Co
  *
  * occurred_at is the LEGAL time of the user's action (the local record's own
  * timestamp), never the flush time — the server uses it as the consent anchor.
+ * Each type carries the time the member last CHANGED that type
+ * (consentChangeRecords), not the time of the latest record: every save
+ * writes all the switches, and the server treats a strictly-newer grant as a
+ * re-grant, so the untouched switches must keep their own times.
  */
 
 export const CONSENTS_MIRROR_KIND = 'consents';
@@ -54,6 +58,52 @@ async function latestConsentRecord(uid: string): Promise<ConsentRecord | null> {
   return rows[0];
 }
 
+/** The server types a ConsentSheet record carries, each with the value it
+ *  sends. privacy_terms also changes with the policy version: accepting a
+ *  changed policy is a new grant even when the ticks look the same. */
+const SHEET_TYPES: { type: string; granted: (c: ConsentChoices) => boolean; byPolicyVersion: boolean }[] = [
+  { type: 'privacy_terms', granted: (c) => !!(c.privacy && c.terms), byPolicyVersion: true },
+  ...CHANNEL_TYPES.map(({ key, type }) => ({ type, granted: (c: ConsentChoices) => !!c[key], byPolicyVersion: false })),
+];
+
+export type ConsentChange = { granted: boolean; occurred_at: string; version: string; app_version: string };
+
+/**
+ * Pure. Per server consent type, what the member's local consent rows say:
+ * the value in the latest row, and the record of the member's LAST CHANGE of
+ * that value (its legal time, policy version and app version).
+ *
+ * Every Message-preferences save and the sign-up form write the WHOLE set of
+ * switches, so the latest row's recorded_at is only the time of the switch
+ * the member flipped. Walking back from the latest row while the older row
+ * holds the same value finds when each switch actually took that value. An
+ * untouched grant is then re-sent with its original time: the server's
+ * strictly-newer rule makes it a no-op and the unique log index absorbs it,
+ * so saving one switch never re-grants the others or restarts their 7-day
+ * promotional window. A hydration row's time for a type is the server's own
+ * (occurred_at_by_type), never its synthetic recorded_at. Null with no rows.
+ */
+export function consentChangeRecords(rows: ConsentRecord[]): Record<string, ConsentChange> | null {
+  if (rows.length === 0) return null;
+  const newestFirst = [...rows].sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
+  const latest = newestFirst[0];
+  const out: Record<string, ConsentChange> = {};
+  for (const { type, granted, byPolicyVersion } of SHEET_TYPES) {
+    const sameAsLatest = (r: ConsentRecord) =>
+      granted(r.choices) === granted(latest.choices) && (!byPolicyVersion || r.policy_version === latest.policy_version);
+    let i = 0;
+    while (i + 1 < newestFirst.length && sameAsLatest(newestFirst[i + 1])) i++;
+    const change = newestFirst[i];
+    out[type] = {
+      granted: granted(latest.choices),
+      occurred_at: change.occurred_at_by_type?.[type] ?? change.recorded_at,
+      version: change.policy_version,
+      app_version: change.app_version,
+    };
+  }
+  return out;
+}
+
 function sameChoices(a: ConsentChoices, b: ConsentChoices): boolean {
   return (['privacy', 'terms', 'marketing', 'whatsapp', 'sms', 'email'] as ConsentKey[])
     .every((k) => !!a[k] === !!b[k]);
@@ -66,30 +116,19 @@ registerMirrorHandler(CONSENTS_MIRROR_KIND, async (): Promise<MirrorOutcome> => 
   const consents: Record<string, unknown>[] = [];
 
   // Latest ConsentSheet choices (privacy+terms + marketing channels).
-  const latest = await latestConsentRecord(uid);
-  if (latest) {
-    const base = {
-      version: latest.policy_version,
-      app_version: latest.app_version,
-    };
-    // occurred_at is the LEGAL event time. Genuine user records carry it as
-    // recorded_at; server-hydration records carry the per-type times the
-    // server reported (occurred_at_by_type) and a SYNTHETIC recorded_at that
-    // must never be echoed as occurred_at — the server treats a strictly-newer
-    // grant as a re-grant and would reset the promo TTL anchor with no human
-    // action (TCCCPR fail-open on the freshness window).
-    const timeFor = (type: string): string =>
-      latest.occurred_at_by_type?.[type] ?? latest.recorded_at;
-    consents.push({
-      type: 'privacy_terms',
-      granted: !!(latest.choices.privacy && latest.choices.terms),
-      occurred_at: timeFor('privacy_terms'),
-      ...base,
-    });
-    for (const { key, type } of CHANNEL_TYPES) {
+  // occurred_at is the LEGAL event time of each type's last change, never the
+  // latest record's own time: the server treats a strictly-newer grant as a
+  // re-grant and would reset the promo TTL anchor of every switch the member
+  // did not touch (TCCCPR fail-open on the freshness window). A hydration
+  // record's SYNTHETIC recorded_at is likewise never echoed as occurred_at
+  // (consentChangeRecords reads its occurred_at_by_type).
+  const changes = consentChangeRecords(await getRows<ConsentRecord>('consents', uid));
+  if (changes) {
+    for (const { type } of SHEET_TYPES) {
       // granted:false is sent explicitly — the backend's promo guard is
       // fail-closed and a revoke must land as a revoke, never as an omission.
-      consents.push({ type, granted: !!latest.choices[key], occurred_at: timeFor(type), ...base });
+      const c = changes[type];
+      consents.push({ type, granted: c.granted, occurred_at: c.occurred_at, version: c.version, app_version: c.app_version });
     }
   }
 
