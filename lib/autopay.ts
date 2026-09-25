@@ -71,6 +71,11 @@ export type UpiMandate = {
   recharge_amount?: number;
   /** The bank's word on the mandate: initiated | confirmed | rejected | paused | cancelled. */
   token_status?: string | null;
+  /** The server is really topping the wallet up off this mandate: automatic
+   *  top-ups are switched on, the mandate is ACTIVE, the bank CONFIRMED its
+   *  token and Smart Recharge is not waiting for the member after refused
+   *  debits. ACTIVE alone does not mean the wallet is being funded. */
+  smart_recharge_on?: boolean;
 };
 
 // ── Backend wire shape (mandate.go) ─────────────────────────────────────────
@@ -87,6 +92,7 @@ type BackendMandate = {
   customer_id?: string; // Razorpay customer (live only)
   reg_amount_paise?: number;
   cancel_reason?: string;
+  smart_recharge_on?: boolean; // the server is really topping the wallet up
   next_charge?: string;
   last_charge_date?: string;
   last_charge_at?: string;
@@ -146,6 +152,7 @@ function toUpiMandate(m: BackendMandate): UpiMandate {
     threshold: typeof m.threshold === 'number' && m.threshold > 0 ? m.threshold : undefined,
     recharge_amount: typeof m.amount === 'number' && m.amount > 0 ? m.amount : undefined,
     token_status: m.token_status ?? null,
+    smart_recharge_on: m.smart_recharge_on === true,
   };
 }
 

@@ -33,9 +33,12 @@ import { currentMandate } from './autopay';
  * member's REMINDER only: nothing chosen here (the card says "Nothing is
  * charged until you pay") ever reaches the mandate's server policy, which
  * only the AutoPay card / screen changes (walletApi.setupAutopay ->
- * updateMandatePolicy). While a mandate is ACTIVE this reminder stands down:
- * the server tops the wallet up and the member hears "money added" instead.
- * The bank sends its own pre-debit notice for each AutoPay debit.
+ * updateMandatePolicy). The reminder stands down only while the server says
+ * Smart Recharge is really topping this wallet up (the mandate's
+ * smart_recharge_on: automatic top-ups switched on, the bank token
+ * confirmed, not waiting for the member after refused debits); then the
+ * member hears "money added" instead. The bank sends its own pre-debit
+ * notice for each AutoPay debit.
  */
 
 // PER ACCOUNT, not per device.
@@ -71,8 +74,12 @@ const DEFAULTS: AutoTopupPrefs = { on: true, threshold: 200, amount: MIN_RECHARG
 
 let prefs: AutoTopupPrefs = DEFAULTS;
 let hydrated = false;
-// Whether the signed-in member has an ACTIVE AutoPay mandate (the server tops
-// the wallet up). null = not known yet this session.
+// Whether the server is really topping the signed-in member's wallet up
+// (the mandate's smart_recharge_on). An ACTIVE mandate alone is not enough:
+// with automatic top-ups switched off on the server, a bank token not yet
+// confirmed, or Smart Recharge waiting for the member after refused debits,
+// nothing tops the wallet up and the reminder must still speak.
+// null = not known yet this session.
 let serverArmed: boolean | null = null;
 
 /** walletApi.getAutopay reports the mandate it read (null forgets it). */
@@ -85,7 +92,7 @@ async function serverAutopayArmed(): Promise<boolean> {
   if (!isBackendConfigured()) return false;
   try {
     const m = await currentMandate();
-    serverArmed = m?.state === 'ACTIVE';
+    serverArmed = m?.smart_recharge_on === true;
     return serverArmed;
   } catch {
     return false; // unknown: the reminder still speaks
@@ -161,7 +168,7 @@ export async function checkAutoTopup(balance: number): Promise<void> {
     await hydrateAutoTopup();
     if (!prefs.on) return;
     if (balance >= prefs.threshold) return;
-    // AutoPay is on: the server tops the wallet up; no "time to top up" nag.
+    // Smart Recharge is topping this wallet up: no "time to top up" nag.
     if (await serverAutopayArmed()) return;
     const today = new Date().toISOString().slice(0, 10);
     const nudgeKey = await scopedKey(LAST_NUDGE_BASE);

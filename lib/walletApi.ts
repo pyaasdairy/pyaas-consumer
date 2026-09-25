@@ -678,8 +678,9 @@ export async function getAutopay(): Promise<AutopayMandate | null> {
   const uid = await requireUserId();
   if (!isBackendConfigured()) return getSingle<AutopayMandate>('autopay', uid);
   const m = await currentMandate();
-  // An ACTIVE mandate tops the wallet up itself: the reminder stands down.
-  setServerAutopayArmed(m?.state === 'ACTIVE');
+  // Only a mandate the server is really topping the wallet up with silences
+  // the reminder (ACTIVE alone is not enough: see smart_recharge_on).
+  setServerAutopayArmed(m?.smart_recharge_on === true);
   if (!m) return null;
   await hydrateAutoTopup();
   return fromMandate(m);
