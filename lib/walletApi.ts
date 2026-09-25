@@ -781,7 +781,9 @@ export async function cancelAutopay(id: string): Promise<void> {
  * Ask AutoPay to cover a wallet shortfall. With an ACTIVE mandate this starts
  * ONE Smart Recharge charge on the server (POST /mandate/{id}/execute: the
  * shortfall or the member's top-up amount, whichever is more, never above the
- * approved cap), keyed by `ref` so a repeat asks for the same charge. It
+ * approved cap), keyed by `ref` itself, UNCHANGED: the shipped build sends the
+ * same ref (`order:<id>`) for the same shortfall, so both builds share ONE
+ * charge on the server (execute answers the charge a ref already made). It
  * always answers false: a UPI AutoPay debit reaches the wallet about a day
  * later, when the bank's payment is captured, so the wallet does NOT cover
  * the shortfall now and the caller's own short-wallet path stands. Nothing
@@ -795,7 +797,7 @@ export async function autoSettleTopUp(shortfall: number, ref: string): Promise<b
     if (!m || m.state !== 'ACTIVE') return false;
     const want = Math.max(Math.ceil(shortfall), m.recharge_amount ?? 0);
     const amount = m.max_amount > 0 ? Math.min(m.max_amount, want) : want;
-    await executeMandate(m.id, amount, `autosettle:${ref}`);
+    await executeMandate(m.id, amount, ref);
   } catch {
     /* AutoPay could not start: the caller's short-wallet path stands */
   }
