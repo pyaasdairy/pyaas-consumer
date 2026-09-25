@@ -1,5 +1,5 @@
 import { api, isBackendConfigured, HttpError } from './apiClient';
-import { getUserId } from './session';
+import { getUserId, getSessionSync } from './session';
 
 /**
  * FOUNDING FAMILY — the membership that replaces "PYAAS Plus" (pyaas-app-spec.md,
@@ -50,6 +50,13 @@ export type Member = {
   referral_code?: string | null;
   joined_at?: string | null;
   next_bill_date?: string | null;
+  /**
+   * Server (additive): whether the member's perks (free delivery, the member
+   * price) apply today, exactly as the backend bills: an active member, and a
+   * stopped or re-joined member inside the month already paid. An older
+   * server does not send it; memberPerksActive then reads `status`.
+   */
+  perks_active?: boolean | null;
 };
 
 export type FoundingFamilyView = {
@@ -64,6 +71,54 @@ export type FoundingFamilyView = {
     delivery_fee: number;
   } | null;
 };
+
+/** Whether a member row's perks apply today (the server's own answer when sent). */
+export function memberPerksActive(m: Member | null | undefined): boolean {
+  if (!m) return false;
+  if (typeof m.perks_active === 'boolean') return m.perks_active;
+  return m.status === 'active';
+}
+
+// The signed-in account's standing as last read from the server, so the
+// synchronous price path (lib/api.ts deliveryFeeFor) can apply "members never
+// pay delivery". Keyed by uid: another account on this phone never inherits it.
+// Nothing is written to the device. The async read refreshes it once a
+// minute; the synchronous read trusts it for half an hour at most, after which
+// it quotes the non-member fee again (never cheaper than the bill) until the
+// next read.
+const PERKS_FRESH_MS = 60 * 1000;
+const PERKS_TRUST_MS = 30 * 60 * 1000;
+let perksCache: { uid: string; active: boolean; at: number } | null = null;
+
+function rememberPerks(uid: string | null | undefined, member: Member | null | undefined): void {
+  if (!uid) return;
+  perksCache = { uid, active: memberPerksActive(member), at: Date.now() };
+}
+
+/** The standing this session last read for the signed-in account (false when none). */
+export function foundingPerksCached(): boolean {
+  const uid = getSessionSync()?.user?.id;
+  return !!uid && !!perksCache && perksCache.uid === uid && perksCache.active
+    && Date.now() - perksCache.at < PERKS_TRUST_MS;
+}
+
+/**
+ * Do the Founding Family perks apply to the signed-in member today? Read from
+ * the server (at most once a minute); false with no backend, when signed out,
+ * or when the server cannot be reached and nothing was read before, so a
+ * price shown from it is never cheaper than the bill.
+ */
+export async function foundingPerksActive(): Promise<boolean> {
+  if (!isBackendConfigured()) return false;
+  const uid = await getUserId();
+  if (!uid) return false;
+  if (perksCache && perksCache.uid === uid && Date.now() - perksCache.at < PERKS_FRESH_MS) {
+    return perksCache.active;
+  }
+  const v = await getFoundingFamily();
+  if (!v) return foundingPerksCached(); // unreachable: the last read, while it is trusted
+  return memberPerksActive(v.member);
+}
 
 /** Farms still open for claims. */
 export function homesToGo(f: Farm): number {
@@ -87,10 +142,12 @@ export function savingsLine(v: FoundingFamilyView | null): { saves: number; with
  */
 export async function getFoundingFamily(): Promise<FoundingFamilyView | null> {
   if (!isBackendConfigured()) return null;
-  if (!(await getUserId())) return null;
+  const uid = await getUserId();
+  if (!uid) return null;
   try {
     const v = await api.get<FoundingFamilyView>('/founding-family');
     if (!v || !Array.isArray(v.farms) || typeof v.price_month !== 'number') return null;
+    rememberPerks(uid, v.member);
     return v;
   } catch {
     return null;
@@ -135,6 +192,7 @@ export async function joinFoundingFamily(farmId: string): Promise<Member> {
   try {
     const r = await api.post<{ member: Member }>('/founding-family/join', { farm_id: farmId });
     if (!r?.member) throw new FoundingFamilyError('FAILED', 'Could not complete that. Please try again.');
+    rememberPerks(await getUserId(), r.member);
     return r.member;
   } catch (e) {
     throw e instanceof FoundingFamilyError ? e : toFfError(e);
@@ -146,6 +204,7 @@ export async function stopFoundingFamily(): Promise<Member> {
   try {
     const r = await api.post<{ member: Member }>('/founding-family/stop');
     if (!r?.member) throw new FoundingFamilyError('FAILED', 'Could not stop it. Please try again.');
+    rememberPerks(await getUserId(), r.member);
     return r.member;
   } catch (e) {
     throw e instanceof FoundingFamilyError ? e : toFfError(e);
