@@ -1,5 +1,6 @@
 import { api, isBackendConfigured, HttpError } from './apiClient';
 import { getUserId, getSessionSync } from './session';
+import { rememberDeliveryRule } from './deliveryRule';
 
 /**
  * FOUNDING FAMILY — the membership that replaces "PYAAS Plus" (pyaas-app-spec.md,
@@ -70,6 +71,12 @@ export type FoundingFamilyView = {
     level3_per_litre: number;
     delivery_fee: number;
   } | null;
+  /**
+   * Server (additive): the One Voice delivery rule it bills a one-off order by
+   * (₹ fee below ₹ free_from; a member never pays). Kept for the cart's quote
+   * (lib/deliveryRule.ts); an older server does not send it.
+   */
+  delivery?: { fee: number; free_from: number } | null;
 };
 
 /** Whether a member row's perks apply today (the server's own answer when sent). */
@@ -148,6 +155,7 @@ export async function getFoundingFamily(): Promise<FoundingFamilyView | null> {
     const v = await api.get<FoundingFamilyView>('/founding-family');
     if (!v || !Array.isArray(v.farms) || typeof v.price_month !== 'number') return null;
     rememberPerks(uid, v.member);
+    rememberDeliveryRule(v.delivery);
     return v;
   } catch {
     return null;

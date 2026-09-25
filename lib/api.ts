@@ -5,6 +5,7 @@ import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore'
 import { debitWallet, refundToWallet } from './walletApi';
 import { isPlusActive, memberLinePrice } from './vip';
 import { foundingPerksCached } from './foundingFamily';
+import { deliveryRuleNow, ONE_VOICE_FEE, ONE_VOICE_FREE_FROM } from './deliveryRule';
 import { getProduct } from '../constants/products';
 import { api, isBackendConfigured, HttpError } from './apiClient';
 import {
@@ -147,13 +148,16 @@ export type Order = {
  * the same rule the backend bills (orders.go orderDeliveryFee), so the cart
  * shows what the wallet is charged at the door:
  *   - free when the goods come to ₹199 or more (₹199.00 itself is free);
- *   - ₹5 a delivery below ₹199 (the ERP's DELIVERY-FEE; change both together);
+ *   - ₹5 a delivery below ₹199 (the ERP's DELIVERY-FEE);
  *   - Founding Family members never pay it;
  *   - Parag at printed MRP with nothing added: this fee is the only charge.
  * One-time orders only: a subscription morning never carries it (placeOrder).
+ * These are the published numbers; a quote uses the amount the server says it
+ * bills when it has said so (lib/deliveryRule.ts), so an ERP DELIVERY-FEE that
+ * is not exactly ₹5 is quoted as it is billed.
  */
-export const DELIVERY_FEE = 5;
-export const FREE_DELIVERY_OVER = 199;
+export const DELIVERY_FEE = ONE_VOICE_FEE;
+export const FREE_DELIVERY_OVER = ONE_VOICE_FREE_FROM;
 
 /**
  * Delivery fee for a cart subtotal (the goods, after member prices).
@@ -164,12 +168,14 @@ export const FREE_DELIVERY_OVER = 199;
  * delivery from the standing this session last read from the server
  * (foundingPerksCached), so no screen quotes a fee a member is never charged.
  * With no standing read yet it quotes the non-member fee: never cheaper than
- * the bill.
+ * the bill. The fee and the free-from line are the server's (deliveryRuleNow),
+ * falling back to the published ₹5 / ₹199.
  */
 export function deliveryFeeFor(subtotal: number, isPlus = false): number {
   if (subtotal <= 0) return 0;
   if (isPlus || foundingPerksCached()) return 0;
-  return subtotal >= FREE_DELIVERY_OVER ? 0 : DELIVERY_FEE;
+  const rule = deliveryRuleNow();
+  return subtotal >= rule.freeFrom ? 0 : rule.fee;
 }
 
 // -- Addresses ---------------------------------------------------------------
