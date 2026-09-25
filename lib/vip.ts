@@ -11,6 +11,7 @@ import { getUserId, requireUserId } from './session';
 import { getSingle, putSingle } from './localStore';
 import { isBackendConfigured } from './apiClient';
 import { getBalances, debitWallet } from './walletApi';
+import { foundingPerksActive } from './foundingFamily';
 
 /** Days of Plus one ₹99 charge buys. */
 export const PLUS_PERIOD_DAYS = 30;
@@ -106,13 +107,21 @@ export async function getVip(): Promise<VipMembership | null> {
  * are charging for a perk the binary never delivers.
  */
 export async function isPlusActive(): Promise<boolean> {
-  // BACKEND MODE: Plus perks are OFF until the backend owns the membership.
-  // The server reprices every order from its own catalog and knows nothing of
-  // Plus, so an FE-applied member discount/free-fee shows a total the wallet
-  // is NOT charged — shown ₹X, debited ₹Y at the door. Shown must equal
-  // charged; perks return the moment membership + member pricing move
-  // server-side (TODO(api): GET /membership/me, applied inside createOrder).
-  if (isBackendConfigured()) return false;
+  // BACKEND MODE: the membership is the Founding Family, which the backend
+  // owns and applies inside createOrder (founding.go): a member whose perks
+  // apply today never pays the delivery fee (One Voice). This reads that same
+  // standing from the server, so the cart's "Delivery charge" is what the
+  // wallet is charged. Any failure reads as not a member: a slow or failed
+  // read quotes the fee, never a cheaper price than the bill. (The member
+  // price on PYAAS milk is still the server's alone: memberLinePrice applies
+  // no client discount.)
+  if (isBackendConfigured()) {
+    try {
+      return await foundingPerksActive();
+    } catch {
+      return false;
+    }
+  }
   try {
     return vipActive(await getVip());
   } catch {

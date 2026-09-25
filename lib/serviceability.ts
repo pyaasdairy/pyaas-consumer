@@ -5,6 +5,7 @@ import { DEFAULT_REGION } from './location';
 import { currentUserLoc, CITIES } from './userLocation';
 import { isPlayTesterSession } from './testAccess';
 import { recordInstantAnswer } from './instantHours';
+import { rememberDeliveryRule } from './deliveryRule';
 import type { Address } from './api';
 
 /**
@@ -59,6 +60,8 @@ type RawServiceability = {
   monsoonEnabled?: boolean; monsoonRupees?: number;
   instantClosed?: boolean; instantResumesLabel?: string | null; instantResumesAt?: string | null;
   reason?: string | null; distanceKm?: number | null;
+  /** The One Voice delivery rule the server bills by (additive; lib/deliveryRule.ts). */
+  delivery?: { fee?: number; free_from?: number } | null;
 };
 
 function normalize(raw: RawServiceability | null | undefined): Serviceability {
@@ -194,6 +197,7 @@ export async function getServiceability(point: CheckPoint): Promise<Serviceabili
   if (point.pincode) q.set('pincode', point.pincode);
   const qs = q.toString();
   const res = await api.get<RawServiceability>(`/serviceability${qs ? `?${qs}` : ''}`);
+  rememberDeliveryRule(res?.delivery);
   return normalize(res);
 }
 

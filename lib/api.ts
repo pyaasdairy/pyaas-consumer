@@ -4,6 +4,8 @@ import { requireUserId, getUserId, getProfile } from './session';
 import { getRows, insertRow, updateRows, deleteRows, newId } from './localStore';
 import { debitWallet, refundToWallet } from './walletApi';
 import { isPlusActive, memberLinePrice } from './vip';
+import { foundingPerksCached } from './foundingFamily';
+import { deliveryRuleNow, ONE_VOICE_FEE, ONE_VOICE_FREE_FROM } from './deliveryRule';
 import { getProduct } from '../constants/products';
 import { api, isBackendConfigured, HttpError } from './apiClient';
 import {
@@ -141,22 +143,39 @@ export type Order = {
   review?: { rating: number; comment: string; created_at: string } | null;
 };
 
-export const DELIVERY_FEE = 15;
-export const FREE_DELIVERY_OVER = 199;
+/**
+ * THE ONE VOICE DELIVERY RULE (pyaas-one-voice.md 1.2; founder, 25 Sep 2026),
+ * the same rule the backend bills (orders.go orderDeliveryFee), so the cart
+ * shows what the wallet is charged at the door:
+ *   - free when the goods come to ₹199 or more (₹199.00 itself is free);
+ *   - ₹5 a delivery below ₹199 (the ERP's DELIVERY-FEE);
+ *   - Founding Family members never pay it;
+ *   - Parag at printed MRP with nothing added: this fee is the only charge.
+ * One-time orders only: a subscription morning never carries it (placeOrder).
+ * These are the published numbers; a quote uses the amount the server says it
+ * bills when it has said so (lib/deliveryRule.ts), so an ERP DELIVERY-FEE that
+ * is not exactly ₹5 is quoted as it is billed.
+ */
+export const DELIVERY_FEE = ONE_VOICE_FEE;
+export const FREE_DELIVERY_OVER = ONE_VOICE_FREE_FROM;
 
 /**
- * Delivery fee for a cart subtotal.
+ * Delivery fee for a cart subtotal (the goods, after member prices).
  *
- * `isPlus` exists because PYAAS Plus is SOLD on the promise of "No delivery fee
- * on any order, however small" (app/(tabs)/vip.tsx) and debits ₹99 for it. This
- * function is the only place a fee is ever computed, so if it ignores membership
- * the perk does not exist and we are charging for nothing. Callers that know the
- * member's tier must pass it; the default preserves the non-member price.
+ * `isPlus` is "the member's perks apply": in backend mode that is the Founding
+ * Family standing the server bills by (isPlusActive). A caller that does not
+ * pass it (the product screen's buy-once quote) still gets the member's free
+ * delivery from the standing this session last read from the server
+ * (foundingPerksCached), so no screen quotes a fee a member is never charged.
+ * With no standing read yet it quotes the non-member fee: never cheaper than
+ * the bill. The fee and the free-from line are the server's (deliveryRuleNow),
+ * falling back to the published ₹5 / ₹199.
  */
 export function deliveryFeeFor(subtotal: number, isPlus = false): number {
-  if (subtotal === 0) return 0;
-  if (isPlus) return 0;
-  return subtotal >= FREE_DELIVERY_OVER ? 0 : DELIVERY_FEE;
+  if (subtotal <= 0) return 0;
+  if (isPlus || foundingPerksCached()) return 0;
+  const rule = deliveryRuleNow();
+  return subtotal >= rule.freeFrom ? 0 : rule.fee;
 }
 
 // -- Addresses ---------------------------------------------------------------
@@ -565,7 +584,10 @@ export async function placeOrder(params: {
     // returned zero call sites and every caller passed 'normal'. A Plus member's
     // morning order now carries the same high priority the instant lane uses, so
     // the store and rider queue order it ahead of standard morning deliveries.
-    priority: lane === 'instant' || isPlusMember ? 'high' : params.priority ?? 'normal',
+    // Founding Family (backend mode, where isPlusActive is its standing) sells
+    // no priority slot (spec 21 Sep: "Priority slots" is a removed perk), so a
+    // member's morning order keeps the caller's priority there.
+    priority: lane === 'instant' || (isPlusMember && !isBackendConfigured()) ? 'high' : params.priority ?? 'normal',
     delivery_window,
     lane,
     delivery_date: lane === 'instant' ? null : params.deliveryDate ?? null,
