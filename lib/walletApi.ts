@@ -7,9 +7,11 @@ import {
   createMandate,
   approveMandate as approveMandateOnPsp,
   cancelMandate as cancelMandateOnPsp,
+  executeMandate,
+  updateMandatePolicy,
   type UpiMandate,
 } from './autopay';
-import { getAutoTopup, hydrateAutoTopup, setAutoTopup } from './autoTopup';
+import { getAutoTopup, hydrateAutoTopup, setAutoTopup, setServerAutopayArmed } from './autoTopup';
 
 /**
  * PYAAS wallet — APPEND-ONLY LEDGER model.
@@ -628,14 +630,17 @@ function isRefType(v: string | undefined): v is LedgerRefType {
   return v === 'order' || v === 'payment' || v === 'refund' || v === 'recharge' || v === 'reward' || v === 'adjustment' || v === 'seed';
 }
 
-// ── AutoPay · Paytm UPI mandate ──────────────────────────────────────────────
+// ── AutoPay · UPI mandate (Smart Recharge) ──────────────────────────────────
 // With the shared backend configured this is the REAL mechanism: a UPI AutoPay
-// mandate (NPCI lifecycle, UMN, per-debit cap, AS_PRESENTED recurrence) lives
-// server-side in `consumer_mandates` and is read from GET /mandate/me every
-// time; nothing about it is mirrored on the device. The app-side top-up
-// policy (threshold + amount) is the low-balance reminder preference
-// (lib/autoTopup), a UI setting. Without a backend the old on-device
-// placeholder behaviour is preserved in the local 'autopay' row.
+// mandate (per-debit cap, AS_PRESENTED recurrence) lives server-side in
+// `consumer_mandates` and is read from GET /mandate/me every time; nothing
+// about it is mirrored on the device. AutoPay FUNDS the wallet (founder, 25
+// Sep): the SERVER holds the Smart Recharge policy (threshold + amount) and
+// charges the mandate when the wallet, less the next mornings, falls below
+// the threshold; the wallet is credited when the bank's payment is captured.
+// The low-balance reminder preference (lib/autoTopup) seeds that policy and
+// is kept in step with it. Without a backend the old on-device placeholder
+// behaviour is preserved in the local 'autopay' row.
 
 function mandateStateToStatus(state: string): AutopayMandate['status'] {
   return state === 'PENDING_APPROVAL' ? 'pending'
@@ -645,7 +650,8 @@ function mandateStateToStatus(state: string): AutopayMandate['status'] {
 }
 
 /** The server's mandate as the screens read it: every mandate field from the
- *  server, the top-up policy from the low-balance reminder preference. */
+ *  server, the Smart Recharge policy too (the reminder preference only fills a
+ *  mandate registered before the server held one). */
 function fromMandate(m: UpiMandate): AutopayMandate {
   const policy = getAutoTopup();
   return {
@@ -654,8 +660,8 @@ function fromMandate(m: UpiMandate): AutopayMandate {
     upi_id: m.payer_vpa,
     max_amount: m.max_amount,
     next_charge_date: null,
-    threshold: policy.threshold,
-    recharge_amount: policy.amount,
+    threshold: m.threshold ?? policy.threshold,
+    recharge_amount: m.recharge_amount ?? policy.amount,
     umn: m.umn,
   };
 }
@@ -672,16 +678,22 @@ export async function getAutopay(): Promise<AutopayMandate | null> {
   const uid = await requireUserId();
   if (!isBackendConfigured()) return getSingle<AutopayMandate>('autopay', uid);
   const m = await currentMandate();
+  // An ACTIVE mandate tops the wallet up itself: the reminder stands down.
+  setServerAutopayArmed(m?.state === 'ACTIVE');
   if (!m) return null;
   await hydrateAutoTopup();
   return fromMandate(m);
 }
 
 /**
- * Set up AutoPay. Backend mode: registers a UPI AutoPay mandate with Paytm
- * (state PENDING_APPROVAL until the customer approves it in the Paytm app —
- * see approveAutopay) and records the top-up policy in the low-balance
- * reminder preference. Local mode keeps the previous placeholder row.
+ * Set up AutoPay. Backend mode: registers a UPI AutoPay mandate (state
+ * PENDING_APPROVAL until the customer approves it in the recurring checkout —
+ * see approveAutopay) carrying the Smart Recharge policy: the threshold and
+ * the top-up amount (each defaults to the low-balance reminder preference;
+ * the amount is also the registration payment, credited to the wallet). A
+ * mandate that already exists has its policy updated on the server instead.
+ * The reminder preference is kept in step. Local mode keeps the previous
+ * placeholder row.
  */
 export async function setupAutopay(params: {
   maxAmount: number;
@@ -691,13 +703,28 @@ export async function setupAutopay(params: {
 }): Promise<AutopayMandate> {
   const uid = await requireUserId();
   if (isBackendConfigured()) {
-    const live = await currentMandate().catch(() => null);
-    const m = live ?? (await createMandate({ maxAmount: params.maxAmount, upiId: params.upiId }));
-    // The top-up policy is the low-balance reminder preference, the UI's
-    // own (hydrated first, or the write would reset its switch); the
-    // mandate itself is never mirrored on the device.
+    // The reminder preference is hydrated first, or the write below would
+    // reset its switch; the mandate itself is never mirrored on the device.
     await hydrateAutoTopup();
-    if (params.threshold != null || params.rechargeAmount != null) {
+    const policy = getAutoTopup();
+    const changed = params.threshold != null || params.rechargeAmount != null;
+    const live = await currentMandate().catch(() => null);
+    let m: UpiMandate;
+    if (live) {
+      // The server holds the policy Smart Recharge charges by. A policy it
+      // refuses (an amount over the approved cap) leaves the mandate as it is.
+      m = changed
+        ? await updateMandatePolicy(live.id, { threshold: params.threshold, rechargeAmount: params.rechargeAmount }).catch(() => live)
+        : live;
+    } else {
+      m = await createMandate({
+        maxAmount: params.maxAmount,
+        upiId: params.upiId,
+        threshold: params.threshold ?? policy.threshold,
+        rechargeAmount: params.rechargeAmount ?? policy.amount,
+      });
+    }
+    if (changed) {
       await setAutoTopup({ threshold: params.threshold, amount: params.rechargeAmount });
     }
     return fromMandate(m);
@@ -722,10 +749,11 @@ export async function setupAutopay(params: {
 }
 
 /**
- * The customer approving the mandate in Paytm. In production (PAYTM_PG mode)
- * the app opens the PG deeplink and Paytm's webhook activates the mandate; in
- * DEMO mode this call stands in for that approval. Activates the mandate and
- * returns the UMN.
+ * The customer approving the mandate. With a live backend this opens
+ * Razorpay's recurring (UPI AutoPay) checkout for the registration order and
+ * verifies it (lib/autopay approveMandate); the registration payment lands in
+ * the wallet. On the demo backend DEV stands in for that approval. Activates
+ * the mandate and returns it with its bank token (UMN).
  */
 export async function approveAutopay(id: string): Promise<AutopayMandate | null> {
   if (!isBackendConfigured()) return getAutopay();
@@ -750,19 +778,26 @@ export async function cancelAutopay(id: string): Promise<void> {
 }
 
 /**
- * Cover a wallet shortfall through AutoPay. NOTHING CAN DO THAT YET, so this
- * always answers false (the wallet does not cover it).
- *
- * POST /mandate/{id}/execute is not a top-up. The backend ignores the body
- * (amount, ref, purpose) and DEBITS the mandate's own amount from the wallet,
- * once per mandate and IST day under ref mandate:<id>:<day> ("subscription
- * auto-renewal"); on a short wallet it announces a failed payment (CRM B-03).
- * It is also dev-only (403 in production). Calling it to "cover" a short
- * wallet therefore took more money out, or told the member a payment failed,
- * and the delivery stayed unpaid. AutoPay as a gateway-funded top-up is the
- * founder's call (mandate_worker.go); until the server has one, this seam
- * sends nothing. Local mode never had a mandate to execute.
+ * Ask AutoPay to cover a wallet shortfall. With an ACTIVE mandate this starts
+ * ONE Smart Recharge charge on the server (POST /mandate/{id}/execute: the
+ * shortfall or the member's top-up amount, whichever is more, never above the
+ * approved cap), keyed by `ref` so a repeat asks for the same charge. It
+ * always answers false: a UPI AutoPay debit reaches the wallet about a day
+ * later, when the bank's payment is captured, so the wallet does NOT cover
+ * the shortfall now and the caller's own short-wallet path stands. Nothing
+ * here ever debits the wallet. No mandate, a paused one, local mode or any
+ * error: nothing is sent.
  */
-export async function autoSettleTopUp(_shortfall: number, _ref: string): Promise<boolean> {
+export async function autoSettleTopUp(shortfall: number, ref: string): Promise<boolean> {
+  if (!isBackendConfigured() || !(shortfall > 0) || !ref) return false;
+  try {
+    const m = await currentMandate();
+    if (!m || m.state !== 'ACTIVE') return false;
+    const want = Math.max(Math.ceil(shortfall), m.recharge_amount ?? 0);
+    const amount = m.max_amount > 0 ? Math.min(m.max_amount, want) : want;
+    await executeMandate(m.id, amount, `autosettle:${ref}`);
+  } catch {
+    /* AutoPay could not start: the caller's short-wallet path stands */
+  }
   return false;
 }

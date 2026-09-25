@@ -3,6 +3,8 @@ import { useSyncExternalStore } from 'react';
 import { MIN_RECHARGE } from './pricing';
 import { notify } from './notificationCenter';
 import { getUserId } from './session';
+import { isBackendConfigured } from './apiClient';
+import { currentMandate, updateMandatePolicy } from './autopay';
 
 /**
  * AUTO TOP-UP — the "never run dry" setting a member can switch on BEFORE they
@@ -25,6 +27,14 @@ import { getUserId } from './session';
  * FOR THE CO-DEV: when recurring collection is live, keep this preference as
  * the source of truth for threshold + amount and swap `armed` for the real
  * mandate state; the reminder becomes the pre-debit notice NPCI requires.
+ *
+ * DONE (25 Sep, AutoPay funds the wallet): the server now runs Smart Recharge
+ * off an ACTIVE UPI AutoPay mandate. A threshold / amount the member sets here
+ * is sent to that mandate's server policy (best effort; an amount above the
+ * approved cap is left out and the mandate keeps its own), and while a
+ * mandate is ACTIVE this reminder stands down: the server tops the wallet up
+ * and the member hears "money added" instead. The bank sends its own
+ * pre-debit notice for each AutoPay debit.
  */
 
 // PER ACCOUNT, not per device.
@@ -60,6 +70,41 @@ const DEFAULTS: AutoTopupPrefs = { on: true, threshold: 200, amount: MIN_RECHARG
 
 let prefs: AutoTopupPrefs = DEFAULTS;
 let hydrated = false;
+// Whether the signed-in member has an ACTIVE AutoPay mandate (the server tops
+// the wallet up). null = not known yet this session.
+let serverArmed: boolean | null = null;
+
+/** walletApi.getAutopay reports the mandate it read (null forgets it). */
+export function setServerAutopayArmed(armed: boolean | null): void {
+  serverArmed = armed;
+}
+
+async function serverAutopayArmed(): Promise<boolean> {
+  if (serverArmed !== null) return serverArmed;
+  if (!isBackendConfigured()) return false;
+  try {
+    const m = await currentMandate();
+    serverArmed = m?.state === 'ACTIVE';
+    return serverArmed;
+  } catch {
+    return false; // unknown: the reminder still speaks
+  }
+}
+
+/** Send a changed threshold / amount to the live mandate's server policy. */
+async function syncServerPolicy(p: AutoTopupPrefs): Promise<void> {
+  if (!isBackendConfigured()) return;
+  try {
+    const m = await currentMandate();
+    if (!m || m.state === 'REVOKED') return;
+    await updateMandatePolicy(m.id, {
+      threshold: p.threshold,
+      rechargeAmount: m.max_amount > 0 && p.amount > m.max_amount ? undefined : p.amount,
+    });
+  } catch {
+    /* best effort: the mandate keeps the policy it has */
+  }
+}
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
@@ -105,6 +150,7 @@ export async function setAutoTopup(next: Partial<AutoTopupPrefs>): Promise<void>
   };
   emit();
   try { await AsyncStorage.setItem(await scopedKey(KEY_BASE), JSON.stringify(prefs)); } catch { /* best-effort */ }
+  if (next.threshold != null || next.amount != null) await syncServerPolicy(prefs);
 }
 
 /** Forget this device's copy of the signed-in member's setting (sign-out,
@@ -114,6 +160,7 @@ export async function clearAutoTopup(): Promise<void> {
   try { await AsyncStorage.removeItem(await scopedKey(LAST_NUDGE_BASE)); } catch { /* best-effort */ }
   prefs = { ...DEFAULTS };
   hydrated = false;
+  serverArmed = null;
   emit();
 }
 
@@ -127,6 +174,8 @@ export async function checkAutoTopup(balance: number): Promise<void> {
     await hydrateAutoTopup();
     if (!prefs.on) return;
     if (balance >= prefs.threshold) return;
+    // AutoPay is on: the server tops the wallet up; no "time to top up" nag.
+    if (await serverAutopayArmed()) return;
     const today = new Date().toISOString().slice(0, 10);
     const nudgeKey = await scopedKey(LAST_NUDGE_BASE);
     const last = await AsyncStorage.getItem(nudgeKey);

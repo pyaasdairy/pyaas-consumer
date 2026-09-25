@@ -134,6 +134,12 @@ export type CheckoutParams = {
   method?: string;
   /** Checkout sheet accent (defaults to PYAAS pink). */
   themeColor?: string;
+  /** Razorpay customer the AutoPay token is registered to (POST
+   *  /mandate/create answers it). With `recurring`, the sheet registers a
+   *  UPI AutoPay mandate instead of taking a one-off payment. */
+  customerId?: string;
+  /** Recurring (UPI AutoPay) registration checkout: Razorpay's `recurring: "1"`. */
+  recurring?: boolean;
 };
 
 /** Result of an openCheckout attempt. `cancelled` = user backed out (retryable,
@@ -219,6 +225,8 @@ export async function openCheckout(params: CheckoutParams): Promise<CheckoutOutc
     theme: { color: params.themeColor ?? '#F36CB5' },
     ...(params.orderId ? { order_id: params.orderId } : {}),
     ...(params.method ? { method: params.method } : {}),
+    ...(params.customerId ? { customer_id: params.customerId } : {}),
+    ...(params.recurring ? { recurring: '1' } : {}),
   };
   try {
     const data = await native.open(options);
