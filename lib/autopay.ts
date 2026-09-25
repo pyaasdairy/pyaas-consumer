@@ -149,6 +149,23 @@ function toUpiMandate(m: BackendMandate): UpiMandate {
   };
 }
 
+/** The IST calendar day (YYYY-MM-DD) of an instant. */
+function istDay(ms: number): string {
+  return new Date(ms + 330 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Razorpay approves a UPI AutoPay registration only on the IST day its order
+ * was created ("create an Order and the Authorisation Transaction on the same
+ * day ... before 11:59 pm"). A pending mandate created on an earlier IST day
+ * than `now` needs a fresh registration order. Unknown dates: not stale.
+ */
+export function registrationIsStale(createdAt: string | undefined, now: number = Date.now()): boolean {
+  const at = createdAt ? Date.parse(createdAt) : NaN;
+  if (!Number.isFinite(at)) return false;
+  return istDay(at) < istDay(now);
+}
+
 /** Clamp to the backend's mandate bands: top-up ₹1..5,000 and ≤ the cap; cap ≤ ₹1,00,000. */
 function boundedAmounts(maxAmount: number, rechargeAmount?: number): { amount: number; max_amount: number } {
   const cap = Math.min(100000, Math.max(1, Math.round(maxAmount || 1)));
@@ -216,13 +233,26 @@ export async function createMandate(params: {
  */
 export async function approveMandate(id: string, checkout?: { paymentId: string; signature: string; token?: string }): Promise<UpiMandate> {
   let pg = checkout ?? null;
+  let mandateId = id;
   if (!pg) {
     let reg = registration.get(id);
-    if (!reg?.customerId || !reg.orderId) {
-      const m = (await listBackendMandates().catch(() => [] as BackendMandate[])).find((x) => x.id === id);
-      if (m?.customer_id && m.order_id) {
-        reg = { ...reg, orderId: m.order_id, customerId: m.customer_id, amountPaise: m.reg_amount_paise ?? reg?.amountPaise };
-      }
+    const m = (await listBackendMandates().catch(() => [] as BackendMandate[])).find((x) => x.id === id);
+    if ((!reg?.customerId || !reg.orderId) && m?.customer_id && m.order_id) {
+      reg = { ...reg, orderId: m.order_id, customerId: m.customer_id, amountPaise: m.reg_amount_paise ?? reg?.amountPaise };
+    }
+    // A live registration order from an earlier IST day can no longer be
+    // approved (Razorpay: order and authorisation on the same day). Register
+    // again with the same policy; the server supersedes the old pending
+    // mandate (and cancels any bank token it got), and the checkout opens on
+    // the fresh order.
+    if (m && m.status === 'pending' && m.customer_id && registrationIsStale(m.created_at)) {
+      const fresh = await createMandate({
+        maxAmount: m.max_amount ?? m.amount ?? 0,
+        threshold: m.threshold,
+        rechargeAmount: m.amount,
+      });
+      mandateId = fresh.id;
+      reg = registration.get(fresh.id);
     }
     if (reg?.customerId && reg.orderId) {
       const outcome = await openCheckout({
@@ -243,12 +273,12 @@ export async function approveMandate(id: string, checkout?: { paymentId: string;
   }
   if (!pg) throw new Error('AutoPay approval needs a completed UPI AutoPay checkout.');
   const m = await api.post<BackendMandate>('/mandate/verify', {
-    mandate_id: id,
+    mandate_id: mandateId,
     razorpay_payment_id: pg.paymentId,
     razorpay_signature: pg.signature,
     razorpay_token: pg.token ?? '',
   });
-  registration.delete(id);
+  registration.delete(mandateId);
   return toUpiMandate(m);
 }
 
