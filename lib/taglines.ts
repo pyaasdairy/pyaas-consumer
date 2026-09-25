@@ -7,10 +7,14 @@ import { type ConsentRecord } from '../components/ConsentSheet';
 import { isBackendConfigured } from './apiClient';
 import { consentMirrorPending, readServerConsents } from './consentSync';
 import { CHANNELS, cancelScheduledWhere, notificationsSupported, permissionState, scheduleAt } from './notifications';
+import { taglineTimes } from './quietHours';
 
 /**
  * TAGLINE NOTIFICATIONS — the quirky lines from "PYAAS_ app Taglines.pdf",
- * sent to the member every 2 hours in a random order (founder call, 21 Sep).
+ * sent to the member every 2 hours in a random order (founder call, 21 Sep),
+ * but never between 22:00 and 07:00 IST (founder decision 6, 25 Sep: offers
+ * and taglines wait for morning). A full day carries 07:00, 09:00 ... 21:00:
+ * 8 lines instead of the 12 the round-the-clock cadence sent (2 AM, 4 AM).
  *
  * COST: nothing. These are LOCAL notifications — the phone's own OS schedules
  * and shows them. No server, no push provider, no per-message fee.
@@ -25,9 +29,12 @@ import { CHANNELS, cancelScheduledWhere, notificationsSupported, permissionState
  *
  * HOW: every time the app goes to the background (and at launch) the pending
  * taglines are cancelled and the next 3 days are re-scheduled, one every 2
- * hours, from the groups that apply at that moment. iOS allows 64 pending
- * notifications per app, so 36 slots leaves room for everything else. A member
- * who does not open the app for 3 days stops receiving them until they return.
+ * hours outside the quiet hours (lib/quietHours: a time that lands in them
+ * moves to 07:00 IST and the cadence runs on from there), from the groups
+ * that apply at that moment. iOS allows 64 pending notifications per app; 3
+ * days is about 24 lines, capped at 36, which leaves room for everything else.
+ * A member who does not open the app for 3 days stops receiving them until
+ * they return.
  *
  * GATES: the member's "Offers and updates" preference must be on and the OS
  * notification permission granted. Turning Offers off cancels them at once.
@@ -69,8 +76,9 @@ const TRENDS = [
   'Kinda chic to have your breakfast sorted.',
 ];
 
-const EVERY_MS = 2 * 60 * 60 * 1000; // every 2 hours
-const SLOTS = 36; // 3 days ahead, inside iOS's 64-pending limit
+const EVERY_MS = 2 * 60 * 60 * 1000; // every 2 hours, 07:00-22:00 IST only
+const HORIZON_MS = 3 * 24 * 60 * 60 * 1000; // 3 days ahead
+const SLOTS = 36; // a hard cap inside iOS's 64-pending limit (3 days is about 24)
 
 const isTagline = (data: Record<string, unknown>) => data.tagline === true;
 
@@ -145,11 +153,14 @@ export function rescheduleTaglines(): Promise<void> {
         ...(hasCart ? CART.map((body) => ({ body, href: '/cart' })) : []),
       ];
 
+      // When: every 2 hours for 3 days, never in the quiet hours.
+      const times = taglineTimes(Date.now(), EVERY_MS, HORIZON_MS, SLOTS);
+
       // Random order: shuffle the pool, walk it, reshuffle when it runs out,
       // never showing the same line twice in a row across a reshuffle.
       const plan: { body: string; href: string }[] = [];
       let deck = shuffled(pool);
-      while (plan.length < SLOTS) {
+      while (plan.length < times.length) {
         if (deck.length === 0) {
           deck = shuffled(pool);
           if (deck.length > 1 && deck[0].body === plan[plan.length - 1]?.body) deck.push(deck.shift()!);
@@ -157,9 +168,8 @@ export function rescheduleTaglines(): Promise<void> {
         plan.push(deck.shift()!);
       }
 
-      const start = Date.now();
       for (let i = 0; i < plan.length; i += 1) {
-        await scheduleAt(new Date(start + (i + 1) * EVERY_MS), {
+        await scheduleAt(times[i], {
           title: 'PYAAS',
           body: plan[i].body,
           channel: CHANNELS.offers,
