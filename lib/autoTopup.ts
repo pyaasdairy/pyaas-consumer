@@ -4,7 +4,7 @@ import { MIN_RECHARGE } from './pricing';
 import { notify } from './notificationCenter';
 import { getUserId } from './session';
 import { isBackendConfigured } from './apiClient';
-import { currentMandate, updateMandatePolicy } from './autopay';
+import { currentMandate } from './autopay';
 
 /**
  * AUTO TOP-UP — the "never run dry" setting a member can switch on BEFORE they
@@ -29,12 +29,13 @@ import { currentMandate, updateMandatePolicy } from './autopay';
  * mandate state; the reminder becomes the pre-debit notice NPCI requires.
  *
  * DONE (25 Sep, AutoPay funds the wallet): the server now runs Smart Recharge
- * off an ACTIVE UPI AutoPay mandate. A threshold / amount the member sets here
- * is sent to that mandate's server policy (best effort; an amount above the
- * approved cap is left out and the mandate keeps its own), and while a
- * mandate is ACTIVE this reminder stands down: the server tops the wallet up
- * and the member hears "money added" instead. The bank sends its own
- * pre-debit notice for each AutoPay debit.
+ * off an ACTIVE UPI AutoPay mandate. This reminder preference stays the
+ * member's REMINDER only: nothing chosen here (the card says "Nothing is
+ * charged until you pay") ever reaches the mandate's server policy, which
+ * only the AutoPay card / screen changes (walletApi.setupAutopay ->
+ * updateMandatePolicy). While a mandate is ACTIVE this reminder stands down:
+ * the server tops the wallet up and the member hears "money added" instead.
+ * The bank sends its own pre-debit notice for each AutoPay debit.
  */
 
 // PER ACCOUNT, not per device.
@@ -90,21 +91,6 @@ async function serverAutopayArmed(): Promise<boolean> {
     return false; // unknown: the reminder still speaks
   }
 }
-
-/** Send a changed threshold / amount to the live mandate's server policy. */
-async function syncServerPolicy(p: AutoTopupPrefs): Promise<void> {
-  if (!isBackendConfigured()) return;
-  try {
-    const m = await currentMandate();
-    if (!m || m.state === 'REVOKED') return;
-    await updateMandatePolicy(m.id, {
-      threshold: p.threshold,
-      rechargeAmount: m.max_amount > 0 && p.amount > m.max_amount ? undefined : p.amount,
-    });
-  } catch {
-    /* best effort: the mandate keeps the policy it has */
-  }
-}
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
@@ -150,7 +136,8 @@ export async function setAutoTopup(next: Partial<AutoTopupPrefs>): Promise<void>
   };
   emit();
   try { await AsyncStorage.setItem(await scopedKey(KEY_BASE), JSON.stringify(prefs)); } catch { /* best-effort */ }
-  if (next.threshold != null || next.amount != null) await syncServerPolicy(prefs);
+  // The reminder only: the AutoPay policy (what the bank is charged) changes
+  // from the AutoPay card / screen alone (walletApi.setupAutopay).
 }
 
 /** Forget this device's copy of the signed-in member's setting (sign-out,
