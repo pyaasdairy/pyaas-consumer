@@ -3,6 +3,7 @@ import { useCart } from '../store/cart';
 import { instantWindow } from './instantHours';
 import { CHANNELS, cancelScheduledWhere, notificationsSupported, permissionState, scheduleAt } from './notifications';
 import { offersOn } from './taglines';
+import { afterQuietHours } from './quietHours';
 
 /**
  * "YOUR CART IS WAITING" — the Zomato-style reminder (founder call, 21 Sep).
@@ -15,7 +16,9 @@ import { offersOn } from './taglines';
  * Tapping it (or View Cart) opens the cart.
  *
  * Local notification, scheduled by the phone itself: free, no server. Gated
- * like the taglines on the Offers preference and notification permission.
+ * like the taglines on the Offers preference and notification permission,
+ * and like them it waits out the quiet hours (founder decision 6, 25 Sep): a
+ * reminder that would land between 22:00 and 07:00 IST comes at 07:00.
  * No product image: expo-notifications cannot show one on Android at all, and
  * on iOS it needs extra file handling — so the card is text plus the button.
  */
@@ -38,7 +41,7 @@ export async function scheduleCartReminder(): Promise<void> {
     if ((await permissionState()) !== 'granted') return;
     if (!(await offersOn(uid))) return;
 
-    const fireAt = new Date(Date.now() + AFTER_MS);
+    const fireAt = afterQuietHours(Date.now() + AFTER_MS);
     const items = lines.reduce((n, l) => n + l.qty, 0);
     const total = lines.reduce((n, l) => n + l.price * l.qty, 0);
     const instant = lines.some((l) => l.lane === 'instant');
